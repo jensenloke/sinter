@@ -2,6 +2,10 @@
 
 Sinter indexes local coding-agent sessions, renders a portable session format, and ports supported sessions between harnesses.
 
+## Demo
+
+![Interactive session porting demo](assets/sinter-demo.gif)
+
 ## Install
 
 ```sh
