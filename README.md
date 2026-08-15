@@ -4,7 +4,7 @@ Sinter indexes local coding-agent sessions, renders a portable session format, a
 
 ## Demo
 
-![Interactive session porting demo](assets/sinter-demo.gif)
+![Interactive session porting demo](assets/sinter-demo-2x.gif)
 
 ## Install
 
