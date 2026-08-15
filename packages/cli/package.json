@@ -1,16 +1,21 @@
 {
-  "name": "@sinter/cli",
+  "name": "sinter",
   "version": "0.1.0",
+  "description": "Port and resume coding-agent sessions across harnesses.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jensenloke/sinter.git"
+  },
+  "homepage": "https://github.com/jensenloke/sinter#readme",
+  "bugs": "https://github.com/jensenloke/sinter/issues",
+  "keywords": ["coding-agent", "claude-code", "codex", "opencode", "session"],
+  "engines": { "bun": ">=1.0.0" },
   "type": "module",
-  "bin": { "sinter": "./src/main.ts" },
-  "dependencies": {
-    "@sinter/core": "workspace:*",
-    "@sinter/ledger": "workspace:*",
-    "@sinter/adapter-claude": "workspace:*",
-    "@sinter/adapter-codex": "workspace:*",
-    "@sinter/adapter-opencode": "workspace:*",
-    "@sinter/adapter-zcode": "workspace:*",
-    "@sinter/adapter-omp": "workspace:*",
-    "@sinter/adapter-pi": "workspace:*"
+  "bin": { "sinter": "./dist/main.js" },
+  "files": ["dist"],
+  "scripts": {
+    "build": "bun build src/main.ts --outdir dist --target bun --format esm --splitting",
+    "prepack": "bun run build"
   }
 }

@@ -40,6 +40,26 @@ export interface AdapterRegistry {
   get(id: HarnessId): Promise<HarnessAdapter>;
 }
 
+async function loadAdapterModule(spec: AdapterSpec): Promise<Record<string, unknown>> {
+  const expected = SPECS.find((candidate) => candidate.id === spec.id)?.pkg;
+  if (spec.pkg !== expected) return import(spec.pkg);
+
+  switch (spec.id) {
+    case "claude":
+      return import("@sinter/adapter-claude");
+    case "codex":
+      return import("@sinter/adapter-codex");
+    case "opencode":
+      return import("@sinter/adapter-opencode");
+    case "zcode":
+      return import("@sinter/adapter-zcode");
+    case "omp":
+      return import("@sinter/adapter-omp");
+    case "pi":
+      return import("@sinter/adapter-pi");
+  }
+}
+
 function looksLikeAdapter(x: unknown): x is HarnessAdapter {
   const a = x as HarnessAdapter | undefined;
   return (
@@ -117,7 +137,7 @@ export class DynamicAdapterRegistry implements AdapterRegistry {
 
   private async loadOne(spec: AdapterSpec): Promise<AdapterLoad> {
     try {
-      const mod = (await import(spec.pkg)) as Record<string, unknown>;
+      const mod = await loadAdapterModule(spec);
       const adapter = profileAdapter(mod, spec, this.profile) ?? pickAdapter(mod);
       if (!adapter) return { id: spec.id, error: `${spec.pkg} exports no HarnessAdapter` };
       if (adapter.id !== spec.id)

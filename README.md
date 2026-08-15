@@ -6,11 +6,13 @@ Sinter indexes local coding-agent sessions, renders a portable session format, a
 
 ![Interactive session porting demo](assets/sinter-demo-2x.gif)
 
-## Development
+## Install
+
+Sinter requires [Bun](https://bun.sh); its SQLite support is part of the runtime.
 
 ```sh
-bun install
-bun run sinter --help
+bunx sinter --help
+# or: npm install --global sinter && sinter --help
 ```
 
 ## Quick start
