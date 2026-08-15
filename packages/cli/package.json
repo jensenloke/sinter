@@ -9,11 +9,23 @@
   },
   "homepage": "https://github.com/jensenloke/sinter#readme",
   "bugs": "https://github.com/jensenloke/sinter/issues",
-  "keywords": ["coding-agent", "claude-code", "codex", "opencode", "session"],
-  "engines": { "bun": ">=1.0.0" },
+  "keywords": [
+    "coding-agent",
+    "claude-code",
+    "codex",
+    "opencode",
+    "session"
+  ],
+  "engines": {
+    "bun": ">=1.0.0"
+  },
   "type": "module",
-  "bin": { "sinter": "./dist/main.js" },
-  "files": ["dist"],
+  "bin": {
+    "sinter": "dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "bun build src/main.ts --outdir dist --target bun --format esm --splitting",
     "prepack": "bun run build"
