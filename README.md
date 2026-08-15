@@ -11,8 +11,14 @@ Sinter indexes local coding-agent sessions, renders a portable session format, a
 Sinter requires [Bun](https://bun.sh); its SQLite support is part of the runtime.
 
 ```sh
+# Run once
 bunx @jensenloke/sinter --help
-# or: npm install --global @jensenloke/sinter && sinter --help
+
+# Install globally
+bun add --global @jensenloke/sinter
+# or: npm install --global @jensenloke/sinter
+
+sinter --help
 ```
 
 ## Quick start
