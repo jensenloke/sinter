@@ -6,16 +6,11 @@ Sinter indexes local coding-agent sessions, renders a portable session format, a
 
 ![Interactive session porting demo](assets/sinter-demo-2x.gif)
 
-## Run with Bun
-
-```sh
-bunx github:jensenloke/sinter --help
-```
-
 ## Development
 
 ```sh
 bun install
+bun run sinter --help
 ```
 
 ## Quick start

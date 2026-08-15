@@ -2,9 +2,6 @@
   "name": "sinter",
   "private": true,
   "version": "0.1.0",
-  "bin": {
-    "sinter": "./packages/cli/src/main.ts"
-  },
   "workspaces": [
     "packages/*",
     "packages/adapters/*"
