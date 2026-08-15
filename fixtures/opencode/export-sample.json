@@ -1,0 +1,153 @@
+{
+  "info": {
+    "id": "synthetic-1393",
+    "slug": "synthetic-slug-5590",
+    "projectID": "synthetic-projectID-5591",
+    "directory": "/workspace/synthetic-project",
+    "path": "/workspace/synthetic-project",
+    "title": "Synthetic fixture text 5592.",
+    "agent": "build",
+    "model": {
+      "id": "synthetic-1394",
+      "providerID": "dgx-router",
+      "variant": "synthetic-variant-5593"
+    },
+    "version": "1.18.14",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+      "input": 42,
+      "output": 42,
+      "reasoning": 0,
+      "cache": {
+        "read": 42,
+        "write": 0
+      }
+    },
+    "permission": [
+      {
+        "permission": "synthetic-permission-5594",
+        "pattern": "synthetic-pattern-5595",
+        "action": "synthetic-action-5596"
+      },
+      {
+        "permission": "synthetic-permission-5597",
+        "pattern": "synthetic-pattern-5598",
+        "action": "synthetic-action-5599"
+      },
+      {
+        "permission": "synthetic-permission-5600",
+        "pattern": "synthetic-pattern-5601",
+        "action": "synthetic-action-5602"
+      }
+    ],
+    "time": {
+      "created": 1767227274000,
+      "updated": 1767227275000
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1767227276000
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "dgx-router",
+          "modelID": "dgx-current"
+        },
+        "summary": {
+          "diffs": []
+        },
+        "id": "synthetic-1395",
+        "sessionID": "synthetic-sessionID-5603"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "Synthetic fixture text 5604.",
+          "id": "synthetic-1396",
+          "sessionID": "synthetic-sessionID-5605",
+          "messageID": "synthetic-messageID-5606"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "synthetic-parentID-5607",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/workspace/synthetic-project",
+          "root": "/workspace/synthetic-project"
+        },
+        "cost": 0,
+        "tokens": {
+          "total": 42,
+          "input": 42,
+          "output": 42,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 42
+          }
+        },
+        "modelID": "dgx-current",
+        "providerID": "dgx-router",
+        "time": {
+          "created": 1767227277000,
+          "completed": 1767227278000
+        },
+        "finish": "synthetic-finish-5608",
+        "id": "synthetic-1397",
+        "sessionID": "synthetic-sessionID-5609"
+      },
+      "parts": [
+        {
+          "snapshot": "synthetic-snapshot-5610",
+          "type": "step-start",
+          "id": "synthetic-1398",
+          "sessionID": "synthetic-sessionID-5611",
+          "messageID": "synthetic-messageID-5612"
+        },
+        {
+          "type": "text",
+          "text": "Synthetic fixture text 5613.",
+          "time": {
+            "start": 42,
+            "end": 42
+          },
+          "id": "synthetic-1399",
+          "sessionID": "synthetic-sessionID-5614",
+          "messageID": "synthetic-messageID-5615"
+        },
+        {
+          "reason": "synthetic-reason-5616",
+          "snapshot": "synthetic-snapshot-5617",
+          "type": "step-finish",
+          "tokens": {
+            "total": 42,
+            "input": 42,
+            "output": 42,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 42
+            }
+          },
+          "cost": 0,
+          "id": "synthetic-1400",
+          "sessionID": "synthetic-sessionID-5618",
+          "messageID": "synthetic-messageID-5619"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,402 @@
+{
+  "info": {
+    "id": "synthetic-1401",
+    "slug": "synthetic-slug-5620",
+    "projectID": "synthetic-projectID-5621",
+    "directory": "/workspace/synthetic-project",
+    "path": "/workspace/synthetic-project",
+    "title": "Synthetic fixture text 5622.",
+    "agent": "plan",
+    "model": {
+      "id": "synthetic-1402",
+      "providerID": "spark-qwen36",
+      "variant": "synthetic-variant-5623"
+    },
+    "version": "1.17.9",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+      "input": 42,
+      "output": 42,
+      "reasoning": 0,
+      "cache": {
+        "read": 0,
+        "write": 0
+      }
+    },
+    "time": {
+      "created": 1767227279000,
+      "updated": 1767227280000
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1767227281000
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "spark-qwen36",
+          "modelID": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+          "variant": "synthetic-variant-5624"
+        },
+        "summary": {
+          "diffs": []
+        },
+        "id": "synthetic-1403",
+        "sessionID": "synthetic-sessionID-5625"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "Synthetic fixture text 5626.",
+          "id": "synthetic-1404",
+          "sessionID": "synthetic-sessionID-5627",
+          "messageID": "synthetic-messageID-5628"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "synthetic-parentID-5629",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "variant": "synthetic-variant-5630",
+        "path": {
+          "cwd": "/workspace/synthetic-project",
+          "root": "/workspace/synthetic-project"
+        },
+        "cost": 0,
+        "tokens": {
+          "total": 42,
+          "input": 42,
+          "output": 42,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 0
+          }
+        },
+        "modelID": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+        "providerID": "spark-qwen36",
+        "time": {
+          "created": 1767227282000,
+          "completed": 1767227283000
+        },
+        "finish": "synthetic-finish-5631",
+        "id": "synthetic-1405",
+        "sessionID": "synthetic-sessionID-5632"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "id": "synthetic-1406",
+          "sessionID": "synthetic-sessionID-5633",
+          "messageID": "synthetic-messageID-5634"
+        },
+        {
+          "type": "reasoning",
+          "text": "Synthetic fixture text 5635.",
+          "time": {
+            "start": 42,
+            "end": 42
+          },
+          "id": "synthetic-1407",
+          "sessionID": "synthetic-sessionID-5636",
+          "messageID": "synthetic-messageID-5637"
+        },
+        {
+          "type": "text",
+          "text": "Synthetic fixture text 5638.",
+          "time": {
+            "start": 42,
+            "end": 42
+          },
+          "id": "synthetic-1408",
+          "sessionID": "synthetic-sessionID-5639",
+          "messageID": "synthetic-messageID-5640"
+        },
+        {
+          "reason": "synthetic-reason-5641",
+          "type": "step-finish",
+          "tokens": {
+            "total": 42,
+            "input": 42,
+            "output": 42,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 0
+            }
+          },
+          "cost": 0,
+          "id": "synthetic-1409",
+          "sessionID": "synthetic-sessionID-5642",
+          "messageID": "synthetic-messageID-5643"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1767227284000
+        },
+        "agent": "plan",
+        "model": {
+          "providerID": "spark-qwen36",
+          "modelID": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+          "variant": "synthetic-variant-5644"
+        },
+        "summary": {
+          "diffs": []
+        },
+        "id": "synthetic-1410",
+        "sessionID": "synthetic-sessionID-5645"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "Synthetic fixture text 5646.",
+          "id": "synthetic-1411",
+          "sessionID": "synthetic-sessionID-5647",
+          "messageID": "synthetic-messageID-5648"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "synthetic-parentID-5649",
+        "role": "assistant",
+        "mode": "plan",
+        "agent": "plan",
+        "variant": "synthetic-variant-5650",
+        "path": {
+          "cwd": "/workspace/synthetic-project",
+          "root": "/workspace/synthetic-project"
+        },
+        "cost": 0,
+        "tokens": {
+          "total": 42,
+          "input": 42,
+          "output": 42,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 0
+          }
+        },
+        "modelID": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+        "providerID": "spark-qwen36",
+        "time": {
+          "created": 1767227285000,
+          "completed": 1767227286000
+        },
+        "finish": "synthetic-finish-5651",
+        "id": "synthetic-1412",
+        "sessionID": "synthetic-sessionID-5652"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "id": "synthetic-1413",
+          "sessionID": "synthetic-sessionID-5653",
+          "messageID": "synthetic-messageID-5654"
+        },
+        {
+          "type": "reasoning",
+          "text": "Synthetic fixture text 5655.",
+          "time": {
+            "start": 42,
+            "end": 42
+          },
+          "id": "synthetic-1414",
+          "sessionID": "synthetic-sessionID-5656",
+          "messageID": "synthetic-messageID-5657"
+        },
+        {
+          "type": "text",
+          "text": "Synthetic fixture text 5658.",
+          "time": {
+            "start": 42,
+            "end": 42
+          },
+          "id": "synthetic-1415",
+          "sessionID": "synthetic-sessionID-5659",
+          "messageID": "synthetic-messageID-5660"
+        },
+        {
+          "type": "tool",
+          "tool": "synthetic-tool-5661",
+          "callID": "synthetic-callID-5662",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/workspace/synthetic-project"
+            },
+            "output": "synthetic-output-5663",
+            "metadata": {
+              "preview": "synthetic-preview-5664",
+              "truncated": false,
+              "loaded": [],
+              "display": {
+                "type": "directory",
+                "path": "/workspace/synthetic-project",
+                "entries": [
+                  "synthetic--5665",
+                  "synthetic--5666",
+                  "synthetic--5667",
+                  "synthetic--5668"
+                ],
+                "offset": 42,
+                "totalEntries": 42,
+                "truncated": false
+              }
+            },
+            "title": "Synthetic fixture text 5669.",
+            "time": {
+              "start": 42,
+              "end": 42
+            }
+          },
+          "id": "synthetic-1416",
+          "sessionID": "synthetic-sessionID-5670",
+          "messageID": "synthetic-messageID-5671"
+        },
+        {
+          "type": "tool",
+          "tool": "synthetic-tool-5672",
+          "callID": "synthetic-callID-5673",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "echo synthetic-fixture",
+              "description": "synthetic-description-5674"
+            },
+            "output": "synthetic-output-5675",
+            "metadata": {
+              "output": "synthetic-output-5676",
+              "exit": 0,
+              "description": "synthetic-description-5677",
+              "truncated": false
+            },
+            "title": "Synthetic fixture text 5678.",
+            "time": {
+              "start": 42,
+              "end": 42
+            }
+          },
+          "id": "synthetic-1417",
+          "sessionID": "synthetic-sessionID-5679",
+          "messageID": "synthetic-messageID-5680"
+        },
+        {
+          "reason": "synthetic-reason-5681",
+          "type": "step-finish",
+          "tokens": {
+            "total": 42,
+            "input": 42,
+            "output": 42,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 0
+            }
+          },
+          "cost": 0,
+          "id": "synthetic-1418",
+          "sessionID": "synthetic-sessionID-5682",
+          "messageID": "synthetic-messageID-5683"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "synthetic-parentID-5684",
+        "role": "assistant",
+        "mode": "plan",
+        "agent": "plan",
+        "variant": "synthetic-variant-5685",
+        "path": {
+          "cwd": "/workspace/synthetic-project",
+          "root": "/workspace/synthetic-project"
+        },
+        "cost": 0,
+        "tokens": {
+          "total": 42,
+          "input": 42,
+          "output": 42,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 0
+          }
+        },
+        "modelID": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+        "providerID": "spark-qwen36",
+        "time": {
+          "created": 1767227287000,
+          "completed": 1767227288000
+        },
+        "finish": "synthetic-finish-5686",
+        "id": "synthetic-1419",
+        "sessionID": "synthetic-sessionID-5687"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "id": "synthetic-1420",
+          "sessionID": "synthetic-sessionID-5688",
+          "messageID": "synthetic-messageID-5689"
+        },
+        {
+          "type": "reasoning",
+          "text": "Synthetic fixture text 5690.",
+          "time": {
+            "start": 42,
+            "end": 42
+          },
+          "id": "synthetic-1421",
+          "sessionID": "synthetic-sessionID-5691",
+          "messageID": "synthetic-messageID-5692"
+        },
+        {
+          "type": "text",
+          "text": "Synthetic fixture text 5693.",
+          "time": {
+            "start": 42,
+            "end": 42
+          },
+          "id": "synthetic-1422",
+          "sessionID": "synthetic-sessionID-5694",
+          "messageID": "synthetic-messageID-5695"
+        },
+        {
+          "reason": "synthetic-reason-5696",
+          "type": "step-finish",
+          "tokens": {
+            "total": 42,
+            "input": 42,
+            "output": 42,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 0
+            }
+          },
+          "cost": 0,
+          "id": "synthetic-1423",
+          "sessionID": "synthetic-sessionID-5697",
+          "messageID": "synthetic-messageID-5698"
+        }
+      ]
+    }
+  ]
+}

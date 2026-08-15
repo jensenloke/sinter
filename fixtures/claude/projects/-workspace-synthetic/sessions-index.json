@@ -1,0 +1,31 @@
+{
+  "version": 42,
+  "entries": [
+    {
+      "sessionId": "synthetic-0269",
+      "fullPath": "/workspace/synthetic-project",
+      "fileMtime": 1767226017000,
+      "firstPrompt": "Synthetic fixture text 1667.",
+      "summary": "Synthetic fixture text 1668.",
+      "messageCount": 42,
+      "created": "2026-01-01T00:06:58.000Z",
+      "modified": "synthetic-modified-1669",
+      "gitBranch": "synthetic-gitBranch-1670",
+      "projectPath": "/workspace/synthetic-project",
+      "isSidechain": false
+    },
+    {
+      "sessionId": "synthetic-0448",
+      "fullPath": "/workspace/synthetic-project",
+      "fileMtime": 1767226019000,
+      "firstPrompt": "Synthetic fixture text 1671.",
+      "summary": "Synthetic fixture text 1672.",
+      "messageCount": 42,
+      "created": "2026-01-01T00:07:00.000Z",
+      "modified": "synthetic-modified-1673",
+      "gitBranch": "synthetic-gitBranch-1674",
+      "projectPath": "/workspace/synthetic-project",
+      "isSidechain": false
+    }
+  ]
+}

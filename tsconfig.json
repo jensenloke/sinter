@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["bun"],
+    "paths": {
+      "@sinter/core": ["./packages/core/src/index.ts"],
+      "@sinter/core/*": ["./packages/core/src/*"]
+    }
+  },
+  "include": ["packages"]
+}

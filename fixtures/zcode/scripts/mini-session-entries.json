@@ -1,0 +1,10 @@
+[
+  {
+    "id": "synthetic-0001",
+    "session_id": "synthetic-0002",
+    "type": "runtime/workspace_checkpoint",
+    "time_created": 1767225600000,
+    "time_updated": 1767225601000,
+    "data": "{\"eventId\":\"synthetic-0003\",\"payload\":{\"checkpointId\":\"synthetic-0004\",\"messageId\":\"synthetic-0005\",\"targetMessageId\":\"synthetic-0005\",\"toolMessageId\":\"synthetic-0006\",\"scope\":\"synthetic-scope-1\",\"snapshotRef\":\"synthetic-snapshotRef-2\",\"diffRef\":\"synthetic-diffRef-3\",\"fileCount\":42},\"sequenceNumber\":42,\"traceId\":\"synthetic-0007\",\"turnId\":\"synthetic-0008\"}"
+  }
+]

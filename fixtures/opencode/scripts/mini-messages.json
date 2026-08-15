@@ -1,0 +1,51 @@
+[
+  {
+    "id": "synthetic-1395",
+    "session_id": "synthetic-1393",
+    "time_created": 1767227333000,
+    "time_updated": 1767227334000,
+    "data": "{\"role\":\"user\",\"time\":{\"created\":1767227335000},\"agent\":\"build\",\"model\":{\"providerID\":\"dgx-router\",\"modelID\":\"dgx-current\"},\"summary\":{\"diffs\":[]}}"
+  },
+  {
+    "id": "synthetic-1397",
+    "session_id": "synthetic-1393",
+    "time_created": 1767227336000,
+    "time_updated": 1767227337000,
+    "data": "{\"parentID\":null,\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"write\":0,\"read\":42}},\"modelID\":\"dgx-current\",\"providerID\":\"dgx-router\",\"time\":{\"created\":1767227338000,\"completed\":1767227339000},\"finish\":\"synthetic-finish-5737\"}"
+  },
+  {
+    "id": "synthetic-1403",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227340000,
+    "time_updated": 1767227341000,
+    "data": "{\"role\":\"user\",\"time\":{\"created\":1767227342000},\"agent\":\"build\",\"model\":{\"providerID\":\"spark-qwen36\",\"modelID\":\"nvidia/Qwen3.6-35B-A3B-NVFP4\",\"variant\":\"synthetic-variant-5738\"},\"summary\":{\"diffs\":[]}}"
+  },
+  {
+    "id": "synthetic-1405",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227343000,
+    "time_updated": 1767227344000,
+    "data": "{\"parentID\":null,\"role\":\"assistant\",\"mode\":\"build\",\"agent\":\"build\",\"variant\":\"synthetic-variant-5740\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"write\":0,\"read\":0}},\"modelID\":\"nvidia/Qwen3.6-35B-A3B-NVFP4\",\"providerID\":\"spark-qwen36\",\"time\":{\"created\":1767227345000,\"completed\":1767227346000},\"finish\":\"synthetic-finish-5741\"}"
+  },
+  {
+    "id": "synthetic-1410",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227347000,
+    "time_updated": 1767227348000,
+    "data": "{\"role\":\"user\",\"time\":{\"created\":1767227349000},\"agent\":\"plan\",\"model\":{\"providerID\":\"spark-qwen36\",\"modelID\":\"nvidia/Qwen3.6-35B-A3B-NVFP4\",\"variant\":\"synthetic-variant-5742\"},\"summary\":{\"diffs\":[]}}"
+  },
+  {
+    "id": "synthetic-1412",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227350000,
+    "time_updated": 1767227351000,
+    "data": "{\"parentID\":null,\"role\":\"assistant\",\"mode\":\"plan\",\"agent\":\"plan\",\"variant\":\"synthetic-variant-5744\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"write\":0,\"read\":0}},\"modelID\":\"nvidia/Qwen3.6-35B-A3B-NVFP4\",\"providerID\":\"spark-qwen36\",\"time\":{\"created\":1767227352000,\"completed\":1767227353000},\"finish\":\"synthetic-finish-5745\"}"
+  },
+  {
+    "id": "synthetic-1419",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227354000,
+    "time_updated": 1767227355000,
+    "data": "{\"parentID\":null,\"role\":\"assistant\",\"mode\":\"plan\",\"agent\":\"plan\",\"variant\":\"synthetic-variant-5747\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"write\":0,\"read\":0}},\"modelID\":\"nvidia/Qwen3.6-35B-A3B-NVFP4\",\"providerID\":\"spark-qwen36\",\"time\":{\"created\":1767227356000,\"completed\":1767227357000},\"finish\":\"synthetic-finish-5748\"}"
+  }
+]

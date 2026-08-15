@@ -1,0 +1,16 @@
+[
+  {
+    "id": "synthetic-1424",
+    "worktree": "/workspace/synthetic-project",
+    "vcs": "synthetic-vcs-5749",
+    "name": null,
+    "icon_url": null,
+    "icon_color": null,
+    "time_created": 1767227358000,
+    "time_updated": 1767227359000,
+    "time_initialized": null,
+    "sandboxes": "synthetic-sandboxes-5750",
+    "commands": null,
+    "icon_url_override": null
+  }
+]

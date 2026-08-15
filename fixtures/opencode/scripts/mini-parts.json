@@ -1,0 +1,162 @@
+[
+  {
+    "id": "synthetic-1396",
+    "message_id": "synthetic-1395",
+    "session_id": "synthetic-1393",
+    "time_created": 1767227289000,
+    "time_updated": 1767227290000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 5699.\"}"
+  },
+  {
+    "id": "synthetic-1398",
+    "message_id": "synthetic-1397",
+    "session_id": "synthetic-1393",
+    "time_created": 1767227291000,
+    "time_updated": 1767227292000,
+    "data": "{\"snapshot\":\"synthetic-snapshot-5700\",\"type\":\"step-start\"}"
+  },
+  {
+    "id": "synthetic-1399",
+    "message_id": "synthetic-1397",
+    "session_id": "synthetic-1393",
+    "time_created": 1767227293000,
+    "time_updated": 1767227294000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 5701.\",\"time\":{\"start\":42,\"end\":42}}"
+  },
+  {
+    "id": "synthetic-1400",
+    "message_id": "synthetic-1397",
+    "session_id": "synthetic-1393",
+    "time_created": 1767227295000,
+    "time_updated": 1767227296000,
+    "data": "{\"reason\":\"synthetic-reason-5702\",\"snapshot\":\"synthetic-snapshot-5703\",\"type\":\"step-finish\",\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"write\":0,\"read\":42}},\"cost\":0}"
+  },
+  {
+    "id": "synthetic-1404",
+    "message_id": "synthetic-1403",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227297000,
+    "time_updated": 1767227298000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 5704.\"}"
+  },
+  {
+    "id": "synthetic-1406",
+    "message_id": "synthetic-1405",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227299000,
+    "time_updated": 1767227300000,
+    "data": "{\"type\":\"step-start\"}"
+  },
+  {
+    "id": "synthetic-1407",
+    "message_id": "synthetic-1405",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227301000,
+    "time_updated": 1767227302000,
+    "data": "{\"type\":\"reasoning\",\"text\":\"Synthetic fixture text 5705.\",\"time\":{\"start\":42,\"end\":42}}"
+  },
+  {
+    "id": "synthetic-1408",
+    "message_id": "synthetic-1405",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227303000,
+    "time_updated": 1767227304000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 5706.\",\"time\":{\"start\":42,\"end\":42}}"
+  },
+  {
+    "id": "synthetic-1409",
+    "message_id": "synthetic-1405",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227305000,
+    "time_updated": 1767227306000,
+    "data": "{\"reason\":\"synthetic-reason-5707\",\"type\":\"step-finish\",\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"write\":0,\"read\":0}},\"cost\":0}"
+  },
+  {
+    "id": "synthetic-1411",
+    "message_id": "synthetic-1410",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227307000,
+    "time_updated": 1767227308000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 5708.\"}"
+  },
+  {
+    "id": "synthetic-1413",
+    "message_id": "synthetic-1412",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227309000,
+    "time_updated": 1767227310000,
+    "data": "{\"type\":\"step-start\"}"
+  },
+  {
+    "id": "synthetic-1414",
+    "message_id": "synthetic-1412",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227311000,
+    "time_updated": 1767227312000,
+    "data": "{\"type\":\"reasoning\",\"text\":\"Synthetic fixture text 5709.\",\"time\":{\"start\":42,\"end\":42}}"
+  },
+  {
+    "id": "synthetic-1415",
+    "message_id": "synthetic-1412",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227313000,
+    "time_updated": 1767227314000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 5710.\",\"time\":{\"start\":42,\"end\":42}}"
+  },
+  {
+    "id": "synthetic-1416",
+    "message_id": "synthetic-1412",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227315000,
+    "time_updated": 1767227316000,
+    "data": "{\"type\":\"tool\",\"tool\":\"synthetic-tool-5711\",\"callID\":\"synthetic-callID-5712\",\"state\":{\"status\":\"completed\",\"input\":{\"filePath\":\"/workspace/synthetic-project\"},\"output\":\"synthetic-output-5713\",\"metadata\":{\"preview\":\"synthetic-preview-5714\",\"truncated\":false,\"loaded\":[],\"display\":{\"type\":\"directory\",\"path\":\"/workspace/synthetic-project\",\"entries\":[\"synthetic--5715\",\"synthetic--5716\",\"synthetic--5717\",\"synthetic--5718\"],\"offset\":42,\"totalEntries\":42,\"truncated\":false}},\"title\":\"Synthetic fixture text 5719.\",\"time\":{\"start\":42,\"end\":42}}}"
+  },
+  {
+    "id": "synthetic-1417",
+    "message_id": "synthetic-1412",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227317000,
+    "time_updated": 1767227318000,
+    "data": "{\"type\":\"tool\",\"tool\":\"synthetic-tool-5720\",\"callID\":\"synthetic-callID-5721\",\"state\":{\"status\":\"completed\",\"input\":{\"command\":\"echo synthetic-fixture\",\"description\":\"synthetic-description-5722\"},\"output\":\"synthetic-output-5723\",\"metadata\":{\"output\":\"synthetic-output-5724\",\"exit\":0,\"description\":\"synthetic-description-5725\",\"truncated\":false},\"title\":\"Synthetic fixture text 5726.\",\"time\":{\"start\":42,\"end\":42}}}"
+  },
+  {
+    "id": "synthetic-1418",
+    "message_id": "synthetic-1412",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227319000,
+    "time_updated": 1767227320000,
+    "data": "{\"reason\":\"synthetic-reason-5727\",\"type\":\"step-finish\",\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"write\":0,\"read\":0}},\"cost\":0}"
+  },
+  {
+    "id": "synthetic-1420",
+    "message_id": "synthetic-1419",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227321000,
+    "time_updated": 1767227322000,
+    "data": "{\"type\":\"step-start\"}"
+  },
+  {
+    "id": "synthetic-1421",
+    "message_id": "synthetic-1419",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227323000,
+    "time_updated": 1767227324000,
+    "data": "{\"type\":\"reasoning\",\"text\":\"Synthetic fixture text 5728.\",\"time\":{\"start\":42,\"end\":42}}"
+  },
+  {
+    "id": "synthetic-1422",
+    "message_id": "synthetic-1419",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227325000,
+    "time_updated": 1767227326000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 5729.\",\"time\":{\"start\":42,\"end\":42}}"
+  },
+  {
+    "id": "synthetic-1423",
+    "message_id": "synthetic-1419",
+    "session_id": "synthetic-1401",
+    "time_created": 1767227327000,
+    "time_updated": 1767227328000,
+    "data": "{\"reason\":\"synthetic-reason-5730\",\"type\":\"step-finish\",\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"write\":0,\"read\":0}},\"cost\":0}"
+  }
+]

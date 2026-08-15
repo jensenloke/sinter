@@ -1,0 +1,560 @@
+[
+  {
+    "id": "synthetic-0009",
+    "message_id": "synthetic-0010",
+    "session_id": "synthetic-0011",
+    "time_created": 1767225602000,
+    "time_updated": 1767225603000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 4.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0012",
+    "message_id": "synthetic-0013",
+    "session_id": "synthetic-0011",
+    "time_created": 1767225604000,
+    "time_updated": 1767225605000,
+    "data": "{\"type\":\"step-start\"}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0014",
+    "message_id": "synthetic-0015",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225606000,
+    "time_updated": 1767225607000,
+    "data": "{\"timelineType\":\"synthetic-timelineType-5\",\"display\":\"synthetic-display-6\",\"status\":\"completed\",\"fromModel\":{\"providerID\":\"alibaba-model-studio\",\"modelID\":\"qwen3.8-max-preview\",\"label\":\"synthetic-label-7\"},\"toModel\":{\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"variant\":\"synthetic-variant-8\",\"label\":\"synthetic-label-9\"},\"time\":{\"start\":42,\"end\":42},\"type\":\"timeline\"}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0016",
+    "message_id": "synthetic-0017",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225608000,
+    "time_updated": 1767225609000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 10.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0018",
+    "message_id": "synthetic-0019",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225610000,
+    "time_updated": 1767225611000,
+    "data": "{\"type\":\"step-start\"}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0020",
+    "message_id": "synthetic-0021",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225612000,
+    "time_updated": 1767225613000,
+    "data": "{\"type\":\"step-start\"}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0022",
+    "message_id": "synthetic-0023",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225614000,
+    "time_updated": 1767225615000,
+    "data": "{\"type\":\"step-start\"}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0024",
+    "message_id": "synthetic-0025",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225616000,
+    "time_updated": 1767225617000,
+    "data": "{\"type\":\"step-start\"}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0026",
+    "message_id": "synthetic-0027",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225618000,
+    "time_updated": 1767225619000,
+    "data": "{\"type\":\"step-start\"}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0028",
+    "message_id": "synthetic-0005",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225620000,
+    "time_updated": 1767225621000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 11.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0029",
+    "message_id": "synthetic-0030",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225622000,
+    "time_updated": 1767225623000,
+    "data": "{\"type\":\"step-start\"}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0031",
+    "message_id": "synthetic-0032",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225624000,
+    "time_updated": 1767225625000,
+    "data": "{\"type\":\"step-start\"}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0033",
+    "message_id": "synthetic-0034",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225626000,
+    "time_updated": 1767225627000,
+    "data": "{\"type\":\"step-start\"}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0035",
+    "message_id": "synthetic-0036",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225628000,
+    "time_updated": 1767225629000,
+    "data": "{\"type\":\"step-start\"}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0037",
+    "message_id": "synthetic-0038",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225630000,
+    "time_updated": 1767225631000,
+    "data": "{\"type\":\"step-start\"}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0039",
+    "message_id": "synthetic-0040",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225632000,
+    "time_updated": 1767225633000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 12.\",\"synthetic\":true,\"time\":{\"start\":42,\"end\":42},\"metadata\":{\"runtimeMessage\":{\"source\":\"todo_reminder\"},\"source\":\"todo_reminder\",\"visibility\":\"synthetic-visibility-13\"}}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0041",
+    "message_id": "synthetic-0006",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225634000,
+    "time_updated": 1767225635000,
+    "data": "{\"type\":\"step-start\"}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0042",
+    "message_id": "synthetic-0043",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225636000,
+    "time_updated": 1767225637000,
+    "data": "{\"type\":\"step-start\"}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0044",
+    "message_id": "synthetic-0019",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225638000,
+    "time_updated": 1767225639000,
+    "data": "{\"type\":\"reasoning\",\"text\":\"Synthetic fixture text 14.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0045",
+    "message_id": "synthetic-0021",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225640000,
+    "time_updated": 1767225641000,
+    "data": "{\"type\":\"reasoning\",\"text\":\"Synthetic fixture text 15.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0046",
+    "message_id": "synthetic-0023",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225642000,
+    "time_updated": 1767225643000,
+    "data": "{\"type\":\"tool\",\"callID\":\"synthetic-callID-16\",\"tool\":\"synthetic-tool-17\",\"state\":{\"status\":\"completed\",\"input\":{\"file_path\":\"/workspace/synthetic-project\"},\"output\":\"synthetic-output-18\",\"title\":\"Synthetic fixture text 19.\",\"metadata\":{\"schemaVersion\":42,\"serialization\":{\"truncated\":false,\"originalBytes\":42,\"returnedBytes\":42,\"budgetStrategy\":\"synthetic-budgetStrategy-20\"},\"readFileState\":{\"schemaVersion\":42,\"tool\":\"synthetic-tool-21\",\"path\":\"/workspace/synthetic-project\",\"content\":\"Synthetic fixture text 22.\",\"isPartialView\":false,\"readAtMs\":42,\"revisionId\":\"synthetic-0047\",\"mtimeMs\":42,\"sizeBytes\":42}},\"time\":{\"start\":42,\"end\":42}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0048",
+    "message_id": "synthetic-0025",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225644000,
+    "time_updated": 1767225645000,
+    "data": "{\"type\":\"reasoning\",\"text\":\"Synthetic fixture text 23.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0049",
+    "message_id": "synthetic-0027",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225646000,
+    "time_updated": 1767225647000,
+    "data": "{\"type\":\"reasoning\",\"text\":\"Synthetic fixture text 24.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0050",
+    "message_id": "synthetic-0030",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225648000,
+    "time_updated": 1767225649000,
+    "data": "{\"type\":\"reasoning\",\"text\":\"Synthetic fixture text 25.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0051",
+    "message_id": "synthetic-0032",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225650000,
+    "time_updated": 1767225651000,
+    "data": "{\"type\":\"reasoning\",\"text\":\"Synthetic fixture text 26.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0052",
+    "message_id": "synthetic-0034",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225652000,
+    "time_updated": 1767225653000,
+    "data": "{\"type\":\"reasoning\",\"text\":\"Synthetic fixture text 27.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0053",
+    "message_id": "synthetic-0036",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225654000,
+    "time_updated": 1767225655000,
+    "data": "{\"type\":\"reasoning\",\"text\":\"Synthetic fixture text 28.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0054",
+    "message_id": "synthetic-0038",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225656000,
+    "time_updated": 1767225657000,
+    "data": "{\"type\":\"tool\",\"callID\":\"synthetic-callID-29\",\"tool\":\"synthetic-tool-30\",\"state\":{\"status\":\"completed\",\"input\":{\"file_path\":\"/workspace/synthetic-project\"},\"output\":\"synthetic-output-31\",\"title\":\"Synthetic fixture text 32.\",\"metadata\":{\"schemaVersion\":42,\"serialization\":{\"truncated\":false,\"originalBytes\":42,\"returnedBytes\":42,\"budgetStrategy\":\"synthetic-budgetStrategy-33\"},\"readFileState\":{\"schemaVersion\":42,\"tool\":\"synthetic-tool-34\",\"path\":\"/workspace/synthetic-project\",\"content\":\"Synthetic fixture text 35.\",\"isPartialView\":false,\"readAtMs\":42,\"revisionId\":\"synthetic-0055\",\"mtimeMs\":42,\"sizeBytes\":42}},\"time\":{\"start\":42,\"end\":42}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0056",
+    "message_id": "synthetic-0006",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225658000,
+    "time_updated": 1767225659000,
+    "data": "{\"type\":\"reasoning\",\"text\":\"Synthetic fixture text 36.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0057",
+    "message_id": "synthetic-0043",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225660000,
+    "time_updated": 1767225661000,
+    "data": "{\"type\":\"reasoning\",\"text\":\"Synthetic fixture text 37.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0058",
+    "message_id": "synthetic-0019",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225662000,
+    "time_updated": 1767225663000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 38.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0059",
+    "message_id": "synthetic-0021",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225664000,
+    "time_updated": 1767225665000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 39.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0060",
+    "message_id": "synthetic-0023",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225666000,
+    "time_updated": 1767225667000,
+    "data": "{\"type\":\"tool\",\"callID\":\"synthetic-callID-40\",\"tool\":\"synthetic-tool-41\",\"state\":{\"status\":\"completed\",\"input\":{\"file_path\":\"/workspace/synthetic-project\"},\"output\":\"synthetic-output-42\",\"title\":\"Synthetic fixture text 43.\",\"metadata\":{\"schemaVersion\":42,\"serialization\":{\"truncated\":false,\"originalBytes\":42,\"returnedBytes\":42,\"budgetStrategy\":\"synthetic-budgetStrategy-44\"},\"readFileState\":{\"schemaVersion\":42,\"tool\":\"synthetic-tool-45\",\"path\":\"/workspace/synthetic-project\",\"content\":\"Synthetic fixture text 46.\",\"isPartialView\":false,\"readAtMs\":42,\"revisionId\":\"synthetic-0061\",\"mtimeMs\":42,\"sizeBytes\":42}},\"time\":{\"start\":42,\"end\":42}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0062",
+    "message_id": "synthetic-0025",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225668000,
+    "time_updated": 1767225669000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 47.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0063",
+    "message_id": "synthetic-0027",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225670000,
+    "time_updated": 1767225671000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 48.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0064",
+    "message_id": "synthetic-0030",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225672000,
+    "time_updated": 1767225673000,
+    "data": "{\"type\":\"tool\",\"callID\":\"synthetic-callID-49\",\"tool\":\"synthetic-tool-50\",\"state\":{\"status\":\"completed\",\"input\":{\"command\":\"echo synthetic-fixture\",\"description\":\"synthetic-description-51\"},\"output\":\"synthetic-output-52\",\"title\":\"Synthetic fixture text 53.\",\"metadata\":{\"schemaVersion\":42,\"serialization\":{\"truncated\":false,\"originalBytes\":42,\"returnedBytes\":42,\"budgetStrategy\":\"synthetic-budgetStrategy-54\"}},\"time\":{\"start\":42,\"end\":42}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0065",
+    "message_id": "synthetic-0032",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225674000,
+    "time_updated": 1767225675000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 55.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0066",
+    "message_id": "synthetic-0034",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225676000,
+    "time_updated": 1767225677000,
+    "data": "{\"type\":\"tool\",\"callID\":\"synthetic-callID-56\",\"tool\":\"synthetic-tool-57\",\"state\":{\"status\":\"completed\",\"input\":{\"command\":\"echo synthetic-fixture\",\"description\":\"synthetic-description-58\"},\"output\":\"synthetic-output-59\",\"title\":\"Synthetic fixture text 60.\",\"metadata\":{\"schemaVersion\":42,\"serialization\":{\"truncated\":false,\"originalBytes\":0,\"returnedBytes\":42,\"budgetStrategy\":\"synthetic-budgetStrategy-61\"}},\"time\":{\"start\":42,\"end\":42}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0067",
+    "message_id": "synthetic-0036",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225678000,
+    "time_updated": 1767225679000,
+    "data": "{\"type\":\"tool\",\"callID\":\"synthetic-callID-62\",\"tool\":\"synthetic-tool-63\",\"state\":{\"status\":\"error\",\"input\":{\"file_path\":\"/workspace/synthetic-project\",\"old_string\":\"synthetic-old_string-64\",\"new_string\":\"synthetic-new_string-65\"},\"error\":\"synthetic-error-66\",\"metadata\":{\"modelContent\":\"synthetic-modelContent-67\"},\"time\":{\"start\":42,\"end\":42}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0068",
+    "message_id": "synthetic-0038",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225680000,
+    "time_updated": 1767225681000,
+    "data": "{\"type\":\"reasoning\",\"text\":\"Synthetic fixture text 68.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0069",
+    "message_id": "synthetic-0006",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225682000,
+    "time_updated": 1767225683000,
+    "data": "{\"type\":\"tool\",\"callID\":\"synthetic-callID-69\",\"tool\":\"synthetic-tool-70\",\"state\":{\"status\":\"completed\",\"input\":{\"file_path\":\"/workspace/synthetic-project\",\"old_string\":\"synthetic-old_string-71\",\"new_string\":\"synthetic-new_string-72\"},\"output\":\"synthetic-output-73\",\"title\":\"Synthetic fixture text 74.\",\"metadata\":{\"schemaVersion\":42,\"display\":{\"kind\":\"file_diff\",\"filePath\":\"/workspace/synthetic-project\",\"additions\":42,\"deletions\":0,\"structuredPatch\":[{\"oldStart\":42,\"oldLines\":42,\"newStart\":42,\"newLines\":42,\"lines\":[\"synthetic--75\",\"synthetic--76\",\"synthetic--77\",\"synthetic--78\",\"synthetic--79\",\"synthetic--80\",\"synthetic--81\"]}],\"truncated\":false},\"serialization\":{\"truncated\":false,\"originalBytes\":42,\"returnedBytes\":42,\"budgetStrategy\":\"synthetic-budgetStrategy-82\"},\"readFileState\":{\"schemaVersion\":42,\"tool\":\"synthetic-tool-83\",\"path\":\"/workspace/synthetic-project\",\"content\":\"Synthetic fixture text 84.\",\"isPartialView\":false,\"readAtMs\":42,\"revisionId\":\"synthetic-0070\",\"mtimeMs\":42,\"sizeBytes\":42}},\"time\":{\"start\":42,\"end\":42}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0071",
+    "message_id": "synthetic-0043",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225684000,
+    "time_updated": 1767225685000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 85.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0072",
+    "message_id": "synthetic-0019",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225686000,
+    "time_updated": 1767225687000,
+    "data": "{\"type\":\"tool\",\"callID\":\"synthetic-callID-86\",\"tool\":\"synthetic-tool-87\",\"state\":{\"status\":\"completed\",\"input\":{\"url\":\"synthetic-url-88\",\"prompt\":\"synthetic-prompt-89\"},\"output\":\"synthetic-output-90\",\"title\":\"Synthetic fixture text 91.\",\"metadata\":{\"schemaVersion\":42,\"serialization\":{\"truncated\":false,\"originalBytes\":42,\"returnedBytes\":42,\"budgetStrategy\":\"synthetic-budgetStrategy-92\"}},\"time\":{\"start\":42,\"end\":42}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0073",
+    "message_id": "synthetic-0021",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225688000,
+    "time_updated": 1767225689000,
+    "data": "{\"type\":\"tool\",\"callID\":\"synthetic-callID-93\",\"tool\":\"synthetic-tool-94\",\"state\":{\"status\":\"completed\",\"input\":{\"command\":\"echo synthetic-fixture\",\"description\":\"synthetic-description-95\"},\"output\":\"synthetic-output-96\",\"title\":\"Synthetic fixture text 97.\",\"metadata\":{\"schemaVersion\":42,\"serialization\":{\"truncated\":false,\"originalBytes\":42,\"returnedBytes\":42,\"budgetStrategy\":\"synthetic-budgetStrategy-98\"}},\"time\":{\"start\":42,\"end\":42}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0074",
+    "message_id": "synthetic-0023",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225690000,
+    "time_updated": 1767225691000,
+    "data": "{\"type\":\"reasoning\",\"text\":\"Synthetic fixture text 99.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0075",
+    "message_id": "synthetic-0025",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225692000,
+    "time_updated": 1767225693000,
+    "data": "{\"type\":\"tool\",\"callID\":\"synthetic-callID-100\",\"tool\":\"synthetic-tool-101\",\"state\":{\"status\":\"completed\",\"input\":{\"url\":\"synthetic-url-102\",\"prompt\":\"synthetic-prompt-103\"},\"output\":\"synthetic-output-104\",\"title\":\"Synthetic fixture text 105.\",\"metadata\":{\"schemaVersion\":42,\"serialization\":{\"truncated\":false,\"originalBytes\":42,\"returnedBytes\":42,\"budgetStrategy\":\"synthetic-budgetStrategy-106\"}},\"time\":{\"start\":42,\"end\":42}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0076",
+    "message_id": "synthetic-0027",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225694000,
+    "time_updated": 1767225695000,
+    "data": "{\"type\":\"step-finish\",\"reason\":\"synthetic-reason-107\",\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0077",
+    "message_id": "synthetic-0030",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225696000,
+    "time_updated": 1767225697000,
+    "data": "{\"type\":\"step-finish\",\"reason\":\"synthetic-reason-108\",\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0078",
+    "message_id": "synthetic-0032",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225698000,
+    "time_updated": 1767225699000,
+    "data": "{\"type\":\"tool\",\"callID\":\"synthetic-callID-109\",\"tool\":\"synthetic-tool-110\",\"state\":{\"status\":\"completed\",\"input\":{\"command\":\"echo synthetic-fixture\",\"description\":\"synthetic-description-111\"},\"output\":\"synthetic-output-112\",\"title\":\"Synthetic fixture text 113.\",\"metadata\":{\"schemaVersion\":42,\"serialization\":{\"truncated\":false,\"originalBytes\":0,\"returnedBytes\":42,\"budgetStrategy\":\"synthetic-budgetStrategy-114\"}},\"time\":{\"start\":42,\"end\":42}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0079",
+    "message_id": "synthetic-0034",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225700000,
+    "time_updated": 1767225701000,
+    "data": "{\"type\":\"step-finish\",\"reason\":\"synthetic-reason-115\",\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0080",
+    "message_id": "synthetic-0036",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225702000,
+    "time_updated": 1767225703000,
+    "data": "{\"type\":\"step-finish\",\"reason\":\"synthetic-reason-116\",\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0081",
+    "message_id": "synthetic-0038",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225704000,
+    "time_updated": 1767225705000,
+    "data": "{\"type\":\"step-finish\",\"reason\":\"synthetic-reason-117\",\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0082",
+    "message_id": "synthetic-0006",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225706000,
+    "time_updated": 1767225707000,
+    "data": "{\"type\":\"step-finish\",\"reason\":\"synthetic-reason-118\",\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0083",
+    "message_id": "synthetic-0043",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225708000,
+    "time_updated": 1767225709000,
+    "data": "{\"type\":\"step-finish\",\"reason\":\"synthetic-reason-119\",\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0084",
+    "message_id": "synthetic-0019",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225710000,
+    "time_updated": 1767225711000,
+    "data": "{\"type\":\"tool\",\"callID\":\"synthetic-callID-120\",\"tool\":\"synthetic-tool-121\",\"state\":{\"status\":\"completed\",\"input\":{\"command\":\"echo synthetic-fixture\",\"description\":\"synthetic-description-122\"},\"output\":\"synthetic-output-123\",\"title\":\"Synthetic fixture text 124.\",\"metadata\":{\"schemaVersion\":42,\"serialization\":{\"truncated\":false,\"originalBytes\":42,\"returnedBytes\":42,\"budgetStrategy\":\"synthetic-budgetStrategy-125\"}},\"time\":{\"start\":42,\"end\":42}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0085",
+    "message_id": "synthetic-0021",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225712000,
+    "time_updated": 1767225713000,
+    "data": "{\"type\":\"tool\",\"callID\":\"synthetic-callID-126\",\"tool\":\"synthetic-tool-127\",\"state\":{\"status\":\"completed\",\"input\":{\"url\":\"synthetic-url-128\",\"prompt\":\"synthetic-prompt-129\"},\"output\":\"synthetic-output-130\",\"title\":\"Synthetic fixture text 131.\",\"metadata\":{\"schemaVersion\":42,\"serialization\":{\"truncated\":false,\"originalBytes\":42,\"returnedBytes\":42,\"budgetStrategy\":\"synthetic-budgetStrategy-132\"}},\"time\":{\"start\":42,\"end\":42}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0086",
+    "message_id": "synthetic-0023",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225714000,
+    "time_updated": 1767225715000,
+    "data": "{\"type\":\"text\",\"text\":\"Synthetic fixture text 133.\",\"time\":{\"start\":42,\"end\":42}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0087",
+    "message_id": "synthetic-0025",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225716000,
+    "time_updated": 1767225717000,
+    "data": "{\"type\":\"step-finish\",\"reason\":\"synthetic-reason-134\",\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0088",
+    "message_id": "synthetic-0032",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225718000,
+    "time_updated": 1767225719000,
+    "data": "{\"type\":\"step-finish\",\"reason\":\"synthetic-reason-135\",\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0089",
+    "message_id": "synthetic-0019",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225720000,
+    "time_updated": 1767225721000,
+    "data": "{\"type\":\"step-finish\",\"reason\":\"synthetic-reason-136\",\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0090",
+    "message_id": "synthetic-0021",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225722000,
+    "time_updated": 1767225723000,
+    "data": "{\"type\":\"step-finish\",\"reason\":\"synthetic-reason-137\",\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0091",
+    "message_id": "synthetic-0023",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225724000,
+    "time_updated": 1767225725000,
+    "data": "{\"type\":\"step-finish\",\"reason\":\"synthetic-reason-138\",\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}",
+    "sequence": 42
+  }
+]

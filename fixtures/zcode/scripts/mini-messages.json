@@ -1,0 +1,146 @@
+[
+  {
+    "id": "synthetic-0010",
+    "session_id": "synthetic-0011",
+    "time_created": 1767225743000,
+    "time_updated": 1767225744000,
+    "data": "{\"role\":\"user\",\"time\":{\"created\":1767225745000},\"agent\":\"zcode-agent\",\"model\":{\"providerID\":\"dgx-spark\",\"modelID\":\"nvidia/Qwen3.6-35B-A3B-NVFP4\"},\"contextSnapshot\":{\"envInfo\":{\"cwd\":\"/workspace/synthetic-project\",\"platform\":\"synthetic-platform-147\",\"shell\":\"synthetic-shell-148\",\"osVersion\":\"synthetic-osVersion-149\",\"nodeVersion\":\"synthetic-nodeVersion-150\",\"isGitRepository\":false,\"gitStatus\":\"synthetic-gitStatus-151\"}},\"tools\":{\"Read\":true,\"Write\":true,\"Edit\":true,\"Bash\":true,\"Glob\":true,\"Grep\":true,\"WebFetch\":true,\"TodoRead\":true,\"TodoWrite\":true,\"EnterPlanMode\":true,\"ExitPlanMode\":true,\"AskUserQuestion\":true,\"ReadSessionContext\":true,\"Agent\":true,\"Skill\":true}}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0013",
+    "session_id": "synthetic-0011",
+    "time_created": 1767225746000,
+    "time_updated": 1767225747000,
+    "data": "{\"role\":\"assistant\",\"time\":{\"created\":1767225748000,\"completed\":1767225749000},\"error\":{\"name\":\"AiSdkModelAdapterError\",\"data\":{\"message\":\"synthetic-message-152\"}},\"parentID\":\"synthetic-parentID-153\",\"modelID\":\"nvidia/Qwen3.6-35B-A3B-NVFP4\",\"providerID\":\"dgx-spark\",\"mode\":\"plan\",\"agent\":\"zcode-agent\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"input\":0,\"output\":0,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0015",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225750000,
+    "time_updated": 1767225751000,
+    "data": "{\"role\":\"assistant\",\"time\":{\"created\":1767225752000,\"completed\":1767225753000},\"parentID\":\"synthetic-parentID-154\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"mode\":\"build\",\"agent\":\"zcode-agent\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"input\":0,\"output\":0,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}},\"finish\":\"synthetic-finish-155\",\"semantics\":{\"origin\":\"synthetic-origin-156\",\"kind\":\"timeline_event\",\"uiVisibility\":\"synthetic-uiVisibility-157\",\"providerVisibility\":\"synthetic-providerVisibility-158\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-159\"}}",
+    "sequence": 0
+  },
+  {
+    "id": "synthetic-0017",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225754000,
+    "time_updated": 1767225755000,
+    "data": "{\"role\":\"user\",\"time\":{\"created\":1767225756000},\"agent\":\"zcode-agent\",\"model\":{\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"variant\":\"synthetic-variant-160\"},\"contextSnapshot\":{\"envInfo\":{\"cwd\":\"/workspace/synthetic-project\",\"platform\":\"synthetic-platform-161\",\"shell\":\"synthetic-shell-162\",\"osVersion\":\"synthetic-osVersion-163\",\"nodeVersion\":\"synthetic-nodeVersion-164\",\"isGitRepository\":false,\"gitStatus\":\"synthetic-gitStatus-165\"}},\"semantics\":{\"origin\":\"synthetic-origin-166\",\"kind\":\"user_prompt\",\"uiVisibility\":\"synthetic-uiVisibility-167\",\"providerVisibility\":\"synthetic-providerVisibility-168\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-169\"},\"anchor\":{\"turnId\":\"synthetic-0094\",\"origin\":\"synthetic-origin-170\",\"sourceCommandId\":\"synthetic-0097\"},\"tools\":{\"Agent\":true,\"AskUserQuestion\":true,\"Bash\":true,\"CronCreate\":true,\"CronDelete\":true,\"CronList\":true,\"CronUpdate\":true,\"Edit\":true,\"EnterPlanMode\":true,\"ExitPlanMode\":true,\"Read\":true,\"Skill\":true,\"TaskOutput\":true,\"TaskStop\":true,\"TodoRead\":true,\"TodoWrite\":true,\"WebFetch\":true,\"Write\":true,\"SendMessage\":true,\"ReadSessionContext\":true},\"metadata\":{\"inputIntent\":{\"sourceCommandId\":\"synthetic-0097\",\"queueItemId\":\"synthetic-0098\",\"clientId\":\"synthetic-0099\",\"kind\":\"sendText\",\"text\":\"Synthetic fixture text 171.\",\"admissionSeq\":42,\"admittedAt\":42,\"requestedDelivery\":\"synthetic-requestedDelivery-172\",\"admittedDelivery\":\"synthetic-admittedDelivery-173\"},\"conversationInputIntent\":{\"sourceCommandId\":\"synthetic-0097\",\"queueItemId\":\"synthetic-0098\",\"clientId\":\"synthetic-0099\",\"kind\":\"sendText\",\"text\":\"Synthetic fixture text 174.\",\"attachments\":[],\"delivery\":{\"requested\":\"synthetic-requested-175\",\"admitted\":\"synthetic-admitted-176\"},\"order\":{\"admissionSeq\":42},\"steer\":{\"state\":\"synthetic-state-177\"},\"dispatch\":{\"state\":\"synthetic-state-178\"},\"admittedAt\":42},\"inputClientId\":\"synthetic-0099\"}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0019",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225757000,
+    "time_updated": 1767225758000,
+    "data": "{\"role\":\"assistant\",\"time\":{\"created\":1767225759000,\"completed\":1767225760000},\"parentID\":\"synthetic-parentID-179\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"variant\":\"synthetic-variant-180\",\"mode\":\"yolo\",\"agent\":\"zcode-agent\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}},\"finish\":\"synthetic-finish-181\",\"semantics\":{\"origin\":\"synthetic-origin-182\",\"kind\":\"assistant_response\",\"uiVisibility\":\"synthetic-uiVisibility-183\",\"providerVisibility\":\"synthetic-providerVisibility-184\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-185\"},\"anchor\":{\"turnId\":\"synthetic-0094\"}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0021",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225761000,
+    "time_updated": 1767225762000,
+    "data": "{\"role\":\"assistant\",\"time\":{\"created\":1767225763000,\"completed\":1767225764000},\"parentID\":\"synthetic-parentID-186\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"variant\":\"synthetic-variant-187\",\"mode\":\"yolo\",\"agent\":\"zcode-agent\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}},\"finish\":\"synthetic-finish-188\",\"semantics\":{\"origin\":\"synthetic-origin-189\",\"kind\":\"assistant_response\",\"uiVisibility\":\"synthetic-uiVisibility-190\",\"providerVisibility\":\"synthetic-providerVisibility-191\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-192\"},\"anchor\":{\"turnId\":\"synthetic-0094\"}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0023",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225765000,
+    "time_updated": 1767225766000,
+    "data": "{\"role\":\"assistant\",\"time\":{\"created\":1767225767000,\"completed\":1767225768000},\"parentID\":\"synthetic-parentID-193\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"variant\":\"synthetic-variant-194\",\"mode\":\"yolo\",\"agent\":\"zcode-agent\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}},\"finish\":\"synthetic-finish-195\",\"semantics\":{\"origin\":\"synthetic-origin-196\",\"kind\":\"assistant_response\",\"uiVisibility\":\"synthetic-uiVisibility-197\",\"providerVisibility\":\"synthetic-providerVisibility-198\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-199\"},\"anchor\":{\"turnId\":\"synthetic-0094\"}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0025",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225769000,
+    "time_updated": 1767225770000,
+    "data": "{\"role\":\"assistant\",\"time\":{\"created\":1767225771000,\"completed\":1767225772000},\"parentID\":\"synthetic-parentID-200\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"variant\":\"synthetic-variant-201\",\"mode\":\"yolo\",\"agent\":\"zcode-agent\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}},\"finish\":\"synthetic-finish-202\",\"semantics\":{\"origin\":\"synthetic-origin-203\",\"kind\":\"assistant_response\",\"uiVisibility\":\"synthetic-uiVisibility-204\",\"providerVisibility\":\"synthetic-providerVisibility-205\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-206\"},\"anchor\":{\"turnId\":\"synthetic-0094\"}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0027",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225773000,
+    "time_updated": 1767225774000,
+    "data": "{\"role\":\"assistant\",\"time\":{\"created\":1767225775000,\"completed\":1767225776000},\"parentID\":\"synthetic-parentID-207\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"variant\":\"synthetic-variant-208\",\"mode\":\"yolo\",\"agent\":\"zcode-agent\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}},\"finish\":\"synthetic-finish-209\",\"semantics\":{\"origin\":\"synthetic-origin-210\",\"kind\":\"assistant_response\",\"uiVisibility\":\"synthetic-uiVisibility-211\",\"providerVisibility\":\"synthetic-providerVisibility-212\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-213\"},\"anchor\":{\"turnId\":\"synthetic-0094\",\"orderedMessageIds\":[\"synthetic--214\",\"synthetic--215\",\"synthetic--216\",\"synthetic--217\",\"synthetic--218\",\"synthetic--219\"],\"boundaryMessageId\":\"synthetic-0027\",\"goalBoundary\":{\"kind\":\"none\"}}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0005",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225777000,
+    "time_updated": 1767225778000,
+    "data": "{\"role\":\"user\",\"time\":{\"created\":1767225779000},\"agent\":\"zcode-agent\",\"model\":{\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"variant\":\"synthetic-variant-220\"},\"contextSnapshot\":{\"envInfo\":{\"cwd\":\"/workspace/synthetic-project\",\"platform\":\"synthetic-platform-221\",\"shell\":\"synthetic-shell-222\",\"osVersion\":\"synthetic-osVersion-223\",\"nodeVersion\":\"synthetic-nodeVersion-224\",\"isGitRepository\":false,\"gitStatus\":\"synthetic-gitStatus-225\"}},\"semantics\":{\"origin\":\"synthetic-origin-226\",\"kind\":\"user_prompt\",\"uiVisibility\":\"synthetic-uiVisibility-227\",\"providerVisibility\":\"synthetic-providerVisibility-228\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-229\"},\"anchor\":{\"turnId\":\"synthetic-0008\",\"origin\":\"synthetic-origin-230\",\"sourceCommandId\":\"synthetic-0100\"},\"tools\":{\"Agent\":true,\"AskUserQuestion\":true,\"Bash\":true,\"CronCreate\":true,\"CronDelete\":true,\"CronList\":true,\"CronUpdate\":true,\"Edit\":true,\"EnterPlanMode\":true,\"ExitPlanMode\":true,\"Read\":true,\"Skill\":true,\"TaskOutput\":true,\"TaskStop\":true,\"TodoRead\":true,\"TodoWrite\":true,\"WebFetch\":true,\"Write\":true,\"SendMessage\":true,\"ReadSessionContext\":true,\"mcp__node_repl__js\":true,\"mcp__node_repl__js_add_node_module_dir\":true,\"mcp__node_repl__js_reset\":true},\"metadata\":{\"inputIntent\":{\"sourceCommandId\":\"synthetic-0100\",\"queueItemId\":\"synthetic-0101\",\"clientId\":\"synthetic-0099\",\"kind\":\"sendText\",\"text\":\"Synthetic fixture text 231.\",\"admissionSeq\":42,\"admittedAt\":42,\"requestedDelivery\":\"synthetic-requestedDelivery-232\",\"admittedDelivery\":\"synthetic-admittedDelivery-233\"},\"conversationInputIntent\":{\"sourceCommandId\":\"synthetic-0100\",\"queueItemId\":\"synthetic-0101\",\"clientId\":\"synthetic-0099\",\"kind\":\"sendText\",\"text\":\"Synthetic fixture text 234.\",\"attachments\":[],\"delivery\":{\"requested\":\"synthetic-requested-235\",\"admitted\":\"synthetic-admitted-236\"},\"order\":{\"admissionSeq\":42},\"steer\":{\"state\":\"synthetic-state-237\"},\"dispatch\":{\"state\":\"synthetic-state-238\"},\"admittedAt\":42},\"inputClientId\":\"synthetic-0099\"}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0030",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225780000,
+    "time_updated": 1767225781000,
+    "data": "{\"role\":\"assistant\",\"time\":{\"created\":1767225782000,\"completed\":1767225783000},\"parentID\":\"synthetic-parentID-239\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"variant\":\"synthetic-variant-240\",\"mode\":\"yolo\",\"agent\":\"zcode-agent\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}},\"finish\":\"synthetic-finish-241\",\"semantics\":{\"origin\":\"synthetic-origin-242\",\"kind\":\"assistant_response\",\"uiVisibility\":\"synthetic-uiVisibility-243\",\"providerVisibility\":\"synthetic-providerVisibility-244\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-245\"},\"anchor\":{\"turnId\":\"synthetic-0008\"}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0032",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225784000,
+    "time_updated": 1767225785000,
+    "data": "{\"role\":\"assistant\",\"time\":{\"created\":1767225786000,\"completed\":1767225787000},\"parentID\":\"synthetic-parentID-246\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"variant\":\"synthetic-variant-247\",\"mode\":\"yolo\",\"agent\":\"zcode-agent\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}},\"finish\":\"synthetic-finish-248\",\"semantics\":{\"origin\":\"synthetic-origin-249\",\"kind\":\"assistant_response\",\"uiVisibility\":\"synthetic-uiVisibility-250\",\"providerVisibility\":\"synthetic-providerVisibility-251\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-252\"},\"anchor\":{\"turnId\":\"synthetic-0008\"}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0034",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225788000,
+    "time_updated": 1767225789000,
+    "data": "{\"role\":\"assistant\",\"time\":{\"created\":1767225790000,\"completed\":1767225791000},\"parentID\":\"synthetic-parentID-253\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"variant\":\"synthetic-variant-254\",\"mode\":\"yolo\",\"agent\":\"zcode-agent\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}},\"finish\":\"synthetic-finish-255\",\"semantics\":{\"origin\":\"synthetic-origin-256\",\"kind\":\"assistant_response\",\"uiVisibility\":\"synthetic-uiVisibility-257\",\"providerVisibility\":\"synthetic-providerVisibility-258\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-259\"},\"anchor\":{\"turnId\":\"synthetic-0008\"}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0036",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225792000,
+    "time_updated": 1767225793000,
+    "data": "{\"role\":\"assistant\",\"time\":{\"created\":1767225794000,\"completed\":1767225795000},\"parentID\":\"synthetic-parentID-260\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"variant\":\"synthetic-variant-261\",\"mode\":\"yolo\",\"agent\":\"zcode-agent\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}},\"finish\":\"synthetic-finish-262\",\"semantics\":{\"origin\":\"synthetic-origin-263\",\"kind\":\"assistant_response\",\"uiVisibility\":\"synthetic-uiVisibility-264\",\"providerVisibility\":\"synthetic-providerVisibility-265\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-266\"},\"anchor\":{\"turnId\":\"synthetic-0008\"}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0038",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225796000,
+    "time_updated": 1767225797000,
+    "data": "{\"role\":\"assistant\",\"time\":{\"created\":1767225798000,\"completed\":1767225799000},\"parentID\":\"synthetic-parentID-267\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"variant\":\"synthetic-variant-268\",\"mode\":\"yolo\",\"agent\":\"zcode-agent\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}},\"finish\":\"synthetic-finish-269\",\"semantics\":{\"origin\":\"synthetic-origin-270\",\"kind\":\"assistant_response\",\"uiVisibility\":\"synthetic-uiVisibility-271\",\"providerVisibility\":\"synthetic-providerVisibility-272\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-273\"},\"anchor\":{\"turnId\":\"synthetic-0008\"}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0040",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225800000,
+    "time_updated": 1767225801000,
+    "data": "{\"role\":\"user\",\"time\":{\"created\":1767225802000},\"agent\":\"zcode-agent\",\"metadata\":{\"source\":\"todo_reminder\",\"visibility\":\"synthetic-visibility-274\"},\"model\":{\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"variant\":\"synthetic-variant-275\"},\"semantics\":{\"origin\":\"synthetic-origin-276\",\"kind\":\"todo_reminder\",\"source\":\"todo_reminder\",\"uiVisibility\":\"synthetic-uiVisibility-277\",\"providerVisibility\":\"synthetic-providerVisibility-278\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-279\"},\"anchor\":{\"turnId\":\"synthetic-0008\",\"origin\":\"synthetic-origin-280\"},\"source\":\"todo_reminder\",\"synthetic\":true,\"tools\":{\"Agent\":true,\"AskUserQuestion\":true,\"Bash\":true,\"CronCreate\":true,\"CronDelete\":true,\"CronList\":true,\"CronUpdate\":true,\"Edit\":true,\"EnterPlanMode\":true,\"ExitPlanMode\":true,\"Read\":true,\"Skill\":true,\"TaskOutput\":true,\"TaskStop\":true,\"TodoRead\":true,\"TodoWrite\":true,\"WebFetch\":true,\"Write\":true,\"SendMessage\":true,\"ReadSessionContext\":true,\"mcp__node_repl__js\":true,\"mcp__node_repl__js_add_node_module_dir\":true,\"mcp__node_repl__js_reset\":true},\"visibility\":\"synthetic-visibility-281\"}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0006",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225803000,
+    "time_updated": 1767225804000,
+    "data": "{\"role\":\"assistant\",\"time\":{\"created\":1767225805000,\"completed\":1767225806000},\"parentID\":\"synthetic-parentID-282\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"variant\":\"synthetic-variant-283\",\"mode\":\"yolo\",\"agent\":\"zcode-agent\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}},\"finish\":\"synthetic-finish-284\",\"semantics\":{\"origin\":\"synthetic-origin-285\",\"kind\":\"assistant_response\",\"uiVisibility\":\"synthetic-uiVisibility-286\",\"providerVisibility\":\"synthetic-providerVisibility-287\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-288\"},\"anchor\":{\"turnId\":\"synthetic-0008\"}}",
+    "sequence": 42
+  },
+  {
+    "id": "synthetic-0043",
+    "session_id": "synthetic-0002",
+    "time_created": 1767225807000,
+    "time_updated": 1767225808000,
+    "data": "{\"role\":\"assistant\",\"time\":{\"created\":1767225809000,\"completed\":1767225810000},\"parentID\":\"synthetic-parentID-289\",\"modelID\":\"nvidia/Qwen3.6-27B-NVFP4-DFlash\",\"providerID\":\"db454db8-689f-4c78-b612-ccd3248cad4b\",\"variant\":\"synthetic-variant-290\",\"mode\":\"yolo\",\"agent\":\"zcode-agent\",\"path\":{\"cwd\":\"/workspace/synthetic-project\",\"root\":\"/workspace/synthetic-project\"},\"cost\":0,\"tokens\":{\"total\":42,\"input\":42,\"output\":42,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}},\"finish\":\"synthetic-finish-291\",\"semantics\":{\"origin\":\"synthetic-origin-292\",\"kind\":\"assistant_response\",\"uiVisibility\":\"synthetic-uiVisibility-293\",\"providerVisibility\":\"synthetic-providerVisibility-294\",\"transcriptVisibility\":\"synthetic-transcriptVisibility-295\"},\"anchor\":{\"turnId\":\"synthetic-0008\",\"orderedMessageIds\":[\"synthetic--296\",\"synthetic--297\",\"synthetic--298\",\"synthetic--299\",\"synthetic--300\",\"synthetic--301\",\"synthetic--302\",\"synthetic--303\",\"synthetic--304\"],\"boundaryMessageId\":\"synthetic-0043\",\"goalBoundary\":{\"kind\":\"none\"}}}",
+    "sequence": 42
+  }
+]

@@ -1,0 +1,29 @@
+URL: https://opencode.ai/docs/cli/
+Content-Type: text/html
+Method: native
+
+---
+
+---
+canonical: https://opencode.ai/docs/cli/
+meta-description: OpenCode CLI options and commands.
+meta-generator: Starlight v0.34.3
+meta-og:description: OpenCode CLI options and commands.
+meta-og:image: https://social-cards.sst.dev/opencode-docs/Q0xJ.png?desc=OpenCode%20CLI%20options%20and%20commands.
+meta-og:locale: en
+meta-og:site_name: OpenCode
+meta-og:title: CLI
+meta-og:type: article
+meta-og:url: https://opencode.ai/docs/cli/
+meta-twitter:card: summary_large_image
+meta-twitter:image: https://social-cards.sst.dev/opencode-docs/Q0xJ.png?desc=OpenCode%20CLI%20options%20and%20commands.
+meta-viewport: width=device-width, initial-scale=1
+title: CLI | OpenCode
+---
+  [Skip to content](#_top)
+
+ [![](/docs/_astro/logo-dark.DOStV66V.svg) ![](/docs/_astro/logo-light.B0yzR0O5.svg) OpenCode](/docs/)
+
+ [app.header.home](/)[app.header.docs](/docs/)
+
+ [![SVG Image](data:image/svg+xml;base64,PHN2ZyBhcmlhLWhpZGRlbj0idHJ1ZSIgY2xhc3M9ImFzdHJvLWtiajNxM2FpIGFzdHJvLTM2Ym50M3o1IiBmaWxsPSJjdXJyZW50Q29sb3IiIGhlaWdodD0iMTYiIHN0eWxlPSItLXNsLWljb24tc2l6ZTogMXJlbTsiIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjE2Ij48cGF0aCBkPSJNMTIgLjNhMTIgMTIgMCAwIDAtMy44IDIzLjM4Yy42LjEyLjgzLS4yNi44My0uNTdMOSAyMS4wN2MtMy4zNC43Mi00LjA0LTEuNjEtNC4wNC0xLjYxLS41NS0xLjM5LTEuMzQtMS43Ni0xLjM0LTEuNzYtMS4wOC0uNzQuMDktLjczLjA5LS43MyAxLjIuMDkgMS44MyAxLjI0IDEuODMgMS4yNCAxLjA4IDEuODMgMi44MSAxLjMgMy41IDEgLjEtLjc4LjQyLTEuMzEuNzYtMS42MS0yLjY3LS4zLTUuNDctMS4zMy01LjQ3LTUuOTMgMC0xLjMxLjQ3LTIuMzggMS4yNC0zLjIyLS4xNC0uMy0uNTQtMS41Mi4xLTMuMTggMCAwIDEtLjMyIDMuMyAxLjIzYTExLjUgMTEuNSAwIDAgMSA2IDBjMi4yOC0xLjU1IDMuMjktMS4yMyAzLjI5LTEuMjMuNjQgMS42Ni4yNCAyLjg4LjEyIDMuMThhNC42NSA0LjY1IDAgMCAxIDEuMjMgMy4yMmMwIDQuNjEtMi44IDUuNjMtNS40OCA1LjkyLjQyLjM2LjgxIDEuMS44MSAyLjIybC0uMDEgMy4yOWMwIC4zMS4yLjY5LjgyLjU3QTEyIDEyIDAgMCAwIDEyIC4zWiIgLz48L3N2Zz4=)](https://github.com/anomalyco/opencode)[![SVG Image](data:image/svg+xml;base64,PHN2ZyBhcmlhLWhpZGRlbj0idHJ1ZSIgY2xhc3M9ImFzdHJv
