@@ -543,6 +543,39 @@ describe("write", () => {
     expect(carry.recoveredFrom).toEqual(source.origin);
   });
 
+  test("uses Codex runtime metadata for a Claude source session", async () => {
+    const home = join(tmpRoot, "codex-target-metadata");
+    mkdirSync(home, { recursive: true });
+    await Bun.write(join(home, "config.toml"), 'model = "gpt-target"\n');
+    const dbPath = createStateDb(home);
+    const adapter = new CodexAdapter({ home });
+    const source = sourceSession();
+    source.origin = { harness: "claude", nativeId: "claude-source" };
+    const assistant = source.entries.find((entry): entry is AssistantEntry => entry.kind === "assistant");
+    if (!assistant?.model) throw new Error("fixture has no assistant model");
+    assistant.model = { provider: "anthropic", id: "claude-opus-4-6" };
+    source.entries.push({
+      kind: "modelChange",
+      id: "model-change",
+      parentId: assistant.id,
+      ts: "2026-01-01T00:00:02.500Z",
+      provider: "anthropic",
+      model: "claude-opus-4-6",
+    });
+
+    const ref = await adapter.write(source, { cwd: "/tmp/target" });
+    const records = await rawLines(ref.nativePath!);
+    const meta = records.find((record) => record.type === "session_meta");
+    expect(meta.payload.model_provider).toBe("openai");
+    expect(records.filter((record) => record.type === "turn_context").every((record) => !("model" in record.payload))).toBe(true);
+    expect(JSON.stringify(records)).not.toContain("anthropic");
+    expect(JSON.stringify(records)).not.toContain("claude-opus-4-6");
+    const db = new Database(dbPath, { readonly: true });
+    const thread = db.query<{ model_provider: string; model: string }, [string]>("SELECT model_provider, model FROM threads WHERE id = ?").get(ref.nativeId);
+    db.close();
+    expect(thread).toEqual({ model_provider: "openai", model: "gpt-target" });
+  });
+
   test("indexes the new rollout in state sqlite when present", async () => {
     const home = join(tmpRoot, "codex-indexed");
     const dbPath = createStateDb(home);

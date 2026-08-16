@@ -15,7 +15,7 @@
  * (MCP calls, web search, rollbacks, goals, aborts, ...).
  */
 
-import { existsSync, readdirSync, statSync, mkdtempSync, copyFileSync, mkdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync, mkdtempSync, copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join, basename, dirname } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { Database } from "bun:sqlite";
@@ -330,12 +330,21 @@ function firstText(session: SifSession): string {
   return session.title?.text ?? "";
 }
 
-function modelOf(session: SifSession): { provider: string; model: string } {
-  for (const e of session.entries) {
-    if (e.kind === "assistant" && e.model?.id) return { provider: e.model.provider ?? "openai", model: e.model.id };
-    if (e.kind === "modelChange") return { provider: e.provider ?? "openai", model: e.model };
+/**
+ * A port must resume with Codex's configured provider/model, not the source
+ * harness's.  Codex attempts to resolve `session_meta.model_provider` while
+ * bootstrapping; preserving e.g. Claude's `anthropic` makes the target
+ * session unloadable before its transcript can render.
+ */
+const CODEX_PROVIDER = "openai";
+const CODEX_IMPORTED_MODEL = "unknown";
+
+function configuredModel(home: string): string {
+  try {
+    return /^model\s*=\s*"([^"]+)"/m.exec(readFileSync(join(home, "config.toml"), "utf8"))?.[1] ?? CODEX_IMPORTED_MODEL;
+  } catch {
+    return CODEX_IMPORTED_MODEL;
   }
-  return { provider: "openai", model: "unknown" };
 }
 
 function resultText(result: ToolResultEntry | undefined): string | undefined {
@@ -401,6 +410,7 @@ function buildCodexRollout(
   targetCwd: string,
   nativeId: string,
   provenance: SinterProvenance,
+  targetModel: string,
 ): CodexRolloutBuild {
   const liveTools = opts?.liveTools === true;
   const byResult = new Map<string, ToolResultEntry>();
@@ -413,7 +423,8 @@ function buildCodexRollout(
     clock = Math.max(clock + 1, own + 1);
     return new Date(own).toISOString();
   };
-  const { provider, model } = modelOf(session);
+  const provider = CODEX_PROVIDER;
+  const model = targetModel;
   const firstPrompt = firstText(session);
   const title = (session.title?.text ?? firstPrompt.slice(0, 80)) || `Imported session (${session.origin.harness})`;
 
@@ -436,7 +447,8 @@ function buildCodexRollout(
       [PROVENANCE_META_KEY]: provenance,
     }),
   );
-  out.push(line(metaTs, "turn_context", { cwd: targetCwd, workspace_roots: [targetCwd], model }));
+  // Deliberately omit `model`: Codex resolves its current configured default.
+  out.push(line(metaTs, "turn_context", { cwd: targetCwd, workspace_roots: [targetCwd] }));
 
   const pushMessage = (ts: string, role: "user" | "assistant" | "developer", text: string, id = mintNative("msg")) => {
     out.push(line(ts, "response_item", { type: "message", id, role, content: [{ type: role === "assistant" ? "output_text" : "input_text", text }] }));
@@ -482,10 +494,9 @@ function buildCodexRollout(
       if (textParts.length) pushMessage(ts, "assistant", textParts.join("\n\n"));
       continue;
     }
-    if (entry.kind === "modelChange") {
-      out.push(line(nextTs(entry), "turn_context", { cwd: targetCwd, workspace_roots: [targetCwd], model: entry.model }));
-      continue;
-    }
+    // A source harness's model/provider is not valid Codex runtime state.
+    // The transcript remains intact; Codex uses its configured model.
+    if (entry.kind === "modelChange") continue;
     if (entry.kind === "compaction") {
       out.push(line(nextTs(entry), "compacted", { message: entry.summary, replacement_history: entry.replacedHistory }));
       continue;
@@ -558,14 +569,14 @@ async function writeSession(session: SifSession, opts: WriteOpts | undefined, ho
   const targetCwd = opts?.cwd ?? session.cwd;
   const nativeId = mintSifId();
   const provenance = await resolveProvenance(session, nativeId, opts);
-  const built = buildCodexRollout(session, opts, targetCwd, nativeId, provenance);
+  const built = buildCodexRollout(session, opts, targetCwd, nativeId, provenance, configuredModel(home));
   const path = rolloutPath(home, nativeId, built.createdMs);
 
   if (opts?.dryRun) return { harness: "codex", nativeId, nativePath: path, created: [], provenance };
 
   mkdirSync(dirname(path), { recursive: true });
-  await Bun.write(path, built.body);
   const created = [path];
+  await Bun.write(path, built.body);
   const dbPath = findStateDb(home);
   if (dbPath) {
     insertThreadRow(dbPath, nativeId, path, targetCwd, built);

@@ -1,6 +1,6 @@
 {
   "name": "@jensenloke/sinter",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Port and resume coding-agent sessions across harnesses.",
   "license": "Apache-2.0",
   "repository": {
@@ -26,6 +26,15 @@
   "files": [
     "dist"
   ],
+  "devDependencies": {
+    "@sinter/adapter-claude": "workspace:*",
+    "@sinter/adapter-codex": "workspace:*",
+    "@sinter/adapter-omp": "workspace:*",
+    "@sinter/adapter-opencode": "workspace:*",
+    "@sinter/adapter-pi": "workspace:*",
+    "@sinter/adapter-zcode": "workspace:*",
+    "@sinter/ledger": "workspace:*"
+  },
   "scripts": {
     "build": "bun build src/main.ts --outdir dist --target bun --format esm --splitting",
     "prepack": "bun run build"

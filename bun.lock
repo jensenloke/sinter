@@ -53,19 +53,18 @@
       },
     },
     "packages/cli": {
-      "name": "@sinter/cli",
-      "version": "0.1.0",
+      "name": "@jensenloke/sinter",
+      "version": "0.1.1",
       "bin": {
-        "sinter": "./src/main.ts",
+        "sinter": "dist/main.js",
       },
-      "dependencies": {
+      "devDependencies": {
         "@sinter/adapter-claude": "workspace:*",
         "@sinter/adapter-codex": "workspace:*",
         "@sinter/adapter-omp": "workspace:*",
         "@sinter/adapter-opencode": "workspace:*",
         "@sinter/adapter-pi": "workspace:*",
         "@sinter/adapter-zcode": "workspace:*",
-        "@sinter/core": "workspace:*",
         "@sinter/ledger": "workspace:*",
       },
     },
@@ -82,6 +81,8 @@
     },
   },
   "packages": {
+    "@jensenloke/sinter": ["@jensenloke/sinter@workspace:packages/cli"],
+
     "@sinter/adapter-claude": ["@sinter/adapter-claude@workspace:packages/adapters/claude"],
 
     "@sinter/adapter-codex": ["@sinter/adapter-codex@workspace:packages/adapters/codex"],
@@ -93,8 +94,6 @@
     "@sinter/adapter-pi": ["@sinter/adapter-pi@workspace:packages/adapters/pi"],
 
     "@sinter/adapter-zcode": ["@sinter/adapter-zcode@workspace:packages/adapters/zcode"],
-
-    "@sinter/cli": ["@sinter/cli@workspace:packages/cli"],
 
     "@sinter/core": ["@sinter/core@workspace:packages/core"],
 
