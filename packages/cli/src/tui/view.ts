@@ -297,6 +297,12 @@ export function renderActions(state: MenuState, o: ViewOpts): string[] {
     lines.push("");
     lines.push(" " + p.yellow(state.message));
   }
+  const selected = actions[state.actionCursor];
+  if (selected) {
+    const cmd = selected.disabled ? p.dim(selected.command) : p.cyan(selected.command);
+    lines.push("");
+    lines.push(" " + p.dim("command:") + " " + cmd);
+  }
   lines.push("");
   lines.push(keyHints(state, o));
   return lines.map((l) => exact(l, o.width));

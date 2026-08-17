@@ -11,11 +11,10 @@
  */
 
 import type { HarnessId } from "@sinter/core";
-import type { LedgerRow } from "@sinter/ledger";
+import { displayId } from "../format";
 import { MODE_HINT, TRANSFER_MODES, type TransferMode } from "../transfer";
-import type { Key } from "./keys";
-import { harnessesIn, type Thread } from "./threads";
 
+import { harnessesIn, type Thread } from "./threads";
 export type Screen = "sessions" | "actions";
 export type Scope = "cwd" | "all";
 
@@ -42,6 +41,8 @@ export interface MenuAction {
   harness?: HarnessId;
   label: string;
   hint: string;
+  /** Exact `sinter` CLI equivalent for this action. */
+  command: string;
   /** Set when the action cannot run; the reason is shown and Enter is a no-op. */
   disabled?: string;
 }
@@ -166,6 +167,7 @@ function capOf(caps: HarnessCaps[], id: HarnessId): HarnessCaps | undefined {
  */
 export function buildActions(thread: Thread, caps: HarnessCaps[]): MenuAction[] {
   const tip: LedgerRow = thread.tip;
+  const id = displayId(tip.nativeId);
   const actions: MenuAction[] = [];
   const own = capOf(caps, tip.harness);
   const visited = harnessesIn(thread);
@@ -180,6 +182,7 @@ export function buildActions(thread: Thread, caps: HarnessCaps[]): MenuAction[] 
     harness: tip.harness,
     label: `resume in ${tip.harness}`,
     hint: own?.experimental ? "native · resume command unverified" : "native · nothing is written",
+    command: `sinter resume ${id} --exec`,
     disabled: resumeDisabled,
   });
 
@@ -202,6 +205,7 @@ export function buildActions(thread: Thread, caps: HarnessCaps[]): MenuAction[] 
         : cap?.experimental
           ? "writes a new session · resume unverified"
           : "writes a new session, then launches it",
+      command: `sinter resume ${id} --in ${target} --exec`,
       disabled,
     });
   }
@@ -210,6 +214,7 @@ export function buildActions(thread: Thread, caps: HarnessCaps[]): MenuAction[] 
     kind: "show",
     label: "show transcript",
     hint: "print it here and exit",
+    command: `sinter show ${id}`,
     disabled: tip.ghost ? "transcript is gone (ghost row)" : undefined,
   });
 
