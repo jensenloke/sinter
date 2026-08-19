@@ -311,12 +311,14 @@ async function buildWriteProvenance(session: SifSession, nativeId: string, opts?
   return { ...record, carry: encoded, carryBytes: JSON.stringify(payload).length };
 }
 
-interface NativeMessage {
+export interface NativeMessage {
   nodeId: number;
   parentNodeId: number | null;
   createdAt: number;
   message: Rec;
 }
+
+export const DEVIN_HISTORY_MAX_BYTES = 200_000;
 
 interface NativeBuild {
   messages: NativeMessage[];
@@ -324,6 +326,7 @@ interface NativeBuild {
 }
 
 function nativeMessages(session: SifSession, opts?: WriteOpts): NativeBuild {
+  const sameHarness = session.origin.harness === "devin";
   const byResult = new Map<string, ToolResultEntry>();
   for (const entry of session.entries) if (entry.kind === "toolResult") byResult.set(entry.callId, entry);
   const nodeByEntry = new Map<string, number>();
@@ -370,8 +373,8 @@ function nativeMessages(session: SifSession, opts?: WriteOpts): NativeBuild {
       const thinking = entry.content.find((part) => part.type === "thinking");
       push(entry, "assistant", text.join("\n\n"), {
         ...(calls.length ? { tool_calls: calls } : {}),
-        ...(thinking?.type === "thinking" ? { thinking: { thinking: thinking.thinking, signature: thinking.signature } } : {}),
-        ...(entry.model?.id ? { generation_model: entry.model.id } : {}),
+        ...(sameHarness && thinking?.type === "thinking" ? { thinking: { thinking: thinking.thinking, signature: thinking.signature } } : {}),
+        ...(sameHarness && entry.model?.id ? { generation_model: entry.model.id } : {}),
       });
     } else if (entry.kind === "toolResult") {
       if (opts?.liveTools) push(entry, "tool", resultText(entry) ?? "", { tool_call_id: entry.callId });
@@ -389,6 +392,74 @@ function nativeMessages(session: SifSession, opts?: WriteOpts): NativeBuild {
   const activeNodes = new Map<string, number | null>(nodeByEntry);
   for (const [entryId, parentNode] of parentByDropped) activeNodes.set(entryId, parentNode);
   return { messages: out, nodeByEntry: activeNodes };
+}
+
+function messageBytes(message: NativeMessage): number {
+  return Buffer.byteLength(JSON.stringify(message.message));
+}
+
+function clipNativeMessage(message: NativeMessage, maxBytes = 40_000): NativeMessage {
+  if (messageBytes(message) <= maxBytes) return message;
+  const copy = structuredClone(message);
+  delete copy.message.thinking;
+  if (Array.isArray(copy.message.tool_calls)) {
+    copy.message.tool_calls = copy.message.tool_calls.map((call: Rec) => ({ ...call, arguments: "[arguments omitted by Sinter]" }));
+  }
+  const content = str(copy.message.content) ?? "";
+  const suffix = `\n…[${Math.max(0, Buffer.byteLength(content) - maxBytes)} bytes omitted by Sinter]`;
+  copy.message.content = content.slice(0, Math.max(0, maxBytes - suffix.length)) + suffix;
+  return copy;
+}
+
+export function capNativeHistory(
+  messages: NativeMessage[],
+  mainChainId: number | null,
+  maxBytes = DEVIN_HISTORY_MAX_BYTES,
+): { messages: NativeMessage[]; mainChainId: number | null; omitted: number; bytesBefore: number } {
+  const byNode = new Map(messages.map((message) => [message.nodeId, message]));
+  const active: NativeMessage[] = [];
+  const seen = new Set<number>();
+  let node = mainChainId === null ? undefined : byNode.get(mainChainId);
+  while (node && !seen.has(node.nodeId)) {
+    seen.add(node.nodeId);
+    active.unshift(node);
+    node = node.parentNodeId === null ? undefined : byNode.get(node.parentNodeId);
+  }
+  const bytesBefore = active.reduce((sum, message) => sum + messageBytes(message), 0);
+  if (bytesBefore <= maxBytes) return { messages, mainChainId, omitted: 0, bytesBefore };
+
+  const firstUser = active.find((message) => message.message.role === "user");
+  const retainedFirst = firstUser ? clipNativeMessage(firstUser) : undefined;
+  const reserve = (retainedFirst ? messageBytes(retainedFirst) : 0) + 1_000;
+  let remaining = Math.max(40_000, maxBytes - reserve);
+  const tail: NativeMessage[] = [];
+  for (let i = active.length - 1; i >= 0; i--) {
+    const candidate = active[i]!;
+    if (candidate === firstUser) continue;
+    const clipped = clipNativeMessage(candidate);
+    const size = messageBytes(clipped);
+    if (size > remaining && tail.length) break;
+    tail.unshift(clipped);
+    remaining -= Math.min(size, remaining);
+    if (remaining <= 0) break;
+  }
+
+  const omitted = Math.max(0, active.length - tail.length - (retainedFirst ? 1 : 0));
+  const createdAt = retainedFirst?.createdAt ?? tail[0]?.createdAt ?? Math.floor(Date.now() / 1000);
+  const note: NativeMessage = {
+    nodeId: -1,
+    parentNodeId: null,
+    createdAt,
+    message: {
+      message_id: crypto.randomUUID(),
+      role: "system",
+      content: `[Sinter retained the opening request and recent history; ${omitted} older messages (${bytesBefore} bytes total before trimming) were omitted to fit Devin's inference context. The full source remains available through Sinter carry data.]`,
+      metadata: { created_at: new Date(createdAt * 1000).toISOString() },
+    },
+  };
+  const selected = [...(retainedFirst ? [retainedFirst] : []), note, ...tail];
+  const capped = selected.map((message, index) => ({ ...message, nodeId: index, parentNodeId: index ? index - 1 : null }));
+  return { messages: capped, mainChainId: capped[capped.length - 1]?.nodeId ?? null, omitted, bytesBefore };
 }
 
 function columns(db: Database, table: string): Set<string> {
@@ -484,15 +555,20 @@ export class DevinAdapter implements HarnessAdapter {
     if (opts?.dryRun) return { harness: "devin", nativeId, nativePath: this.dbPath, created: [], provenance };
     if (!existsSync(this.dbPath)) throw new Error(`devin: session store not found: ${this.dbPath}`);
     const native = nativeMessages(session, opts);
-    const messages = native.messages;
+    let messages = native.messages;
+    const devinState = session.origin.harness === "devin" ? json(session.preserve?.devin) : undefined;
+    const priorMain = num(devinState?.mainChainId);
+    let mainChainId: number | null = priorMain === undefined
+      ? messages[messages.length - 1]?.nodeId ?? null
+      : native.nodeByEntry.get(`d${priorMain}`) ?? messages[messages.length - 1]?.nodeId ?? null;
+    if (session.origin.harness !== "devin") {
+      const capped = capNativeHistory(messages, mainChainId);
+      messages = capped.messages;
+      mainChainId = capped.mainChainId;
+    }
     const sourceCreated = session.createdAt ? Date.parse(session.createdAt) : Number.NaN;
     const created = Math.floor((Number.isFinite(sourceCreated) ? sourceCreated : Date.now()) / 1000);
     const updated = Math.max(created, ...messages.map((message) => message.createdAt));
-    const devinState = session.origin.harness === "devin" ? json(session.preserve?.devin) : undefined;
-    const priorMain = num(devinState?.mainChainId);
-    const mainChainId = priorMain === undefined
-      ? messages[messages.length - 1]?.nodeId ?? null
-      : native.nodeByEntry.get(`d${priorMain}`) ?? messages[messages.length - 1]?.nodeId ?? null;
     const db = new Database(this.dbPath);
     try {
       db.run("PRAGMA busy_timeout = 5000");

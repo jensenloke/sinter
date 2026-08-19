@@ -178,6 +178,60 @@ describe("DevinAdapter", () => {
     expect(validateSession(restored)).toEqual([]);
   });
 
+  test("drops source-provider reasoning state when writing across harnesses", async () => {
+    const adapter = new DevinAdapter({ dbPath });
+    const session = portableSession();
+    session.entries[1] = {
+      kind: "assistant",
+      id: "a1",
+      parentId: "u1",
+      model: { provider: "openai-codex", id: "gpt-5.6-terra" },
+      content: [
+        { type: "thinking", thinking: "provider-bound", signature: "foreign-signature" },
+        { type: "text", text: "Portable answer." },
+      ],
+    };
+    session.entries = session.entries.slice(0, 2);
+    const ref = await adapter.write(session);
+    const db = new Database(dbPath, { readonly: true });
+    const assistant = JSON.parse(db.query<{ chat_message: string }, [string]>(
+      "SELECT chat_message FROM message_nodes WHERE session_id = ? AND json_extract(chat_message, '$.role') = 'assistant' LIMIT 1",
+    ).get(ref.nativeId)!.chat_message);
+    db.close();
+    expect(assistant.thinking).toBeUndefined();
+    expect(assistant.generation_model).toBeUndefined();
+    expect(assistant.content).toBe("Portable answer.");
+  });
+
+  test("caps oversized foreign histories before Devin attempts automatic compaction", async () => {
+    const adapter = new DevinAdapter({ dbPath });
+    const session = portableSession();
+    session.entries = [{ kind: "user", id: "u0", parentId: null, content: [{ type: "text", text: "Original objective" }] }];
+    let parentId = "u0";
+    for (let i = 0; i < 240; i++) {
+      const id = `a${i}`;
+      session.entries.push({ kind: "assistant", id, parentId, content: [{ type: "text", text: `${i}:` + "x".repeat(4_000) }] });
+      parentId = id;
+    }
+    session.entries.push({ kind: "user", id: "latest", parentId, content: [{ type: "text", text: "Latest question" }] });
+    const ref = await adapter.write(session);
+    const db = new Database(dbPath, { readonly: true });
+    const stats = db.query<{ nodes: number; bytes: number; main_chain_id: number }, [string]>(`
+      SELECT count(m.node_id) AS nodes, sum(length(m.chat_message)) AS bytes, s.main_chain_id
+      FROM sessions s JOIN message_nodes m ON m.session_id = s.id WHERE s.id = ? GROUP BY s.id
+    `).get(ref.nativeId)!;
+    const contents = db.query<{ content: string }, [string]>(
+      "SELECT json_extract(chat_message, '$.content') AS content FROM message_nodes WHERE session_id = ? ORDER BY node_id",
+    ).all(ref.nativeId).map((row) => row.content);
+    db.close();
+    expect(stats.nodes).toBeLessThan(session.entries.length);
+    expect(stats.bytes).toBeLessThan(210_000);
+    expect(stats.main_chain_id).toBe(stats.nodes - 1);
+    expect(contents[0]).toBe("Original objective");
+    expect(contents.some((content) => content.includes("older messages") && content.includes("omitted"))).toBe(true);
+    expect(contents.at(-1)).toBe("Latest question");
+  });
+
   test("same-harness writes preserve Devin settings and the selected active branch", async () => {
     const db = new Database(dbPath);
     db.query("INSERT INTO message_nodes(session_id,node_id,parent_node_id,chat_message,created_at,metadata) VALUES (?, ?, ?, ?, ?, NULL)").run(
