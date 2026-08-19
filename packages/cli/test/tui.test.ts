@@ -38,6 +38,7 @@ function caps(over: Partial<Record<HarnessId, Partial<HarnessCaps>>> = {}): Harn
   const base: Record<HarnessId, HarnessCaps> = {
     claude: { id: "claude", available: true, canWrite: false, onPath: true },
     codex: { id: "codex", available: true, canWrite: false, onPath: true },
+    devin: { id: "devin", available: true, canWrite: true, onPath: true },
     opencode: { id: "opencode", available: true, canWrite: true, onPath: true },
     zcode: { id: "zcode", available: true, canWrite: false, onPath: false, experimental: true },
     omp: { id: "omp", available: true, canWrite: true, onPath: true },

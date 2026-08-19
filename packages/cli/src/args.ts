@@ -108,7 +108,7 @@ export function parseSince(input: string, now: number = Date.now()): string {
   throw new CliError(`bad --since value: ${input} (try 7d, 24h, 90m, 2w or 2026-08-01)`);
 }
 
-const HARNESSES = ["claude", "codex", "opencode", "zcode", "omp", "pi"] as const;
+const HARNESSES = ["claude", "codex", "devin", "opencode", "zcode", "omp", "pi"] as const;
 export type KnownHarness = (typeof HARNESSES)[number];
 
 export function parseHarness(input: string): KnownHarness {

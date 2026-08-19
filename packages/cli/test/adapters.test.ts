@@ -3,9 +3,9 @@ import { DynamicAdapterRegistry, StaticAdapterRegistry, SPECS, pickAdapter } fro
 import { MockAdapter } from "../../ledger/test/mock-adapter";
 
 describe("SPECS", () => {
-  test("covers all six harnesses exactly once", () => {
+  test("covers all seven harnesses exactly once", () => {
     expect([...SPECS.map((s) => s.id)].sort().join(",")).toBe(
-      "claude,codex,omp,opencode,pi,zcode",
+      "claude,codex,devin,omp,opencode,pi,zcode",
     );
   });
 });
@@ -47,7 +47,7 @@ describe("DynamicAdapterRegistry", () => {
   test("real packages either load or degrade — never crash the CLI", async () => {
     const reg = new DynamicAdapterRegistry();
     const loads = await reg.load();
-    expect(loads).toHaveLength(6);
+    expect(loads).toHaveLength(7);
     for (const l of loads) expect(!!l.adapter || !!l.error).toBe(true);
   });
 

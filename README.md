@@ -44,6 +44,7 @@ sinter resume <id-prefix> --in omp --exec
 |---|---:|---:|---:|
 | Claude Code | yes | yes | yes |
 | Codex CLI | yes | yes | yes |
+| Devin CLI | yes | yes | yes |
 | opencode | yes | yes | yes |
 | ZCode | yes | experimental | unverified |
 | Oh My Pi | yes | yes | yes |

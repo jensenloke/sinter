@@ -19,6 +19,7 @@ export interface AdapterSpec {
 export const SPECS: AdapterSpec[] = [
   { id: "claude", pkg: "@sinter/adapter-claude" },
   { id: "codex", pkg: "@sinter/adapter-codex" },
+  { id: "devin", pkg: "@sinter/adapter-devin" },
   { id: "opencode", pkg: "@sinter/adapter-opencode" },
   { id: "zcode", pkg: "@sinter/adapter-zcode" },
   { id: "omp", pkg: "@sinter/adapter-omp" },
@@ -49,6 +50,8 @@ async function loadAdapterModule(spec: AdapterSpec): Promise<Record<string, unkn
       return import("@sinter/adapter-claude");
     case "codex":
       return import("@sinter/adapter-codex");
+    case "devin":
+      return import("@sinter/adapter-devin");
     case "opencode":
       return import("@sinter/adapter-opencode");
     case "zcode":
@@ -77,28 +80,27 @@ function looksLikeAdapter(x: unknown): x is HarnessAdapter {
 function profileAdapter(mod: Record<string, unknown>, spec: AdapterSpec, profile: SinterProfile | undefined): HarnessAdapter | undefined {
   const store = profile?.stores[spec.id];
   if (!store) return undefined;
-  const exported =
-    spec.id === "claude"
-      ? "ClaudeAdapter"
-      : spec.id === "codex"
-        ? "CodexAdapter"
-        : spec.id === "opencode"
-          ? "OpencodeAdapter"
-          : spec.id === "zcode"
-            ? "ZcodeAdapter"
-            : spec.id === "omp"
-              ? "OmpAdapter"
-              : "PiAdapter";
-  const candidate = mod[exported];
+  const exported: Record<HarnessId, string> = {
+    claude: "ClaudeAdapter",
+    codex: "CodexAdapter",
+    devin: "DevinAdapter",
+    opencode: "OpencodeAdapter",
+    zcode: "ZcodeAdapter",
+    omp: "OmpAdapter",
+    pi: "PiAdapter",
+  };
+  const candidate = mod[exported[spec.id]];
   if (typeof candidate !== "function") return undefined;
   const options =
     spec.id === "claude"
       ? { root: store }
       : spec.id === "codex"
         ? { home: store }
-        : spec.id === "omp" || spec.id === "pi"
-          ? { sessionsDir: store }
-          : store;
+        : spec.id === "devin"
+          ? { dbPath: store }
+          : spec.id === "omp" || spec.id === "pi"
+            ? { sessionsDir: store }
+            : store;
   try {
     const instance = Reflect.construct(candidate, [options]);
     return looksLikeAdapter(instance) ? instance : undefined;

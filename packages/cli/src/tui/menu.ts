@@ -31,7 +31,7 @@ import {
 import { buildThreads, type Thread } from "./threads";
 import { pageSizeFor, renderFrame } from "./view";
 
-const HARNESSES: HarnessId[] = ["claude", "codex", "opencode", "zcode", "omp", "pi"];
+const HARNESSES: HarnessId[] = ["claude", "codex", "devin", "opencode", "zcode", "omp", "pi"];
 
 /** Rows pulled into the menu. Beyond this the filter box is the wrong tool. */
 const ROW_LIMIT = 2000;

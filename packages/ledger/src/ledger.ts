@@ -406,7 +406,7 @@ export class Ledger {
     let harness: string | undefined;
     let prefix = input.trim();
     const m = /^([a-z]+)[:/](.*)$/i.exec(prefix);
-    if (m && ["claude", "codex", "opencode", "zcode", "omp", "pi"].includes(m[1]!.toLowerCase())) {
+    if (m && ["claude", "codex", "devin", "opencode", "zcode", "omp", "pi"].includes(m[1]!.toLowerCase())) {
       harness = m[1]!.toLowerCase();
       prefix = m[2]!;
     }

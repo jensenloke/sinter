@@ -11,7 +11,7 @@ export interface SinterProfile {
   stores: Partial<Record<HarnessId, string>>;
 }
 
-const HARNESSES = new Set<HarnessId>(["claude", "codex", "opencode", "zcode", "omp", "pi"]);
+const HARNESSES = new Set<HarnessId>(["claude", "codex", "devin", "opencode", "zcode", "omp", "pi"]);
 
 export function defaultConfigPath(): string {
   return process.env.SINTER_CONFIG ?? join(homedir(), ".config", "sinter", "config.toml");
@@ -73,4 +73,5 @@ export function loadProfile(argv: string[]): SinterProfile | undefined {
 export const PROFILE_EXAMPLE = `[profiles.work.stores]
 claude = "/Users/me/.claude-work/projects"
 codex = "/Users/me/.codex-work"
+devin = "/Users/me/.local/share/devin/cli/sessions.db"
 `;

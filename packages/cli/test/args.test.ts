@@ -61,8 +61,9 @@ describe("parseSince", () => {
 });
 
 describe("parseHarness", () => {
-  test("accepts the six, rejects others", () => {
+  test("accepts known harnesses, rejects others", () => {
     expect(parseHarness("Codex")).toBe("codex");
+    expect(parseHarness("Devin")).toBe("devin");
     expect(() => parseHarness("cursor")).toThrow(/unknown harness/);
   });
 });

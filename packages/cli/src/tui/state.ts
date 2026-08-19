@@ -11,9 +11,10 @@
  */
 
 import type { HarnessId } from "@sinter/core";
+import type { LedgerRow } from "@sinter/ledger";
 import { displayId } from "../format";
 import { MODE_HINT, TRANSFER_MODES, type TransferMode } from "../transfer";
-
+import type { Key } from "./keys";
 import { harnessesIn, type Thread } from "./threads";
 export type Screen = "sessions" | "actions";
 export type Scope = "cwd" | "all";
@@ -84,7 +85,7 @@ export interface Step {
   effect?: Effect;
 }
 
-export const HARNESS_ORDER: HarnessId[] = ["claude", "codex", "opencode", "zcode", "omp", "pi"];
+export const HARNESS_ORDER: HarnessId[] = ["claude", "codex", "devin", "opencode", "zcode", "omp", "pi"];
 
 export function initialState(init: {
   threads: Thread[];

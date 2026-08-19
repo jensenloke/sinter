@@ -574,7 +574,7 @@ export async function cmdPrivacy(argv: string[], ctx: Ctx): Promise<number> {
   }
   ctx.out("");
   ctx.out("Support:");
-  ctx.out("  claude, codex CLI, opencode, omp, pi: read, port, and CLI resume");
+  ctx.out("  claude, codex CLI, devin, opencode, omp, pi: read, port, and CLI resume");
   ctx.out("  zcode: read-only; native resume is unverified");
   ctx.out("  ChatGPT.app / Codex desktop: future work; Sinter does not read or write its Chromium profile");
   ctx.out("");

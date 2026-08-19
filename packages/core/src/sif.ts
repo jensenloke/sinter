@@ -15,7 +15,7 @@
  *   counts — omit `usage`, don't zero-fill).
  */
 
-export type HarnessId = "claude" | "codex" | "opencode" | "zcode" | "omp" | "pi";
+export type HarnessId = "claude" | "codex" | "devin" | "opencode" | "zcode" | "omp" | "pi";
 
 export const SIF_VERSION = "sif/0";
 
