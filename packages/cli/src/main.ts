@@ -30,8 +30,9 @@ import {
 } from "./commands";
 import { colorEnabled, palette, termWidth } from "./format";
 import { canRunMenu } from "./tui/menu";
+import { maybePromptForUpdate } from "./update";
 
-export const VERSION = "0.1.4";
+export const VERSION = "0.1.5";
 
 const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = {
   scan: cmdScan,
@@ -79,6 +80,7 @@ global flags:
   --config <path>   use a different profile config file
   --ledger <path>   use a different ledger db (default ~/.sinter/ledger.db)
   --no-color        disable ANSI colour (NO_COLOR is honoured too)
+  --no-update-check disable the cached interactive npm update check
   -h, --help        this help
   --version         print version
 
@@ -105,7 +107,7 @@ const COMMAND_HELP: Record<string, string> = {
 };
 
 function helpFor(command: string): string {
-  return `${COMMAND_HELP[command] ?? HELP.trimEnd()}\n\nGlobal flags: --profile <name>, --config <path>, --ledger <path>, --no-color, -h/--help`;
+  return `${COMMAND_HELP[command] ?? HELP.trimEnd()}\n\nGlobal flags: --profile <name>, --config <path>, --ledger <path>, --no-color, --no-update-check, -h/--help`;
 }
 
 export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile?: SinterProfile } = {}): Ctx {
@@ -178,6 +180,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
 }
 
 export async function main(argv: string[] = Bun.argv.slice(2)): Promise<number> {
+  if (await maybePromptForUpdate(VERSION, { argv })) return EXIT.OK;
   const ledgerIndex = argv.findIndex((arg) => arg === "--ledger" || arg.startsWith("--ledger="));
   const ledgerPath = ledgerIndex < 0 ? undefined : argv[ledgerIndex]!.includes("=") ? argv[ledgerIndex]!.slice(argv[ledgerIndex]!.indexOf("=") + 1) : argv[ledgerIndex + 1];
   const noColor = argv.includes("--no-color");

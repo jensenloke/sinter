@@ -21,6 +21,8 @@ bun add --global @jensenloke/sinter
 sinter --help
 ```
 
+Interactive runs check npm at most once per day and offer to install a newer release. Use `--no-update-check` or set `SINTER_NO_UPDATE_CHECK=1` to disable this; scripts, CI, and non-interactive output never prompt.
+
 ## Quick start
 
 ```sh

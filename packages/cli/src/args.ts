@@ -25,7 +25,7 @@ export interface ParsedArgs {
   flags: Record<string, string | boolean>;
 }
 
-const GLOBAL_BOOLEANS = ["help", "no-color", "version"];
+const GLOBAL_BOOLEANS = ["help", "no-color", "no-update-check", "version"];
 const GLOBAL_STRINGS = ["ledger", "profile", "config"];
 
 export function parseArgs(argv: string[], spec: FlagSpec = {}): ParsedArgs {

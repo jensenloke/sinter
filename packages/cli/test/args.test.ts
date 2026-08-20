@@ -36,9 +36,10 @@ describe("parseArgs", () => {
   });
 
   test("global flags are always accepted", () => {
-    const a = parseArgs(["--ledger", "/tmp/x.db", "--no-color", "--help"], spec);
+    const a = parseArgs(["--ledger", "/tmp/x.db", "--no-color", "--no-update-check", "--help"], spec);
     expect(flagString(a, "ledger")).toBe("/tmp/x.db");
     expect(flagBool(a, "no-color")).toBe(true);
+    expect(flagBool(a, "no-update-check")).toBe(true);
     expect(flagBool(a, "help")).toBe(true);
   });
 });
