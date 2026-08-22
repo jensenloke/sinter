@@ -317,8 +317,8 @@ function rolloutPath(home: string, nativeId: string, createdMs: number): string 
   return join(home, "sessions", yyyy, mm, dd, `rollout-${stamp}-${nativeId}.jsonl`);
 }
 
-function line(timestamp: string, type: string, payload: unknown): string {
-  return JSON.stringify({ timestamp, type, payload });
+function line(timestamp: string, type: string, payload: unknown, ordinal: number): string {
+  return JSON.stringify({ timestamp, ordinal, type, payload });
 }
 
 function firstText(session: SifSession): string {
@@ -418,50 +418,87 @@ function buildCodexRollout(
 
   const createdMs = epochMs(session.createdAt);
   let clock = createdMs;
+  let ordinal = 0;
   const nextTs = (e?: SifEntry): string => {
     const own = epochMs(e?.ts, clock);
     clock = Math.max(clock + 1, own + 1);
     return new Date(own).toISOString();
   };
+  const emit = (ts: string, type: string, payload: Record<string, unknown>) =>
+    out.push(line(ts, type, payload, ordinal++));
+
   const provider = CODEX_PROVIDER;
   const model = targetModel;
   const firstPrompt = firstText(session);
   const title = (session.title?.text ?? firstPrompt.slice(0, 80)) || `Imported session (${session.origin.harness})`;
 
   const out: string[] = [];
+
+  // Turn grouping. Real Codex rollouts cluster every response_item under a turn
+  // via `internal_chat_message_metadata_passthrough.turn_id`, and delimit turns
+  // with their own `turn_context` record carrying the same `turn_id`. The legacy
+  // resume reconstructor (history_mode "legacy") relies on this grouping to load
+  // the transcript back as chat history; without it `codex resume` opens the
+  // session but feeds none of the source conversation to the model.
+  let turnId = mintSifId();
+  let assistantEmittedInTurn = false;
+  const startTurn = (ts: string) => {
+    turnId = mintSifId();
+    assistantEmittedInTurn = false;
+    // Deliberately omit `model`: Codex resolves its current configured default.
+    emit(ts, "turn_context", { turn_id: turnId, cwd: targetCwd, workspace_roots: [targetCwd] });
+  };
+  const pt = () => ({ internal_chat_message_metadata_passthrough: { turn_id: turnId } });
+
   const metaTs = new Date(createdMs).toISOString();
-  out.push(
-    line(metaTs, "session_meta", {
-      session_id: nativeId,
-      id: nativeId,
-      timestamp: metaTs,
-      cwd: targetCwd,
-      originator: "sinter",
-      cli_version: SINTER_VERSION,
-      source: "sinter",
-      thread_source: "user",
-      model_provider: provider,
-      git: session.git
-        ? { commit_hash: session.git.sha ?? null, branch: session.git.branch ?? null, repository_url: session.git.remote ?? null }
-        : undefined,
-      [PROVENANCE_META_KEY]: provenance,
-    }),
-  );
-  // Deliberately omit `model`: Codex resolves its current configured default.
-  out.push(line(metaTs, "turn_context", { cwd: targetCwd, workspace_roots: [targetCwd] }));
+  emit(metaTs, "session_meta", {
+    session_id: nativeId,
+    id: nativeId,
+    timestamp: metaTs,
+    cwd: targetCwd,
+    originator: "sinter",
+    cli_version: SINTER_VERSION,
+    source: "sinter",
+    thread_source: "user",
+    model_provider: provider,
+    git: session.git
+      ? { commit_hash: session.git.sha ?? null, branch: session.git.branch ?? null, repository_url: session.git.remote ?? null }
+      : undefined,
+    [PROVENANCE_META_KEY]: provenance,
+  });
+  // Initial turn for the first user turn; later turns emit their own turn_context.
+  emit(metaTs, "turn_context", { turn_id: turnId, cwd: targetCwd, workspace_roots: [targetCwd] });
 
   const pushMessage = (ts: string, role: "user" | "assistant" | "developer", text: string, id = mintNative("msg")) => {
-    out.push(line(ts, "response_item", { type: "message", id, role, content: [{ type: role === "assistant" ? "output_text" : "input_text", text }] }));
+    emit(ts, "response_item", {
+      ...pt(),
+      type: "message",
+      id,
+      role,
+      // Assistant messages are past-tense history in a resumed session; the
+      // "commentary" phase is how Codex distinguishes them from a live reply.
+      phase: role === "assistant" ? "commentary" : undefined,
+      content: [{ type: role === "assistant" ? "output_text" : "input_text", text }],
+    });
   };
 
   for (const entry of session.entries) {
     if (entry.kind === "toolResult") {
       if (liveTools && !byResult.has(entry.callId)) {
-        out.push(line(nextTs(entry), "response_item", { type: "function_call_output", call_id: entry.callId, output: resultText(entry) ?? "" }));
+        emit(nextTs(entry), "response_item", {
+          ...pt(),
+          type: "function_call_output",
+          id: mintNative("fco"),
+          call_id: entry.callId,
+          output: resultText(entry) ?? "",
+        });
       }
       continue;
     }
     if (entry.kind === "user") {
+      // A new inbound message opens a fresh turn once the previous turn has an
+      // assistant response; the very first message stays in the initial turn.
+      if (assistantEmittedInTurn) startTurn(nextTs(entry));
       const ts = nextTs(entry);
       const role = entry.synthetic ? "developer" : "user";
       const content = entry.content.map((p) =>
@@ -469,7 +506,7 @@ function buildCodexRollout(
           ? { type: "input_text", text: p.text }
           : { type: "input_image", image_url: `data:${p.mimeType};base64,${p.data}` },
       );
-      out.push(line(ts, "response_item", { type: "message", id: mintNative("msg"), role, content }));
+      emit(ts, "response_item", { ...pt(), type: "message", id: mintNative("msg"), role, content });
       continue;
     }
     if (entry.kind === "assistant") {
@@ -478,30 +515,50 @@ function buildCodexRollout(
       for (const part of entry.content) {
         if (part.type === "text") textParts.push(part.text);
         else if (part.type === "thinking")
-          out.push(line(ts, "response_item", { type: "reasoning", id: mintNative("rs"), summary: [{ text: part.thinking }] }));
+          emit(ts, "response_item", { ...pt(), type: "reasoning", id: mintNative("rs"), summary: [{ text: part.thinking }] });
         else if (part.type === "image") textParts.push(`[image: ${part.mimeType}, ${part.data.length} base64 bytes]`);
         else if (part.type === "toolCall") {
           const result = byResult.get(part.callId);
           if (liveTools) {
             const args = typeof part.args === "string" ? part.args : JSON.stringify(part.args);
-            out.push(line(ts, "response_item", { type: "function_call", id: mintNative("fc"), call_id: part.callId, name: part.name, arguments: args }));
-            if (result) out.push(line(ts, "response_item", { type: "function_call_output", call_id: part.callId, output: resultText(result) ?? "" }));
+            emit(ts, "response_item", {
+              ...pt(),
+              type: "function_call",
+              id: mintNative("fc"),
+              call_id: part.callId,
+              name: part.name,
+              arguments: args,
+            });
+            if (result)
+              emit(ts, "response_item", {
+                ...pt(),
+                type: "function_call_output",
+                id: mintNative("fco"),
+                call_id: part.callId,
+                output: resultText(result) ?? "",
+              });
           } else {
             textParts.push(inertToolText(part, resultText(result)).text);
           }
         }
       }
-      if (textParts.length) pushMessage(ts, "assistant", textParts.join("\n\n"));
+      if (textParts.length) {
+        pushMessage(ts, "assistant", textParts.join("\n\n"));
+        assistantEmittedInTurn = true;
+      }
       continue;
     }
     // A source harness's model/provider is not valid Codex runtime state.
     // The transcript remains intact; Codex uses its configured model.
     if (entry.kind === "modelChange") continue;
     if (entry.kind === "compaction") {
-      out.push(line(nextTs(entry), "compacted", { message: entry.summary, replacement_history: entry.replacedHistory }));
+      // A compaction is a hard boundary: start a new turn for whatever follows.
+      emit(nextTs(entry), "compacted", { message: entry.summary, replacement_history: entry.replacedHistory });
+      startTurn(nextTs(entry));
       continue;
     }
     if (entry.kind === "subsession") {
+      if (assistantEmittedInTurn) startTurn(nextTs(entry));
       pushMessage(
         nextTs(entry),
         "user",
@@ -510,6 +567,7 @@ function buildCodexRollout(
       continue;
     }
     if (entry.kind === "note") {
+      if (assistantEmittedInTurn) startTurn(nextTs(entry));
       pushMessage(nextTs(entry), "user", `[${entry.noteType}]${entry.text ? " " + entry.text : ""}`);
     }
   }

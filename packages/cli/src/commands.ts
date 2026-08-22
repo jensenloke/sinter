@@ -1,5 +1,13 @@
 import { createInterface } from "node:readline/promises";
-import type { HarnessAdapter, HarnessId, SessionRef, SifSession } from "@sinter/core";
+import type {
+  HarnessAdapter,
+  HarnessId,
+  NativeRef,
+  SessionRef,
+  SessionSummary,
+  SifEntry,
+  SifSession,
+} from "@sinter/core";
 import { provenanceOf, validateSession } from "@sinter/core";
 import type { Ledger, LedgerRow, ListOpts } from "@sinter/ledger";
 import {
@@ -110,6 +118,40 @@ function printRows(rows: LedgerRow[], ctx: Ctx, args: ParsedArgs): number {
   }
   ctx.out(rowsTable(rows, ctx));
   return EXIT.OK;
+}
+
+/**
+ * Build a SessionSummary for a freshly-written target so callers can resolve it
+ * immediately — before any `sinter scan`. The writer returns enough to do this;
+ * `scan` would only re-derive the same row from the target store.
+ *
+ * `messageCount` is the count of the rendered transcript's message-bearing
+ * entries (user + assistant), matching what Codex's own thread rows expose.
+ */
+function summarize(ref: NativeRef, session: SifSession, cwd: string | undefined): SessionSummary {
+  const userAssistant = session.entries.filter((e: SifEntry) => e.kind === "user" || e.kind === "assistant").length;
+  let firstPrompt: string | undefined;
+  for (const e of session.entries) {
+    if (e.kind !== "user" || e.synthetic) continue;
+    const text = e.content.find((p): p is { type: "text"; text: string } => p.type === "text")?.text.trim();
+    if (text) {
+      firstPrompt = text;
+      break;
+    }
+  }
+  firstPrompt = firstPrompt ?? session.title?.text ?? undefined;
+  return {
+    harness: ref.harness,
+    nativeId: ref.nativeId,
+    nativePath: ref.nativePath,
+    cwd: cwd || session.cwd,
+    title: session.title?.text,
+    firstPrompt,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    messageCount: userAssistant || undefined,
+    parentNativeId: session.origin.nativeId,
+  };
 }
 
 /** Resolve an id prefix or fail with the candidate list (exit 2). */
@@ -321,8 +363,9 @@ async function writeInto(
 
   const cwd = flagString(args, "cwd");
   const dryRun = flagBool(args, "dry-run");
+  const resolvedCwd = cwd === "." ? process.cwd() : cwd;
   const ref = await adapter.write(session, {
-    cwd: cwd === "." ? process.cwd() : cwd,
+    cwd: resolvedCwd,
     liveTools: flagBool(args, "live-tools"),
     dryRun,
   });
@@ -348,6 +391,19 @@ async function writeInto(
     } catch (err) {
       // The port already succeeded; a cache write must not turn that into a failure.
       ctx.err(ctx.pal.dim(`  (lineage not recorded: ${err instanceof Error ? err.message : String(err)})`));
+    }
+  }
+
+  // The target store now has the session, but Sinter's own resolver reads the
+  // ledger's `sessions` table — which `scan` populates. Without an explicit
+  // upsert, `sinter resume <new-id>` would report "no session matches" until a
+  // later scan. Index it now so it is immediately resolvable.
+  if (!dryRun) {
+    try {
+      ctx.ledger().upsert(summarize(ref, session, resolvedCwd));
+    } catch (err) {
+      // Indexing is best-effort: the port succeeded and the target is usable.
+      ctx.err(ctx.pal.dim(`  (ledger not updated: ${err instanceof Error ? err.message : String(err)})`));
     }
   }
 
@@ -431,6 +487,16 @@ export async function cmdResume(argv: string[], ctx: Ctx): Promise<number> {
     for (const c of native.created ?? []) ctx.err(ctx.pal.dim(`  ${c}`));
     adapter = targetAdapter;
     ref = native;
+    // Same as writeInto: index the freshly-written cross-harness target so a
+    // subsequent `sinter resume <id>` resolves it without a separate scan.
+    if (!flagBool(args, "dry-run")) {
+      try {
+        const crossCwd = flagString(args, "cwd") === "." ? process.cwd() : flagString(args, "cwd");
+        ctx.ledger().upsert(summarize(native, session, crossCwd));
+      } catch (err) {
+        ctx.err(ctx.pal.dim(`  (ledger not updated: ${err instanceof Error ? err.message : String(err)})`));
+      }
+    }
   }
 
   const argv2 = adapter.resumeCommand(ref);

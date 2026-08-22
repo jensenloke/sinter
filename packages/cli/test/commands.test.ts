@@ -9,6 +9,8 @@ import { palette } from "../src/format";
 import type { Ctx } from "../src/commands";
 import { run } from "../src/main";
 import { MockAdapter, session, summary } from "../../ledger/test/mock-adapter";
+import { CodexAdapter } from "@sinter/adapter-codex";
+import type { HarnessAdapter } from "@sinter/core";
 
 const NOW = Date.parse("2026-08-13T12:00:00.000Z");
 
@@ -92,8 +94,8 @@ beforeEach(() => {
   h = harness();
 });
 
-async function scan() {
-  return run(["scan"], h.ctx);
+async function scan(target?: Harness) {
+  return run(["scan"], (target ?? h).ctx);
 }
 
 describe("CLI conventions", () => {
@@ -480,5 +482,54 @@ describe("dispatch", () => {
   test("`list` is an alias for ls", async () => {
     await scan();
     expect(await run(["list", "--limit", "1"], h.ctx)).toBe(0);
+  });
+});
+
+describe("immediate resolvability after write (issue #1)", () => {
+  /** A real CodexAdapter in a temp home, wired into the CLI registry. */
+  function codexHarness(extra: HarnessAdapter[] = []): Harness {
+    const base = harness();
+    const codex = new CodexAdapter({ home: join(mkdtempSync(join(tmpdir(), "sinter-codex-")), "home") });
+    base.ctx.registry = new StaticAdapterRegistry([base.claude, base.omp, codex, ...extra]);
+    // expose for tests
+    (base as any).codex = codex;
+    return base;
+  }
+
+  test("port --to codex makes the new target resolvable without a scan", async () => {
+    const h2 = codexHarness();
+    await scan(h2);
+    const src = session("src-1");
+    h2.files["/tmp/in.json"] = JSON.stringify(src);
+    // import into codex (the real writer): writes a rollout + indexes the thread.
+    expect(await run(["import", "/tmp/in.json", "--to", "codex"], h2.ctx)).toBe(0);
+    const out = h2.out();
+    const m = /codex:(?<id>[0-9a-f-]{8,})/.exec(out);
+    expect(m).toBeTruthy();
+    const newId = m!.groups!.id;
+    // Without a scan, the freshly written target must still resolve.
+    const resolved = h2.ledger.resolve(`codex:${newId}`);
+    expect(resolved.row).toBeTruthy();
+    expect(resolved.row!.nativeId).toBe(newId);
+    // and the content round-trips back to a valid session
+    const adapter = await h2.ctx.registry.get("codex");
+    const back = await adapter.read({ harness: "codex", nativeId: newId, nativePath: resolved.row!.nativePath });
+    expect(back.origin.nativeId).toBe(newId);
+  });
+
+  test("resume --in codex ports then resolves the target without a scan", async () => {
+    const h2 = codexHarness();
+    await scan(h2);
+    // resume an existing claude session into a fresh codex rollout
+    expect(await run(["resume", "aaa11111", "--in", "codex"], h2.ctx)).toBe(0);
+    // The resume command line is printed (codex resume <id>) — capture the id
+    // from whichever stream it landed on.
+    const printed = `${h2.out()}\n${h2.err()}`;
+    const m = /codex:(?<id>[0-9a-f-]{8,})/.exec(printed) ?? /resume (?<id>[0-9a-f-]{8,})/.exec(printed);
+    expect(m).toBeTruthy();
+    const newId = m!.groups!.id;
+    const resolved = h2.ledger.resolve(`codex:${newId}`);
+    expect(resolved.row).toBeTruthy();
+    expect(resolved.row!.nativeId).toBe(newId);
   });
 });

@@ -607,6 +607,61 @@ describe("write", () => {
     expect(existsSync(join(tmpRoot, "sinter-home"))).toBe(false);
     expect(ref.provenance).toBeDefined();
   });
+
+  test("every response_item carries the turn_id passthrough (codex legacy resume grouping)", async () => {
+    const home = join(tmpRoot, "codex-grouped");
+    const adapter = new CodexAdapter({ home });
+    const ref = await adapter.write(sourceSession(), { cwd: "/tmp/target" });
+    const records = await rawLines(ref.nativePath!);
+    const items = records.filter((r) => r.type === "response_item");
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) {
+      expect(item.payload.internal_chat_message_metadata_passthrough?.turn_id).toMatch(/[0-9a-f-]{8,}/);
+    }
+  });
+
+  test("turn_context records delimit turns with a payload turn_id and multiple turns exist", async () => {
+    const home = join(tmpRoot, "codex-turns");
+    const adapter = new CodexAdapter({ home });
+    const ref = await adapter.write(sourceSession(), { cwd: "/tmp/target" });
+    const records = await rawLines(ref.nativePath!);
+
+    const contexts = records.filter((r) => r.type === "turn_context");
+    // real rollouts keep turn_id under payload, not at record top-level
+    expect(contexts.length).toBeGreaterThanOrEqual(1);
+    const turnIds = new Set<string>();
+    for (const ctx of contexts) {
+      const id = ctx.payload.turn_id;
+      expect(typeof id).toBe("string");
+      expect(id.length).toBeGreaterThan(0);
+      turnIds.add(id);
+    }
+    // The fixture has two user turns, so the writer must delimit at least two turns.
+    expect(turnIds.size).toBeGreaterThanOrEqual(2);
+    expect(contexts[0]).not.toHaveProperty("turn_id");
+  });
+
+  test("round-trips: codex resume reconstructs the source conversation from the rollout", async () => {
+    const home = join(tmpRoot, "codex-roundtrip");
+    const adapter = new CodexAdapter({ home });
+    const src = sourceSession();
+    const ref = await adapter.write(src, { cwd: "/tmp/target" });
+
+    const native = await adapter.read({ harness: "codex", nativeId: ref.nativeId, nativePath: ref.nativePath! });
+    validateSession(native);
+    // Both turns must resurface with their actual content.
+    const texts = native.entries
+      .filter((e: SifEntry) => e.kind === "user" || e.kind === "assistant")
+      .flatMap((e: any) => e.content.filter((p: any) => p.type === "text").map((p: any) => p.text));
+    expect(texts).toContain("list the files");
+    expect(texts).toContain("thanks");
+    expect(texts.some((t: string) => t.includes("on it"))).toBe(true);
+    // Turn grouping must be preserved: the written rollout has the passthrough on
+    // every item and turn_context delimiters, which is what codex resume reads.
+    const records = await rawLines(ref.nativePath!);
+    expect(records.filter((r) => r.type === "response_item").every((r) => !!r.payload.internal_chat_message_metadata_passthrough?.turn_id)).toBe(true);
+    expect(new Set(records.filter((r) => r.type === "turn_context").map((r) => r.payload.turn_id)).size).toBeGreaterThanOrEqual(2);
+  });
 });
 
 describe("robustness", () => {

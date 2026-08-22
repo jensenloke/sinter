@@ -23,7 +23,7 @@ sinter --help
 
 Interactive runs check npm at most once per day and offer to install a newer release. Use `--no-update-check` or set `SINTER_NO_UPDATE_CHECK=1` to disable this; scripts, CI, and non-interactive output never prompt.
 
-See the [v0.1.7 release notes](docs/releases/v0.1.7.md) for the latest changes.
+See the [v0.1.8 release notes](docs/releases/v0.1.8.md) for the latest changes.
 
 ## Quick start
 
