@@ -111,7 +111,10 @@ function harnessCell(t: Thread, pal: Palette): string {
 
 function threadLine(t: Thread, c: Cols, pal: Palette, now: number): string {
   const tip = t.tip;
-  const label = tip.title || tip.firstPrompt || pal.dim("(untitled)");
+  const nativeLabel = tip.title || tip.firstPrompt || "";
+  const label = tip.alias
+    ? `◆ ${tip.alias}${nativeLabel && nativeLabel !== tip.alias ? ` · ${nativeLabel}` : ""}`
+    : nativeLabel || pal.dim("(untitled)");
   const cells = [
     fit(tip.ghost ? pal.dim(displayId(tip.nativeId)) : pal.bold(displayId(tip.nativeId)), c.id),
     fit(pal.cyan(harnessCell(t, pal)), c.harness),
@@ -140,7 +143,7 @@ function titleBar(state: MenuState, o: ViewOpts, shown: number): string {
   const scope = state.scope === "cwd" ? shortenPath(state.cwd, 30) : "all directories";
   const harness = state.harnessFilter ?? "all harnesses";
   const flags =
-    (state.showGhosts ? " +ghosts" : "") + (state.showSubagents ? " +subagents" : "");
+    (state.showGhosts ? " +ghosts" : "") + (state.showSubagents ? " +agents" : "");
   return (
     p.bold(p.magenta(" sinter ")) +
     p.dim("· ") +
@@ -157,8 +160,8 @@ function filterBar(state: MenuState, o: ViewOpts): string {
   const p = o.pal;
   const cursor = "\x1b[7m \x1b[27m";
   return state.filter
-    ? ` ${p.dim("filter")} ${state.filter}${o.pal.enabled ? cursor : "_"}`
-    : ` ${p.dim("filter")} ${p.dim("type to search title, id, path, branch…")}`;
+    ? ` ${p.bold("search")} ${state.filter}${o.pal.enabled ? cursor : "_"}`
+    : ` ${p.bold("search")} ${p.dim("type now, or ^f · alias, title, prompt, id, path, branch, model…")}`;
 }
 
 function keyHints(state: MenuState, o: ViewOpts): string {
@@ -176,10 +179,11 @@ function keyHints(state: MenuState, o: ViewOpts): string {
     [
       k("↑↓", "move"),
       k("⏎", "open"),
+      k("type", "search"),
       k("tab", "harness"),
+      k("^s", "agents"),
       k("^o", "scope"),
       k("^r", "rescan"),
-      k("^g", "ghosts"),
       k("esc", "quit"),
     ].join(p.dim("  ·  "))
   );
@@ -190,11 +194,16 @@ function statusLine(state: MenuState, o: ViewOpts, shown: number): string {
   if (state.message) return " " + p.yellow(state.message);
   if (!shown) {
     const why = state.filter
-      ? "no session matches the filter"
+      ? "no session matches the search"
       : state.scope === "cwd"
         ? `no sessions in ${shortenPath(state.cwd, 40)} — ^o widens to all directories`
         : "ledger is empty — ^r scans every harness";
     return " " + p.dim(why);
+  }
+  if (!state.showSubagents) {
+    const withAgents = visibleThreads({ ...state, showSubagents: true }).length;
+    const hidden = Math.max(0, withAgents - shown);
+    if (hidden) return " " + p.dim(`${hidden} agent session${hidden === 1 ? "" : "s"} hidden · ^s show`);
   }
   return "";
 }
@@ -242,8 +251,10 @@ function metaLines(t: Thread, o: ViewOpts): string[] {
   const out: string[] = [];
   out.push(
     " " +
-      p.bold(truncate(tip.title || tip.firstPrompt || "(untitled)", Math.max(20, o.width - 2))),
+      p.bold(truncate(tip.alias || tip.title || tip.firstPrompt || "(untitled)", Math.max(20, o.width - 2))),
   );
+  if (tip.alias && tip.title && tip.title !== tip.alias)
+    out.push(" " + p.dim(`native title  ${truncate(tip.title, Math.max(20, o.width - 16))}`));
   const bits = [
     p.cyan(tip.harness) + p.dim(":") + displayId(tip.nativeId),
     `${tip.messageCount ?? "?"} msgs`,

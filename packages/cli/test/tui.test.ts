@@ -62,6 +62,7 @@ const ROWS = [
     nativeId: "0199abcd",
     harness: "codex",
     title: "auth refactor",
+    alias: "Login cleanup",
     updatedAt: "2026-08-15T09:00:00.000Z",
   }),
   row({
@@ -186,6 +187,7 @@ describe("filtering", () => {
     expect(visibleThreads({ ...s, filter: "auth nonsense" }).length).toBe(0);
     expect(visibleThreads({ ...s, filter: "other" }).length).toBe(1); // matches cwd
     expect(visibleThreads({ ...s, filter: "0199" }).length).toBe(1); // matches id
+    expect(visibleThreads({ ...s, filter: "login cleanup" }).length).toBe(1); // matches alias
   });
 
   test("a harness filter matches any hop, not just the tip", () => {
@@ -253,16 +255,15 @@ describe("reduce", () => {
     expect(actions[opened.actionCursor]!.disabled).toBeUndefined();
   });
 
-  test("a thread with nothing available parks on action 0 and explains itself", () => {
+  test("a ghost session can still receive a local alias", () => {
     const s = state([row({ nativeId: "g", harness: "claude", ghost: true })], {
       scope: "all",
       showGhosts: true,
     });
     const opened = reduce(s, key("enter")).state;
-    expect(opened.actionCursor).toBe(0);
-    const step = reduce(opened, key("enter"));
-    expect(step.effect).toBeUndefined();
-    expect(step.state.message).toContain("ghost row");
+    const actions = buildActions(opened.selected!, opened.caps);
+    expect(actions[opened.actionCursor]!.kind).toBe("rename");
+    expect(reduce(opened, key("enter")).effect?.type).toBe("rename");
   });
 
   test("enter on a disabled action reports why instead of firing", () => {
@@ -287,6 +288,14 @@ describe("reduce", () => {
       target: "omp",
       mode: "compact",
     });
+  });
+
+  test("the alias action emits a rename effect", () => {
+    const opened = reduce(state(ROWS), key("enter")).state;
+    const actions = buildActions(opened.selected!, opened.caps);
+    const rename = actions.findIndex((action) => action.kind === "rename");
+    const step = reduce({ ...opened, actionCursor: rename }, key("enter"));
+    expect(step.effect).toEqual({ type: "rename", thread: opened.selected! });
   });
 
   test("tab cycles the transfer mode on the action screen", () => {
@@ -324,6 +333,7 @@ describe("actions", () => {
     expect(actions.find((a) => a.label === "port → codex")!.disabled).toBe("no writer yet");
     expect(actions.find((a) => a.label === "port → pi")!.disabled).toBe("not installed");
     expect(actions.find((a) => a.label === "port → zcode")!.disabled).toBe("no writer yet");
+    expect(actions.find((a) => a.kind === "rename")!.label).toBe("set Sinter alias");
   });
 
   test("a harness missing from PATH cannot be resumed into", () => {
@@ -355,6 +365,7 @@ describe("dispatchChunk", () => {
     expect(dispatchChunk("\x07", s).state.showGhosts).toBe(true); // ctrl-g
     expect(dispatchChunk("\x13", s).state.showSubagents).toBe(true); // ctrl-s
     expect(dispatchChunk("\x12", s).effect).toEqual({ type: "rescan" }); // ctrl-r
+    expect(dispatchChunk("\x06", { ...s, filter: "old" }).state.filter).toBe(""); // ctrl-f
   });
 
   test("text around a chord is still processed in order", () => {
@@ -394,7 +405,8 @@ describe("view", () => {
     const lines = renderFrame(state(ROWS, { scope: "all", cursor: 1 }), opts);
     const marked = lines.filter((l) => l.startsWith("▸"));
     expect(marked.length).toBe(1);
-    expect(marked[0]).toContain("auth refactor");
+    expect(marked[0]).toContain("Login cleanup");
+    expect(marked[0]).toContain("auth refact");
   });
 
   test("a narrow terminal drops the cwd column instead of overflowing", () => {
@@ -407,12 +419,20 @@ describe("view", () => {
     const text = renderFrame(state(ROWS, { scope: "all" }), opts).join("\n");
     expect(text).toContain("aaa11111");
     expect(text).toContain("codex");
-    expect(text).toContain("auth refactor");
+    expect(text).toContain("Login cleanup");
+    expect(text).toContain("auth refact");
+  });
+
+  test("the list makes search and hidden-agent controls discoverable", () => {
+    const text = renderFrame(state(ROWS, { scope: "all" }), opts).join("\n");
+    expect(text).toContain("search");
+    expect(text).toContain("1 agent session hidden · ^s show");
+    expect(text).toContain("^s agents");
   });
 
   test("an empty result set explains itself", () => {
     const text = renderFrame(state(ROWS, { filter: "zzzznope" }), opts).join("\n");
-    expect(text).toContain("no session matches the filter");
+    expect(text).toContain("no session matches the search");
   });
 
   test("the action screen shows the transfer mode and disabled reasons", () => {
@@ -421,6 +441,7 @@ describe("view", () => {
     expect(text).toContain("resume in claude");
     expect(text).toContain("no writer yet");
     expect(text).toContain("transfer");
+    expect(text).toContain("set Sinter alias");
   });
 
   test("the chain line only appears once a thread has hopped", () => {

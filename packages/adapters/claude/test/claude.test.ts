@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { validateSession, threadPath, type SifSession } from "@sinter/core";
@@ -72,6 +72,165 @@ describe("list", () => {
     expect(sub.isSubagent).toBe(true);
     expect(sub.parentNativeId).toBe(SUB_SESSION);
     expect(sub.title).toBeTruthy();
+  });
+});
+
+describe("list — bounded native summary augmentation", () => {
+  async function withListStore(
+    name: string,
+    sessions: Record<string, unknown[]>,
+    indexEntries: unknown[],
+    fn: (rows: Awaited<ReturnType<typeof listedRows>>) => void,
+  ) {
+    const root = mkdtempSync(join(tmpdir(), `sinter-claude-list-${name}-`));
+    const dir = join(root, "-tmp-project");
+    mkdirSync(dir, { recursive: true });
+    for (const [id, records] of Object.entries(sessions)) {
+      writeFileSync(
+        join(dir, `${id}.jsonl`),
+        records.map((record) => (typeof record === "string" ? record : JSON.stringify(record))).join("\n"),
+      );
+    }
+    if (indexEntries.length)
+      writeFileSync(join(dir, "sessions-index.json"), JSON.stringify({ entries: indexEntries }));
+    try {
+      const rows = await listedRows(new ClaudeAdapter({ root }));
+      fn(rows);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  async function listedRows(target: ClaudeAdapter) {
+    const rows = [];
+    for await (const row of target.list()) rows.push(row);
+    return rows;
+  }
+
+  const record = (id: string, content: string, extra: Record<string, unknown> = {}) => ({
+    type: "user",
+    uuid: id,
+    parentUuid: null,
+    timestamp: "2026-01-01T00:00:00.000Z",
+    cwd: "/tmp/project",
+    isSidechain: false,
+    message: { role: "user", content },
+    ...extra,
+  });
+
+  test("an indexed row uses a late custom title over its stale summary and late ai title", async () => {
+    const id = "10000000-0000-4000-8000-000000000000";
+    const prompt = record(id, "original prompt");
+    const padding = { type: "system", uuid: "padding", content: "x".repeat(80 * 1024) };
+    await withListStore(
+      "custom-title",
+      {
+        [id]: [
+          prompt,
+          padding,
+          "not json and intentionally ignored",
+          { type: "custom-title", customTitle: "My Native Title" },
+          { type: "ai-title", aiTitle: "Later AI Guess" },
+        ],
+      },
+      [
+        {
+          sessionId: id,
+          fullPath: join("/unused", `${id}.jsonl`),
+          summary: "Stale index summary",
+          firstPrompt: "indexed prompt",
+          messageCount: 9,
+          projectPath: "/tmp/project",
+        },
+      ],
+      (rows) => {
+        const row = rows.find((candidate) => candidate.nativeId === id)!;
+        expect(row.title).toBe("My Native Title");
+        expect(row.messageCount).toBe(9);
+        expect(row.firstPrompt).toBe("indexed prompt");
+      },
+    );
+  });
+
+  test("an unindexed row finds an ai title in the transcript tail", async () => {
+    const id = "20000000-0000-4000-8000-000000000000";
+    await withListStore(
+      "ai-title",
+      {
+        [id]: [
+          record(id, "summarize this"),
+          { type: "system", uuid: "padding", content: "x".repeat(80 * 1024) },
+          { type: "ai-title", aiTitle: "Useful AI Title" },
+        ],
+      },
+      [],
+      (rows) => {
+        const row = rows.find((candidate) => candidate.nativeId === id)!;
+        expect(row.title).toBe("Useful AI Title");
+        expect(row.firstPrompt).toBe("summarize this");
+      },
+    );
+  });
+
+  test("top-level team agents are subagents while a team lead remains a main session", async () => {
+    const metadataAgent = "30000000-0000-4000-8000-000000000000";
+    const promptAgent = "40000000-0000-4000-8000-000000000000";
+    const main = "50000000-0000-4000-8000-000000000000";
+    const indexedFallback = "60000000-0000-4000-8000-000000000000";
+    const teammatePrompt =
+      '<teammate-message teammate_id="team-lead">Review the parser</teammate-message>';
+    await withListStore(
+      "team-agents",
+      {
+        [metadataAgent]: [
+          record(metadataAgent, teammatePrompt, {
+            teamName: "parser-team",
+            agentName: "reviewer",
+          }),
+        ],
+        [promptAgent]: [record(promptAgent, teammatePrompt)],
+        [indexedFallback]: [{ type: "system", uuid: indexedFallback, content: "x".repeat(80 * 1024) }],
+        [main]: [
+          record(main, "Coordinate the parser review"),
+          {
+            type: "assistant",
+            uuid: `${main}-assistant`,
+            teamName: "parser-team",
+            message: { role: "assistant", model: "claude-test", content: [] },
+          },
+        ],
+      },
+      [
+        {
+          sessionId: metadataAgent,
+          summary: teammatePrompt,
+          firstPrompt: teammatePrompt,
+          projectPath: "/tmp/project",
+          isSidechain: false,
+        },
+        {
+          sessionId: indexedFallback,
+          summary: teammatePrompt,
+          firstPrompt: teammatePrompt,
+          projectPath: "/tmp/project",
+          isSidechain: false,
+        },
+      ],
+      (rows) => {
+        const metadata = rows.find((candidate) => candidate.nativeId === metadataAgent)!;
+        expect(metadata.isSubagent).toBe(true);
+        expect(metadata.title).toBe("reviewer");
+
+        const prompt = rows.find((candidate) => candidate.nativeId === promptAgent)!;
+        expect(prompt.isSubagent).toBe(true);
+
+        const fallback = rows.find((candidate) => candidate.nativeId === indexedFallback)!;
+        expect(fallback.isSubagent).toBe(true);
+
+        const lead = rows.find((candidate) => candidate.nativeId === main)!;
+        expect(lead.isSubagent).toBeUndefined();
+      },
+    );
   });
 });
 

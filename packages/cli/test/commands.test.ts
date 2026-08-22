@@ -232,6 +232,27 @@ describe("search", () => {
   });
 });
 
+describe("rename", () => {
+  test("sets a searchable local alias that survives rescans", async () => {
+    await scan();
+    expect(await run(["rename", "aaa11111", "Important review"], h.ctx)).toBe(0);
+    expect(h.ledger.get("claude", "aaa11111-1111")!.alias).toBe("Important review");
+    await scan();
+    expect(h.ledger.get("claude", "aaa11111-1111")!.alias).toBe("Important review");
+    h.stdout.length = 0;
+    expect(await run(["search", "Important review"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("Important review");
+  });
+
+  test("clears aliases explicitly and rejects a missing alias", async () => {
+    await scan();
+    await run(["rename", "aaa11111", "Temporary"], h.ctx);
+    expect(await run(["rename", "aaa11111", "--clear"], h.ctx)).toBe(0);
+    expect(h.ledger.get("claude", "aaa11111-1111")!.alias).toBeUndefined();
+    expect(await run(["rename", "aaa11111"], h.ctx)).toBe(1);
+  });
+});
+
 describe("show", () => {
   test("renders a transcript for a prefix", async () => {
     await scan();
@@ -355,6 +376,13 @@ describe("port", () => {
     expect(h.omp.written[0]!.session.origin.nativeId).toBe("aaa11111-1111");
     expect(h.out()).toContain("omp --resume new-omp-1");
     expect(h.err()).toContain("porting claude:aaa11111-111 → omp");
+  });
+
+  test("carries a Sinter alias into the target native title", async () => {
+    await scan();
+    h.ledger.setAlias("claude", "aaa11111-1111", "Review complete");
+    await run(["port", "aaa11111", "--to", "omp"], h.ctx);
+    expect(h.omp.written[0]!.session.title).toEqual({ text: "Review complete", source: "user" });
   });
 
   test("ambiguity still exits 2", async () => {

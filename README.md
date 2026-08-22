@@ -23,13 +23,15 @@ sinter --help
 
 Interactive runs check npm at most once per day and offer to install a newer release. Use `--no-update-check` or set `SINTER_NO_UPDATE_CHECK=1` to disable this; scripts, CI, and non-interactive output never prompt.
 
-See the [v0.1.5 release notes](docs/releases/v0.1.5.md) for the latest changes.
+See the [v0.1.6 release notes](docs/releases/v0.1.6.md) for the latest changes.
 
 ## Quick start
 
 ```sh
 sinter scan
 sinter ls --since 7d
+sinter search "session alias or topic"
+sinter rename <id-prefix> "My important session"
 sinter show <id-prefix>
 sinter port <id-prefix> --to omp
 sinter resume <id-prefix> --in omp --exec

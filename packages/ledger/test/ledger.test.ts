@@ -67,6 +67,17 @@ describe("scan", () => {
     l.close();
   });
 
+  test("persists corrected subagent classification without a timestamp change", async () => {
+    const l = ledger();
+    const a = new MockAdapter({ id: "claude", summaries: [summary({ nativeId: "worker", isSubagent: false })] });
+    await l.scan([a]);
+    a.summaries = [summary({ nativeId: "worker", isSubagent: true, parentNativeId: "parent" })];
+    const result = await l.scan([a]);
+    expect(result.harnesses.claude!.updated).toBe(1);
+    expect(l.get("claude", "worker")).toMatchObject({ isSubagent: true, parentNativeId: "parent" });
+    l.close();
+  });
+
   test("marks rows as ghost once the harness stops listing them", async () => {
     const l = ledger();
     const a = new MockAdapter({
@@ -123,6 +134,86 @@ describe("scan", () => {
     a.throwOnList = "*";
     await l.scan([a]);
     expect(l.get("omp", "keep")!.ghost).toBe(false);
+    l.close();
+  });
+});
+
+describe("session aliases", () => {
+  test("sets, changes, and clears an alias without changing the source row", () => {
+    const l = ledger();
+    l.upsert(summary({ nativeId: "alias-1", title: "source-owned title" }));
+
+    expect(l.get("claude", "alias-1")!.alias).toBeUndefined();
+    l.setAlias("claude", "alias-1", "ledger nickname");
+    expect(l.get("claude", "alias-1")).toMatchObject({
+      alias: "ledger nickname",
+      title: "source-owned title",
+    });
+    expect(l.list().find((row) => row.nativeId === "alias-1")!.alias).toBe("ledger nickname");
+    expect(l.resolve("alias-1").row!.alias).toBe("ledger nickname");
+    expect(l.search("nickname")[0]).toMatchObject({ nativeId: "alias-1", alias: "ledger nickname" });
+
+    l.setAlias("claude", "alias-1", "changed moniker");
+    expect(l.get("claude", "alias-1")!.alias).toBe("changed moniker");
+    expect(l.search("nickname")).toHaveLength(0);
+    expect(l.search("moniker")[0]).toMatchObject({ nativeId: "alias-1", alias: "changed moniker" });
+
+    l.setAlias("claude", "alias-1");
+    expect(l.get("claude", "alias-1")!.alias).toBeUndefined();
+    expect(l.search("moniker")).toHaveLength(0);
+    expect(l.get("claude", "alias-1")!.title).toBe("source-owned title");
+    l.close();
+  });
+
+  test("aliases are keyed by harness and native id", () => {
+    const l = ledger();
+    l.upsert(summary({ nativeId: "same" }));
+    l.upsert(summary({ nativeId: "same", harness: "codex" }));
+    l.setAlias("claude", "same", "claude name");
+    l.setAlias("codex", "same", "codex name");
+
+    expect(l.get("claude", "same")!.alias).toBe("claude name");
+    expect(l.get("codex", "same")!.alias).toBe("codex name");
+    expect(l.list({ harness: "codex" })[0]!.alias).toBe("codex name");
+    l.close();
+  });
+
+  test("survives changed and unchanged adapter rescans and remains searchable", async () => {
+    const l = ledger();
+    const a = new MockAdapter({
+      id: "claude",
+      summaries: [summary({ nativeId: "scan-alias", title: "before rescan" })],
+    });
+    await l.scan([a]);
+    l.setAlias("claude", "scan-alias", "durable local name");
+
+    a.summaries = [
+      summary({
+        nativeId: "scan-alias",
+        title: "after rescan",
+        updatedAt: "2026-09-01T00:00:00.000Z",
+        messageCount: 8,
+      }),
+    ];
+    expect((await l.scan([a])).harnesses.claude!.updated).toBe(1);
+    expect((await l.scan([a])).harnesses.claude!.unchanged).toBe(1);
+    expect(l.get("claude", "scan-alias")).toMatchObject({
+      alias: "durable local name",
+      title: "after rescan",
+      messageCount: 8,
+    });
+    expect(l.search("durable")[0]).toMatchObject({ nativeId: "scan-alias", alias: "durable local name" });
+    l.close();
+  });
+
+  test("can be created before an adapter discovers the source session", async () => {
+    const l = ledger();
+    l.setAlias("claude", "future", "preassigned name");
+    const a = new MockAdapter({ id: "claude", summaries: [summary({ nativeId: "future" })] });
+    await l.scan([a]);
+
+    expect(l.get("claude", "future")!.alias).toBe("preassigned name");
+    expect(l.search("preassigned").map((row) => row.nativeId)).toEqual(["future"]);
     l.close();
   });
 });
@@ -276,11 +367,16 @@ describe("persistence", () => {
     const path = `${dir}/ledger.db`;
     const l1 = new Ledger(path);
     l1.upsert(summary({ nativeId: "persist-me", title: "persisted title" }));
+    l1.setAlias("claude", "persist-me", "persistent alias");
     l1.close();
 
     const l2 = new Ledger(path);
-    expect(l2.get("claude", "persist-me")!.title).toBe("persisted title");
+    expect(l2.get("claude", "persist-me")).toMatchObject({
+      title: "persisted title",
+      alias: "persistent alias",
+    });
     expect(l2.search("persisted")).toHaveLength(1);
+    expect(l2.search("persistent")[0]!.alias).toBe("persistent alias");
     l2.close();
     await Bun.$`rm -rf ${dir}`.quiet();
   });

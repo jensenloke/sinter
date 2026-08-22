@@ -852,7 +852,7 @@ export class ClaudeAdapter implements HarnessAdapter {
           const known = byId.get(id);
           const path = known?.path ?? str(row.fullPath);
           const ghost = !(path && existsSync(path));
-          const s: SessionSummary = {
+          let s: SessionSummary = {
             harness: "claude",
             nativeId: id,
             ...(path ? { nativePath: path } : {}),
@@ -866,16 +866,19 @@ export class ClaudeAdapter implements HarnessAdapter {
             ...(row.isSidechain ? { isSubagent: true } : {}),
             ...(ghost ? { ghost: true } : {}),
           };
+          // The index omits native title records and does not reliably identify
+          // top-level Agent Team workers. Augment live rows from bounded windows.
+          if (!ghost && path) s = this.summaryFromWindows(id, path, s);
           yield s;
           if (!ghost && known) yield* this.subagentSummaries(dir, id);
         }
       }
 
-      // 2) files the index doesn't know about — head-window scan only
+      // 2) files the index doesn't know about — bounded head/tail scan only
       for (const f of files) {
         if (emitted.has(f.id)) continue;
         emitted.add(f.id);
-        yield this.summaryFromHead(f.id, f.path);
+        yield this.summaryFromWindows(f.id, f.path);
         yield* this.subagentSummaries(dir, f.id);
       }
     }
@@ -884,7 +887,7 @@ export class ClaudeAdapter implements HarnessAdapter {
   private *subagentSummaries(dir: string, sessionId: string): Generator<SessionSummary> {
     for (const { agentId, path } of this.subagentFiles(dir, sessionId)) {
       const meta = readAgentMeta(path);
-      const s = this.summaryFromHead(`${sessionId}/agent-${agentId}`, path);
+      const s = this.summaryFromWindows(`${sessionId}/agent-${agentId}`, path);
       s.isSubagent = true;
       s.parentNativeId = sessionId;
       if (!s.title && typeof meta?.description === "string") s.title = meta.description;
@@ -892,36 +895,63 @@ export class ClaudeAdapter implements HarnessAdapter {
     }
   }
 
-  /** Reads only the first records of a transcript — never a full parse. */
-  private summaryFromHead(nativeId: string, path: string): SessionSummary {
-    const head = readHead(path, 32 * 1024);
-    const out: SessionSummary = { harness: "claude", nativeId, nativePath: path };
-    for (const line of head.split("\n")) {
-      const t = line.trim();
-      if (!t.startsWith("{")) continue;
-      let r: Rec;
-      try {
-        r = JSON.parse(t);
-      } catch {
-        continue; // truncated tail of the head window
-      }
-      if (!out.cwd && str(r.cwd)) out.cwd = r.cwd;
-      if (!out.gitBranch && str(r.gitBranch)) out.gitBranch = r.gitBranch;
-      if (!out.createdAt && str(r.timestamp)) out.createdAt = toIso(str(r.timestamp));
-      if (!out.title && str(r.aiTitle)) out.title = r.aiTitle;
-      if (str(r.customTitle)) out.title = r.customTitle;
-      if (!out.model && str(r.message?.model)) out.model = r.message.model;
-      if (!out.firstPrompt && r.type === "user" && !r.toolUseResult) {
-        const text = contentText(r.message?.content);
-        if (text) out.firstPrompt = clip(text);
+  /** Reads bounded windows at both ends of a transcript — never a full parse. */
+  private summaryFromWindows(
+    nativeId: string,
+    path: string,
+    base?: SessionSummary,
+  ): SessionSummary {
+    const out: SessionSummary = base
+      ? { ...base, harness: "claude", nativeId, nativePath: path }
+      : { harness: "claude", nativeId, nativePath: path };
+    const { head, tail, mtimeMs } = readWindows(path, 32 * 1024);
+    let aiTitle: string | undefined;
+    let customTitle: string | undefined;
+    let agentName: string | undefined;
+    let nativeFirstPrompt: string | undefined;
+    let teamAgent = false;
+
+    for (const window of tail ? [head, tail] : [head]) {
+      for (const line of window.split("\n")) {
+        const t = line.trim();
+        if (!t.startsWith("{")) continue;
+        let r: Rec;
+        try {
+          r = JSON.parse(t);
+        } catch {
+          continue; // a window boundary may split a JSONL record
+        }
+        if (!out.cwd && str(r.cwd)) out.cwd = r.cwd;
+        if (!out.gitBranch && str(r.gitBranch)) out.gitBranch = r.gitBranch;
+        if (!out.createdAt && str(r.timestamp)) out.createdAt = toIso(str(r.timestamp));
+        if (str(r.aiTitle)) aiTitle = r.aiTitle;
+        if (str(r.customTitle)) customTitle = r.customTitle;
+        if (str(r.agentName)) {
+          agentName = r.agentName;
+          // Agent Team subprocesses are top-level files with isSidechain=false;
+          // unlike a main team lead, their native message records have agentName.
+          if (r.uuid || r.type !== "agent-name") teamAgent = true;
+        }
+        if (str(r.teamName) && str(r.agentId)) teamAgent = true;
+        if (!out.model && str(r.message?.model)) out.model = r.message.model;
+        if (!nativeFirstPrompt && r.type === "user" && !r.toolUseResult) {
+          const text = contentText(r.message?.content);
+          if (text) nativeFirstPrompt = text;
+        }
       }
     }
-    try {
-      const st = statSync(path);
-      out.updatedAt = toIso(st.mtimeMs);
-    } catch {
-      /* gone */
-    }
+
+    if (nativeFirstPrompt && !out.firstPrompt) out.firstPrompt = clip(nativeFirstPrompt);
+    if (/^\s*<teammate-message(?:\s|>)/.test(nativeFirstPrompt ?? out.firstPrompt ?? "")) teamAgent = true;
+    if (teamAgent) out.isSubagent = true;
+    // Explicit native titles beat both the index summary and an agent name.
+    // Custom titles always win, regardless of which bounded window contained it.
+    if (customTitle) out.title = customTitle;
+    else if (aiTitle) out.title = aiTitle;
+    else if (teamAgent && agentName) out.title = agentName;
+    else if (teamAgent && out.title && /^\s*<teammate-message(?:\s|>)/.test(out.title))
+      delete out.title;
+    if (mtimeMs !== undefined) out.updatedAt = toIso(mtimeMs);
     return out;
   }
 
@@ -1074,6 +1104,36 @@ function readHead(path: string, bytes: number): string {
     return buf.subarray(0, n).toString("utf8");
   } catch {
     return "";
+  } finally {
+    if (fd !== undefined) try { closeSync(fd); } catch { /* ignore */ }
+  }
+}
+
+function readWindows(
+  path: string,
+  bytes: number,
+): { head: string; tail: string; mtimeMs?: number } {
+  let fd: number | undefined;
+  try {
+    const st = statSync(path);
+    fd = openSync(path, "r");
+    const headSize = Math.min(bytes, st.size);
+    const headBuffer = Buffer.alloc(headSize);
+    const headBytes = readSync(fd, headBuffer, 0, headSize, 0);
+    let tail = "";
+    if (st.size > bytes) {
+      const tailSize = Math.min(bytes, st.size);
+      const tailBuffer = Buffer.alloc(tailSize);
+      const tailBytes = readSync(fd, tailBuffer, 0, tailSize, st.size - tailSize);
+      tail = tailBuffer.subarray(0, tailBytes).toString("utf8");
+    }
+    return {
+      head: headBuffer.subarray(0, headBytes).toString("utf8"),
+      tail,
+      mtimeMs: st.mtimeMs,
+    };
+  } catch {
+    return { head: "", tail: "" };
   } finally {
     if (fd !== undefined) try { closeSync(fd); } catch { /* ignore */ }
   }

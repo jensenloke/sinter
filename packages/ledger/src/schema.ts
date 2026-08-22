@@ -9,15 +9,16 @@
  * MIGRATION POLICY — the statements below are the whole migration. Every one is
  * `CREATE ... IF NOT EXISTS`, so applying them to an older database is purely
  * additive: existing rows are never dropped, rewritten or re-created. Opening a
- * v1 ledger under v2 gains the `lineage` table and keeps every session row.
- * New versions must keep that property; a change that needs to rewrite data has
+ * v1 ledger under v2 gains the `lineage` table; v2 under v3 gains the
+ * `session_aliases` table. Both keep every session row. New versions must keep
+ * that property; a change that needs to rewrite data has
  * to be a separate, explicit, versioned step — never a silent re-`exec` here.
  *
  * `SCHEMA_VERSION` is a record of what was last applied (stored in `meta`), not
  * a trigger: nothing keys off its value, so bumping it cannot wipe anything.
  */
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -61,6 +62,13 @@ CREATE VIRTUAL TABLE IF NOT EXISTS sessions_fts USING fts5(
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
   value TEXT
+);
+
+CREATE TABLE IF NOT EXISTS session_aliases (
+  harness   TEXT NOT NULL,
+  native_id TEXT NOT NULL,
+  alias     TEXT NOT NULL,
+  PRIMARY KEY (harness, native_id)
 );
 
 CREATE TABLE IF NOT EXISTS lineage (

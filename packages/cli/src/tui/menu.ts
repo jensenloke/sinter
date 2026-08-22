@@ -6,6 +6,7 @@
  * the child inherits a clean tty and its own full-screen UI works normally.
  */
 
+import { createInterface } from "node:readline/promises";
 import type { HarnessAdapter, HarnessId, NativeRef, SessionRef, SifSession } from "@sinter/core";
 import { validateSession } from "@sinter/core";
 import type { LedgerRow } from "@sinter/ledger";
@@ -34,7 +35,7 @@ import { pageSizeFor, renderFrame } from "./view";
 const HARNESSES: HarnessId[] = ["claude", "codex", "devin", "opencode", "zcode", "omp", "pi"];
 
 /** Rows pulled into the menu. Beyond this the filter box is the wrong tool. */
-const ROW_LIMIT = 2000;
+const ROW_LIMIT = 10000;
 
 // ------------------------------------------------------------- capabilities
 
@@ -287,7 +288,8 @@ async function doPort(
   );
 
   const source = await readTipForPort(ctx, thread);
-  const { session, stats } = applyTransfer(source, mode);
+  const namedSource = tip.alias ? { ...source, title: { text: tip.alias, source: "user" as const } } : source;
+  const { session, stats } = applyTransfer(namedSource, mode);
   validateSession(session);
 
   if (stats.bytesAfter !== stats.bytesBefore)
@@ -352,6 +354,18 @@ async function doShow(ctx: Ctx, thread: Thread): Promise<number> {
 
 // ------------------------------------------------------------------- entry
 
+async function promptAlias(thread: Thread): Promise<{ changed: boolean; alias?: string }> {
+  const current = thread.tip.alias ? ` (current: ${thread.tip.alias})` : "";
+  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await readline.question(`New Sinter alias${current}; blank cancels, - clears: `)).trim();
+    if (!answer) return { changed: false };
+    return answer === "-" ? { changed: true } : { changed: true, alias: answer };
+  } finally {
+    readline.close();
+  }
+}
+
 export interface MenuOpts {
   cwd?: string;
   mode?: TransferMode;
@@ -375,7 +389,7 @@ export async function runMenu(ctx: Ctx, opts: MenuOpts = {}): Promise<number> {
   }
 
   let state = initialState({ threads, caps, cwd, mode: opts.mode, scope: opts.scope });
-  const screen = openScreen(ctx);
+  let screen = openScreen(ctx);
 
   try {
     for (;;) {
@@ -396,6 +410,26 @@ export async function runMenu(ctx: Ctx, opts: MenuOpts = {}): Promise<number> {
           threads: loadThreads(ctx),
           message: errs.length ? `scan errors — ${errs.join("; ")}` : "ledger rescanned",
         };
+        continue;
+      }
+
+      if (effect.type === "rename") {
+        screen.close();
+        const renamed = await promptAlias(effect.thread);
+        if (renamed.changed)
+          ctx.ledger().setAlias(effect.thread.tip.harness, effect.thread.tip.nativeId, renamed.alias);
+        state = {
+          ...state,
+          screen: "sessions",
+          selected: undefined,
+          threads: loadThreads(ctx),
+          message: renamed.changed
+            ? renamed.alias
+              ? `alias set to “${renamed.alias}”`
+              : "alias cleared"
+            : "rename cancelled",
+        };
+        screen = openScreen(ctx);
         continue;
       }
 

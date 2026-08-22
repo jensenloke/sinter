@@ -277,7 +277,7 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 `;
 
-describe("schema migration v1 -> v2", () => {
+describe("additive schema migration", () => {
   test("upgrades an existing v1 database in place, preserving every row", async () => {
     const dir = `/tmp/sinter-lineage-migration-${Bun.randomUUIDv7()}`;
     const path = `${dir}/ledger.db`;
@@ -315,22 +315,26 @@ describe("schema migration v1 -> v2", () => {
     expect(l.get("codex", "old-249")!.title).toBe("precious 249");
     expect(l.search("precious")).toHaveLength(250);
 
-    // and the new table exists and works
+    // and the additive lineage and alias tables exist and work
     expect(l.lineageCount()).toBe(0);
     l.recordProvenance(prov({ threadId: "post", chain: [hop("claude", "old-0"), hop("codex", "old-1")] }));
     expect(shape(l.lineageFor("post"))).toEqual(["claude:old-0@0", "codex:old-1@1<-claude:old-0"]);
+    l.setAlias("claude", "old-0", "migration nickname");
+    expect(l.get("claude", "old-0")!.alias).toBe("migration nickname");
+    expect(l.search("nickname").map((row) => row.nativeId)).toEqual(["old-0"]);
 
     // version was recorded, not acted on
     const v = l.db.query("SELECT value FROM meta WHERE key = 'schema_version'").get() as {
       value: string;
     };
     expect(v.value).toBe(String(SCHEMA_VERSION));
-    expect(SCHEMA_VERSION).toBe(2);
+    expect(SCHEMA_VERSION).toBe(3);
 
     // reopening again is still non-destructive
     l.close();
     const l2 = new Ledger(path);
     expect(l2.list()).toHaveLength(250);
+    expect(l2.get("claude", "old-0")!.alias).toBe("migration nickname");
     expect(l2.lineageCount()).toBe(2);
     l2.close();
 

@@ -74,7 +74,8 @@ function filterOpts(args: ParsedArgs, now: number): ListOpts {
 export function rowsTable(rows: LedgerRow[], ctx: Ctx): string {
   const p = ctx.pal;
   const body = rows.map((r) => {
-    const label = r.title || r.firstPrompt || "";
+    const nativeLabel = r.title || r.firstPrompt || "";
+    const label = r.alias ? `${r.alias}${nativeLabel && nativeLabel !== r.alias ? ` · ${nativeLabel}` : ""}` : nativeLabel;
     return [
       r.ghost ? p.dim(displayId(r.nativeId)) : p.bold(displayId(r.nativeId)),
       p.cyan(r.harness),
@@ -170,13 +171,14 @@ async function readSessionForPort(ctx: Ctx, row: LedgerRow): Promise<SifSession>
   const adapter = await ctx.registry.get(row.harness);
   const ref: SessionRef = { harness: row.harness, nativeId: row.nativeId, nativePath: row.nativePath };
   const withCarry = adapter as HarnessAdapter & { readWithCarry?: (ref: SessionRef) => Promise<SifSession> };
-  if (withCarry.readWithCarry) return withCarry.readWithCarry(ref);
-  if (adapter.id === "omp" || adapter.id === "pi") {
-    return (adapter as HarnessAdapter & { read: (ref: SessionRef, opts: { useCarry: true }) => Promise<SifSession> }).read(ref, {
+  let session: SifSession;
+  if (withCarry.readWithCarry) session = await withCarry.readWithCarry(ref);
+  else if (adapter.id === "omp" || adapter.id === "pi") {
+    session = await (adapter as HarnessAdapter & { read: (ref: SessionRef, opts: { useCarry: true }) => Promise<SifSession> }).read(ref, {
       useCarry: true,
     });
-  }
-  return adapter.read(ref);
+  } else session = await adapter.read(ref);
+  return row.alias ? { ...session, title: { text: row.alias, source: "user" } } : session;
 }
 
 // ----------------------------------------------------------------- commands
@@ -250,6 +252,19 @@ export async function cmdSearch(argv: string[], ctx: Ctx): Promise<number> {
   const opts = filterOpts(args, ctx.now);
   opts.limit ??= 30;
   return printRows(ctx.ledger().search(query, opts), ctx, args);
+}
+
+export async function cmdRename(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { booleans: ["clear"] });
+  const prefix = args._[0];
+  if (!prefix) throw new CliError("usage: sinter rename <id-prefix> <alias>");
+  const row = resolveRow(ctx, prefix);
+  const alias = args._.slice(1).join(" ").trim();
+  if (!alias && !flagBool(args, "clear"))
+    throw new CliError("sinter rename needs an alias (or --clear)");
+  ctx.ledger().setAlias(row.harness, row.nativeId, alias || undefined);
+  ctx.out(alias ? `${row.harness}:${displayId(row.nativeId)} → ${alias}` : `cleared alias for ${row.harness}:${displayId(row.nativeId)}`);
+  return EXIT.OK;
 }
 
 export async function cmdShow(argv: string[], ctx: Ctx): Promise<number> {

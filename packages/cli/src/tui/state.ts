@@ -34,7 +34,7 @@ export interface HarnessCaps {
   error?: string;
 }
 
-export type ActionKind = "resume" | "port" | "show";
+export type ActionKind = "resume" | "port" | "rename" | "show";
 
 export interface MenuAction {
   kind: ActionKind;
@@ -75,6 +75,7 @@ export type Effect =
   | { type: "quit" }
   | { type: "rescan" }
   | { type: "show"; thread: Thread }
+  | { type: "rename"; thread: Thread }
   /** Resume the tip natively — nothing is written. */
   | { type: "resume"; thread: Thread }
   /** Port the tip into `target` with `mode`, then launch the new session. */
@@ -120,7 +121,7 @@ function haystack(t: Thread): string {
   return t.hops
     .map(
       (r) =>
-        `${r.nativeId} ${r.harness} ${r.cwd ?? ""} ${r.title ?? ""} ${r.firstPrompt ?? ""} ${
+        `${r.nativeId} ${r.harness} ${r.cwd ?? ""} ${r.alias ?? ""} ${r.title ?? ""} ${r.firstPrompt ?? ""} ${
           r.gitBranch ?? ""
         } ${r.model ?? ""}`,
     )
@@ -212,6 +213,13 @@ export function buildActions(thread: Thread, caps: HarnessCaps[]): MenuAction[] 
   }
 
   actions.push({
+    kind: "rename",
+    label: tip.alias ? "change Sinter alias" : "set Sinter alias",
+    hint: "local label · survives rescans · native store unchanged",
+    command: `sinter rename ${id} "<alias>"`,
+  });
+
+  actions.push({
     kind: "show",
     label: "show transcript",
     hint: "print it here and exit",
@@ -292,6 +300,7 @@ function runAction(state: MenuState): Step {
     return { state: { ...state, message: `cannot ${action.label}: ${action.disabled}` } };
 
   if (action.kind === "show") return { state, effect: { type: "show", thread } };
+  if (action.kind === "rename") return { state, effect: { type: "rename", thread } };
   if (action.kind === "resume") return { state, effect: { type: "resume", thread } };
   return { state, effect: { type: "port", thread, target: action.harness!, mode: state.mode } };
 }
@@ -390,11 +399,12 @@ export function reduce(state: MenuState, key: Key): Step {
  * Commands that must never be swallowed by the filter box, so they live on
  * control chords. The runtime maps the raw byte before decoding — see menu.ts.
  */
-export const COMMAND_KEYS: Record<string, "rescan" | "scope" | "ghosts" | "subagents"> = {
+export const COMMAND_KEYS: Record<string, "rescan" | "scope" | "ghosts" | "subagents" | "search"> = {
   "\x12": "rescan", // ctrl-r
   "\x0f": "scope", // ctrl-o
   "\x07": "ghosts", // ctrl-g
   "\x13": "subagents", // ctrl-s
+  "\x06": "search", // ctrl-f
 };
 
 export function applyCommand(state: MenuState, cmd: string): Step {
@@ -407,6 +417,8 @@ export function applyCommand(state: MenuState, cmd: string): Step {
       return { state: refiltered({ ...state, showGhosts: !state.showGhosts }) };
     case "subagents":
       return { state: refiltered({ ...state, showSubagents: !state.showSubagents }) };
+    case "search":
+      return { state: refiltered({ ...state, filter: "", message: "search: type an alias, title, prompt, id, path, branch, or model" }) };
     default:
       return { state };
   }

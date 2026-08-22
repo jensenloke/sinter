@@ -11,6 +11,7 @@ export interface LedgerRow {
   nativePath?: string;
   cwd?: string;
   title?: string;
+  alias?: string;
   firstPrompt?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -80,6 +81,11 @@ export interface ResolveResult {
   candidates: LedgerRow[];
 }
 
+const SESSION_SELECT = `SELECT s.*, a.alias AS alias
+FROM sessions AS s
+LEFT JOIN session_aliases AS a
+  ON a.harness = s.harness AND a.native_id = s.native_id`;
+
 const COLUMNS = [
   "harness",
   "native_id",
@@ -120,6 +126,7 @@ function rowFromDb(r: Record<string, unknown>): LedgerRow {
     nativePath: (r.native_path as string) ?? undefined,
     cwd: (r.cwd as string) ?? undefined,
     title: (r.title as string) ?? undefined,
+    alias: (r.alias as string) ?? undefined,
     firstPrompt: (r.first_prompt as string) ?? undefined,
     createdAt: (r.created_at as string) ?? undefined,
     updatedAt: (r.updated_at as string) ?? undefined,
@@ -228,7 +235,7 @@ export class Ledger {
   upsert(s: SessionSummary): "inserted" | "updated" | "unchanged" {
     const scannedAt = new Date().toISOString();
     const existing = this.db
-      .query("SELECT updated_at, message_count, ghost, title, first_prompt FROM sessions WHERE harness = ? AND native_id = ?")
+      .query("SELECT updated_at, message_count, ghost, title, first_prompt, is_subagent, parent_native_id FROM sessions WHERE harness = ? AND native_id = ?")
       .get(s.harness, s.nativeId) as Record<string, unknown> | null;
 
     if (
@@ -236,7 +243,10 @@ export class Ledger {
       (existing.updated_at ?? null) === (s.updatedAt ?? null) &&
       (existing.message_count ?? null) === (s.messageCount ?? null) &&
       !!existing.ghost === !!s.ghost &&
-      (existing.title ?? null) === (s.title ?? null)
+      (existing.title ?? null) === (s.title ?? null) &&
+      (existing.first_prompt ?? null) === (s.firstPrompt ?? null) &&
+      !!existing.is_subagent === !!s.isSubagent &&
+      (existing.parent_native_id ?? null) === (s.parentNativeId ?? null)
     ) {
       this.db.run("UPDATE sessions SET scanned_at = ? WHERE harness = ? AND native_id = ?", [
         scannedAt,
@@ -260,11 +270,40 @@ export class Ledger {
   }
 
   private reindexFts(harness: string, nativeId: string, title?: string, firstPrompt?: string): void {
+    const alias = this.db
+      .query("SELECT alias FROM session_aliases WHERE harness = ? AND native_id = ?")
+      .get(harness, nativeId) as { alias: string } | null;
+    const indexedTitle = alias ? `${alias.alias}\n${title ?? ""}` : (title ?? "");
+
     this.db.run("DELETE FROM sessions_fts WHERE harness = ? AND native_id = ?", [harness, nativeId]);
     this.db.run(
       "INSERT INTO sessions_fts (harness, native_id, title, first_prompt) VALUES (?, ?, ?, ?)",
-      [harness, nativeId, title ?? "", firstPrompt ?? ""],
+      [harness, nativeId, indexedTitle, firstPrompt ?? ""],
     );
+  }
+
+  /** Set, change, or clear a Sinter-local alias without modifying the source row. */
+  setAlias(harness: HarnessId, nativeId: string, alias?: string): void {
+    this.db.transaction(() => {
+      if (alias === undefined) {
+        this.db.run("DELETE FROM session_aliases WHERE harness = ? AND native_id = ?", [harness, nativeId]);
+      } else {
+        this.db.run(
+          `INSERT INTO session_aliases (harness, native_id, alias) VALUES (?, ?, ?)
+           ON CONFLICT(harness, native_id) DO UPDATE SET alias = excluded.alias`,
+          [harness, nativeId, alias],
+        );
+      }
+
+      const session = this.db
+        .query("SELECT title, first_prompt FROM sessions WHERE harness = ? AND native_id = ?")
+        .get(harness, nativeId) as { title: string | null; first_prompt: string | null } | null;
+      if (session) {
+        this.reindexFts(harness, nativeId, session.title ?? undefined, session.first_prompt ?? undefined);
+      } else {
+        this.db.run("DELETE FROM sessions_fts WHERE harness = ? AND native_id = ?", [harness, nativeId]);
+      }
+    })();
   }
 
   /**
@@ -326,7 +365,7 @@ export class Ledger {
 
   get(harness: HarnessId, nativeId: string): LedgerRow | undefined {
     const r = this.db
-      .query("SELECT * FROM sessions WHERE harness = ? AND native_id = ?")
+      .query(`${SESSION_SELECT} WHERE s.harness = ? AND s.native_id = ?`)
       .get(harness, nativeId) as Record<string, unknown> | null;
     return r ? rowFromDb(r) : undefined;
   }
@@ -338,25 +377,25 @@ export class Ledger {
     if (opts.harness) {
       const hs = Array.isArray(opts.harness) ? opts.harness : [opts.harness];
       if (hs.length) {
-        where.push(`harness IN (${hs.map(() => "?").join(", ")})`);
+        where.push(`s.harness IN (${hs.map(() => "?").join(", ")})`);
         params.push(...hs);
       }
     }
     if (opts.cwd) {
-      where.push("cwd = ?");
+      where.push("s.cwd = ?");
       params.push(opts.cwd);
     }
     if (opts.since) {
-      where.push("COALESCE(updated_at, created_at, '') >= ?");
+      where.push("COALESCE(s.updated_at, s.created_at, '') >= ?");
       params.push(opts.since);
     }
-    if (opts.includeGhost === false) where.push("ghost = 0");
-    if (opts.includeSubagents === false) where.push("is_subagent = 0");
+    if (opts.includeGhost === false) where.push("s.ghost = 0");
+    if (opts.includeSubagents === false) where.push("s.is_subagent = 0");
 
     const sql =
-      "SELECT * FROM sessions" +
+      SESSION_SELECT +
       (where.length ? ` WHERE ${where.join(" AND ")}` : "") +
-      " ORDER BY COALESCE(updated_at, created_at, '') DESC, native_id DESC" +
+      " ORDER BY COALESCE(s.updated_at, s.created_at, '') DESC, s.native_id DESC" +
       (opts.limit && opts.limit > 0 ? ` LIMIT ${Math.floor(opts.limit)}` : "");
 
     return (this.db.query(sql).all(...(params as never[])) as Record<string, unknown>[]).map(rowFromDb);
@@ -412,14 +451,14 @@ export class Ledger {
     }
 
     const params: unknown[] = [];
-    let sql = "SELECT * FROM sessions WHERE lower(native_id) LIKE ?";
+    let sql = `${SESSION_SELECT} WHERE lower(s.native_id) LIKE ?`;
     params.push(`${prefix.toLowerCase().replace(/[%_\\]/g, "\\$&")}%`);
     sql += " ESCAPE '\\'";
     if (harness) {
-      sql += " AND harness = ?";
+      sql += " AND s.harness = ?";
       params.push(harness);
     }
-    sql += " ORDER BY COALESCE(updated_at, created_at, '') DESC LIMIT 50";
+    sql += " ORDER BY COALESCE(s.updated_at, s.created_at, '') DESC LIMIT 50";
 
     let candidates = (this.db.query(sql).all(...(params as never[])) as Record<string, unknown>[]).map(
       rowFromDb,

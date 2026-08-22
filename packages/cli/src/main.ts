@@ -21,6 +21,7 @@ import {
   cmdPort,
   cmdPrivacy,
   cmdRelink,
+  cmdRename,
   cmdResume,
   cmdScan,
   cmdSetup,
@@ -32,13 +33,15 @@ import { colorEnabled, palette, termWidth } from "./format";
 import { canRunMenu } from "./tui/menu";
 import { maybePromptForUpdate } from "./update";
 
-export const VERSION = "0.1.5";
+export const VERSION = "0.1.6";
 
 const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = {
   scan: cmdScan,
   ls: cmdLs,
   list: cmdLs,
   search: cmdSearch,
+  rename: cmdRename,
+  alias: cmdRename,
   show: cmdShow,
   setup: cmdSetup,
   export: cmdExport,
@@ -63,7 +66,8 @@ usage: sinter [command] [args]
   scan                                   refresh the ledger from every available harness
   ls [--harness x] [--cwd .] [--since 7d] [--limit n]
                                          list sessions, newest first
-  search <query>                         full-text match over titles + first prompts
+  search <query>                         full-text match over aliases, titles + prompts
+  rename <id-prefix> <alias>             set a local alias that survives rescans
   show <id-prefix> [--json]              render a transcript from any harness
   export <id-prefix> [-o file] [--slim]  write the session as SIF JSON
   import <file> --to <harness> [...]     synthesize a new native session from SIF
@@ -94,6 +98,8 @@ const COMMAND_HELP: Record<string, string> = {
   scan: "usage: sinter scan [--harness claude,codex]\n\nRefreshes the local ledger. Reads local stores only.",
   ls: "usage: sinter ls [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]",
   search: "usage: sinter search <query> [--harness x] [--json]",
+  rename: "usage: sinter rename <id-prefix> <alias> [--clear]\n\nStores a local alias in Sinter without modifying the native harness session.",
+  alias: "usage: sinter rename <id-prefix> <alias> [--clear]",
   show: "usage: sinter show <id-prefix> [--json] [--tool-chars n] [--no-sub]",
   export: "usage: sinter export <id-prefix> [-o file] [--slim]\n\nWithout -o, writes SIF JSON to stdout.",
   import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",
