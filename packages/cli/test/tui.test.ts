@@ -14,7 +14,7 @@ import {
   type MenuState,
 } from "../src/tui/state";
 import { buildThreads, chainLabel } from "../src/tui/threads";
-import { dispatchChunk } from "../src/tui/menu";
+import { dispatchChunk, nextEffect, type Screen } from "../src/tui/menu";
 import { renderFrame, pageSizeFor } from "../src/tui/view";
 
 const NOW = Date.parse("2026-08-15T12:00:00.000Z");
@@ -377,6 +377,25 @@ describe("dispatchChunk", () => {
   test("stops at the first effect in a chunk", () => {
     const step = dispatchChunk("\x03zzz", state(ROWS));
     expect(step.effect).toEqual({ type: "quit" });
+  });
+});
+
+describe("menu input lifecycle", () => {
+  test("terminal EOF exits instead of repainting forever", async () => {
+    let renders = 0;
+    const screen: Screen = {
+      render(current) {
+        renders++;
+        return current;
+      },
+      read: () => Promise.resolve(undefined),
+      close() {},
+    };
+
+    const step = await nextEffect(screen, state(ROWS));
+
+    expect(step.effect).toEqual({ type: "quit" });
+    expect(renders).toBe(1);
   });
 });
 

@@ -50,6 +50,7 @@ describe("maybePromptForUpdate", () => {
     let question = "";
     const updated = await maybePromptForUpdate("0.1.4", {
       interactive: true,
+      disabled: false,
       now: 10_000,
       readCache: () => ({ checkedAt: 9_000, latest: "0.1.5" }),
       fetchLatest: async () => {
@@ -72,6 +73,7 @@ describe("maybePromptForUpdate", () => {
     const now = UPDATE_CHECK_INTERVAL_MS + 100;
     const updated = await maybePromptForUpdate("0.1.4", {
       interactive: true,
+      disabled: false,
       now,
       readCache: () => ({ checkedAt: 0, latest: "0.1.4" }),
       writeCache: (_path, value) => void (written = value),
@@ -92,6 +94,7 @@ describe("maybePromptForUpdate", () => {
     const now = 50_000;
     const updated = await maybePromptForUpdate("0.1.4", {
       interactive: true,
+      disabled: false,
       now,
       readCache: () => ({ checkedAt: now - 1_000, latest: "0.1.5", promptedAt: now - 1_000 }),
       confirm: async () => {
@@ -108,6 +111,7 @@ describe("maybePromptForUpdate", () => {
     let installs = 0;
     const updated = await maybePromptForUpdate("0.1.4", {
       interactive: true,
+      disabled: false,
       readCache: () => ({ checkedAt: Date.now(), latest: "0.1.5" }),
       confirm: async () => true,
       install: async () => (installs++, 0),
@@ -123,6 +127,7 @@ describe("maybePromptForUpdate", () => {
     const output: string[] = [];
     const updated = await maybePromptForUpdate("0.1.4", {
       interactive: true,
+      disabled: false,
       readCache: () => ({ checkedAt: Date.now(), latest: "0.1.5" }),
       confirm: async () => true,
       install: async () => 7,

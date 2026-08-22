@@ -33,7 +33,7 @@ import { colorEnabled, palette, termWidth } from "./format";
 import { canRunMenu } from "./tui/menu";
 import { maybePromptForUpdate } from "./update";
 
-export const VERSION = "0.1.6";
+export const VERSION = "0.1.7";
 
 const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = {
   scan: cmdScan,

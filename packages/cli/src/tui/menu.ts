@@ -79,10 +79,10 @@ function loadThreads(ctx: Ctx): Thread[] {
 
 // ------------------------------------------------------------------- screen
 
-interface Screen {
+export interface Screen {
   render(state: MenuState): MenuState;
-  /** Next stdin chunk. Chunks that arrived earlier are returned immediately. */
-  read(): Promise<string>;
+  /** Next stdin chunk, or undefined when the terminal input has closed. */
+  read(): Promise<string | undefined>;
   close(): void;
 }
 
@@ -98,12 +98,17 @@ function openScreen(ctx: Ctx): Screen {
   const out = process.stdout;
   const wasRaw = process.stdin.isRaw;
   let closed = false;
+  let inputClosed = false;
 
   const queue: string[] = [];
-  let waiting: ((chunk: string) => void) | undefined;
+  let waiting: ((chunk: string | undefined) => void) | undefined;
   let last: MenuState | undefined;
 
   const onData = (chunk: string): void => {
+    if (!chunk) {
+      onInputClosed();
+      return;
+    }
     if (waiting) {
       const resolve = waiting;
       waiting = undefined;
@@ -111,6 +116,14 @@ function openScreen(ctx: Ctx): Screen {
     } else {
       queue.push(chunk);
     }
+  };
+
+  const onInputClosed = (): void => {
+    if (inputClosed) return;
+    inputClosed = true;
+    const resolve = waiting;
+    waiting = undefined;
+    resolve?.(undefined);
   };
 
   const paint = (state: MenuState): MenuState => {
@@ -129,15 +142,18 @@ function openScreen(ctx: Ctx): Screen {
   };
 
   const close = (): void => {
-    if (closed) return;
+    const wasClosed = closed;
     closed = true;
     process.stdin.off("data", onData);
+    process.stdin.off("end", onInputClosed);
+    process.stdin.off("close", onInputClosed);
+    process.stdin.off("error", onInputClosed);
     process.stdout.off("resize", onResize);
     process.off("SIGTERM", onSignal);
     process.off("SIGHUP", onSignal);
     if (process.stdin.isTTY) process.stdin.setRawMode(wasRaw ?? false);
     process.stdin.pause();
-    out.write("\x1b[?25h\x1b[?1049l");
+    if (!wasClosed) out.write("\x1b[?25h\x1b[?1049l");
   };
 
   // Being killed must not leave the user in a raw-mode alternate screen.
@@ -150,6 +166,9 @@ function openScreen(ctx: Ctx): Screen {
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", onData);
+  process.stdin.on("end", onInputClosed);
+  process.stdin.on("close", onInputClosed);
+  process.stdin.on("error", onInputClosed);
   process.stdout.on("resize", onResize);
   process.on("SIGTERM", onSignal);
   process.on("SIGHUP", onSignal);
@@ -157,12 +176,13 @@ function openScreen(ctx: Ctx): Screen {
 
   return {
     render: paint,
-    read(): Promise<string> {
+    read(): Promise<string | undefined> {
       const buffered = queue.shift();
       if (buffered !== undefined) return Promise.resolve(buffered);
-      return new Promise((resolve) => {
-        waiting = resolve;
-      });
+      if (closed || inputClosed) return Promise.resolve(undefined);
+      const { promise, resolve } = Promise.withResolvers<string | undefined>();
+      waiting = resolve;
+      return promise;
     },
     close,
   };
@@ -210,14 +230,16 @@ export function dispatchChunk(chunk: string, state: MenuState): Step {
   return { state: current, effect };
 }
 
-/** Render, wait for input, reduce — until a keypress produces an effect. */
-async function nextEffect(
+/** Render and reduce input until a keypress acts or the terminal disappears. */
+export async function nextEffect(
   screen: Screen,
   start: MenuState,
 ): Promise<{ state: MenuState; effect: Effect }> {
   let state = screen.render(start);
   for (;;) {
-    const step = dispatchChunk(await screen.read(), state);
+    const chunk = await screen.read();
+    if (chunk === undefined) return { state, effect: { type: "quit" } };
+    const step = dispatchChunk(chunk, state);
     state = step.state;
     if (step.effect) return { state, effect: step.effect };
     state = screen.render(state);
