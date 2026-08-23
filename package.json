@@ -8,6 +8,8 @@
   ],
   "scripts": {
     "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "build:cli": "bun run --cwd packages/cli build",
     "sinter": "bun packages/cli/src/main.ts"
   },
   "devDependencies": {
