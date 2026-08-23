@@ -57,7 +57,7 @@ Prioritized candidates after the current draft stack, not release commitments:
    adapter loading, store detection, read/write support, native resume
    readiness, and known limitations in human and versioned JSON forms. The TUI
    consumes the same resolver so its action availability cannot drift.
-4. **Saved views — implemented on `feat/saved-views`.** Name reusable local
+4. **Saved views — ready in draft PR #20.** Name reusable local
    combinations of project, harness, recency, limit, and ghost/subagent filters;
    explicit flags on `view run` override the saved definition.
 5. **Safe ghost housekeeping — ready in draft PR #19.**
