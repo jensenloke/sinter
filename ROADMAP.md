@@ -38,6 +38,11 @@ the next one through real usage and privacy review.
 Add an encrypted `.sinter` capsule that can move independently of a particular
 harness store.
 
+The context-only v1 threat model and wire contract are specified in
+[`docs/capsule-format-v1.md`](docs/capsule-format-v1.md). Workspace inclusion
+remains explicitly out of scope until its file-selection and secret-handling
+controls are designed.
+
 ```sh
 sinter bundle <session> --context-only
 sinter bundle <session> --include-workspace
