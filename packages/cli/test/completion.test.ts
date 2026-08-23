@@ -14,6 +14,7 @@ describe("shell completions", () => {
     expect(script).toContain("config");
     expect(script).toContain("preview");
     expect(script).toContain("report");
+    expect(script).toContain("ndjson");
     expect(script).toContain("codex");
     expect(script).toContain("compact");
     expect(script).not.toContain("/Users/");

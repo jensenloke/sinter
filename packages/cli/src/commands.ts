@@ -34,6 +34,7 @@ import {
   type Palette,
 } from "./format";
 import { renderTranscript, slimSession } from "./render";
+import { transcriptRecords } from "./ndjson";
 import { renderSupportReport, supportPlatform, type SupportHarnessStatus } from "./support-report";
 import { applyTransfer, fmtBytes, TRANSFER_MODES, type TransferMode } from "./transfer";
 
@@ -429,15 +430,22 @@ export async function cmdRename(argv: string[], ctx: Ctx): Promise<number> {
 }
 
 export async function cmdShow(argv: string[], ctx: Ctx): Promise<number> {
-  const args = parseArgs(argv, { booleans: ["json", "no-sub"], strings: ["tool-chars"] });
+  const args = parseArgs(argv, { booleans: ["json", "ndjson", "no-sub"], strings: ["tool-chars"] });
   const prefix = args._[0];
   if (!prefix) throw new CliError("usage: sinter show <id-prefix>");
   const row = resolveRow(ctx, prefix);
   if (row.ghost) ctx.err(ctx.pal.dim(`note: ${shortId(row.nativeId)} is a ghost row — the harness may have GC'd it`));
 
   const session = await readSession(ctx, row);
+  if (flagBool(args, "json") && flagBool(args, "ndjson"))
+    throw new CliError("choose one output mode: --json or --ndjson");
   if (flagBool(args, "json")) {
     ctx.out(JSON.stringify(session, null, 2));
+    return EXIT.OK;
+  }
+  if (flagBool(args, "ndjson")) {
+    for (const record of transcriptRecords(session, { subsessions: !flagBool(args, "no-sub") }))
+      ctx.out(JSON.stringify(record));
     return EXIT.OK;
   }
   const toolChars = Number(flagString(args, "tool-chars") ?? 240);
