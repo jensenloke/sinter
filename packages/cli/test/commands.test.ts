@@ -129,6 +129,47 @@ describe("CLI conventions", () => {
   });
 });
 
+describe("config", () => {
+  test("shows and validates every profile without touching the ledger", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sinter-config-"));
+    const config = join(dir, "config.toml");
+    writeFileSync(
+      config,
+      `[profiles.personal.stores]\nclaude = "/tmp/claude"\n\n[profiles.work.stores]\ncodex = "/tmp/codex"\ndevin = "/tmp/devin.db"\n`,
+    );
+    try {
+      expect(await run(["config", "show", "--config", config], h.ctx)).toBe(0);
+      expect(h.out()).toContain("PROFILE");
+      expect(h.out()).toContain("personal");
+      expect(h.out()).toContain("/tmp/codex");
+      expect(h.ledger.list()).toHaveLength(0);
+
+      h.stdout.length = 0;
+      expect(await run(["config", "validate", "--config", config, "--json"], h.ctx)).toBe(0);
+      expect(JSON.parse(h.out())).toMatchObject({ valid: true, profiles: 2, stores: 3 });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("prints the resolved path even before a config file exists", async () => {
+    expect(await run(["config", "path", "--config", "/tmp/not-created-sinter.toml"], h.ctx)).toBe(0);
+    expect(h.out()).toBe("/tmp/not-created-sinter.toml");
+  });
+
+  test("validation catches an unknown harness", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sinter-config-bad-"));
+    const config = join(dir, "config.toml");
+    writeFileSync(config, `[profiles.work.stores]\ncursor = "/tmp/cursor"\n`);
+    try {
+      expect(await run(["config", "validate", "--config", config], h.ctx)).toBe(1);
+      expect(h.err()).toContain("unknown harness: cursor");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("setup", () => {
   test("--yes detects and scans without opening the menu", async () => {
     expect(await run(["setup", "--yes"], h.ctx)).toBe(0);

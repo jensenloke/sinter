@@ -11,6 +11,11 @@ export interface SinterProfile {
   stores: Partial<Record<HarnessId, string>>;
 }
 
+export interface SinterConfigSummary {
+  configPath: string;
+  profiles: Array<{ name: string; stores: Partial<Record<HarnessId, string>> }>;
+}
+
 const HARNESSES = new Set<HarnessId>(["claude", "codex", "devin", "opencode", "zcode", "omp", "pi"]);
 
 export function defaultConfigPath(): string {
@@ -62,6 +67,29 @@ export function loadProfileByName(name: string, configPath: string): SinterProfi
     stores[harness as HarnessId] = path;
   }
   return { name, configPath, stores };
+}
+
+/** Parse and validate every configured profile for inspection and diagnostics. */
+export function inspectConfig(configPath: string): SinterConfigSummary {
+  if (!existsSync(configPath)) throw new CliError(`config file does not exist: ${configPath}`);
+  let parsed: unknown;
+  try {
+    parsed = Bun.TOML.parse(readFileSync(configPath, "utf8"));
+  } catch (err) {
+    throw new CliError(`cannot parse config ${configPath}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const profiles = record(record(parsed)?.profiles);
+  if (!profiles || !Object.keys(profiles).length) throw new CliError(`config has no profiles: ${configPath}`);
+
+  return {
+    configPath,
+    profiles: Object.keys(profiles)
+      .sort()
+      .map((name) => {
+        const profile = loadProfileByName(name, configPath);
+        return { name, stores: profile.stores };
+      }),
+  };
 }
 
 export function loadProfile(argv: string[]): SinterProfile | undefined {

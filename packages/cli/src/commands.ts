@@ -21,7 +21,7 @@ import {
   type ParsedArgs,
 } from "./args";
 import type { AdapterRegistry } from "./adapters";
-import { PROFILE_EXAMPLE, type SinterProfile } from "./config";
+import { defaultConfigPath, inspectConfig, PROFILE_EXAMPLE, type SinterProfile } from "./config";
 
 import {
   displayId,
@@ -232,6 +232,47 @@ async function readSessionForPort(ctx: Ctx, row: LedgerRow): Promise<SifSession>
 }
 
 // ----------------------------------------------------------------- commands
+
+export async function cmdConfig(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { strings: ["config"], booleans: ["json"] });
+  const action = args._[0] ?? "show";
+  if (args._.length > 1 || !["show", "path", "validate"].includes(action))
+    throw new CliError("usage: sinter config [show|path|validate] [--config file] [--json]");
+  const configPath = flagString(args, "config") ?? defaultConfigPath();
+  if (action === "path") {
+    if (flagBool(args, "json")) ctx.out(JSON.stringify({ configPath }, null, 2));
+    else ctx.out(configPath);
+    return EXIT.OK;
+  }
+
+  const summary = inspectConfig(configPath);
+  if (action === "validate") {
+    const stores = summary.profiles.reduce((total, profile) => total + Object.keys(profile.stores).length, 0);
+    if (flagBool(args, "json")) {
+      ctx.out(JSON.stringify({ valid: true, configPath, profiles: summary.profiles.length, stores }, null, 2));
+    } else {
+      ctx.out(`valid config: ${summary.profiles.length} profile(s), ${stores} store root(s)`);
+    }
+    return EXIT.OK;
+  }
+
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify(summary, null, 2));
+    return EXIT.OK;
+  }
+  ctx.out(`config: ${configPath}`);
+  const rows = summary.profiles.flatMap((profile) =>
+    Object.entries(profile.stores).map(([harness, path]) => [profile.name, harness, path ?? ""]),
+  );
+  ctx.out(
+    renderTable(
+      [{ header: "PROFILE" }, { header: "HARNESS" }, { header: "STORE ROOT", flex: true }],
+      rows,
+      { width: ctx.width, pal: ctx.pal },
+    ),
+  );
+  return EXIT.OK;
+}
 
 export async function cmdScan(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv, { strings: ["harness"] });

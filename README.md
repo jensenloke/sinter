@@ -39,6 +39,14 @@ sinter feedback
 sinter gui
 ```
 
+Inspect profile configuration without starting a scan:
+
+```sh
+sinter config path
+sinter config show
+sinter config validate
+```
+
 ## Feedback
 
 Run `sinter feedback` to open a prefilled GitHub issue. Sinter includes only its
