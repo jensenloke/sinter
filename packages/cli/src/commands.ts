@@ -34,7 +34,7 @@ import {
   type Palette,
 } from "./format";
 import { renderTranscript, slimSession } from "./render";
-import { applyTransfer, TRANSFER_MODES, type TransferMode } from "./transfer";
+import { applyTransfer, fmtBytes, TRANSFER_MODES, type TransferMode } from "./transfer";
 
 export interface Ctx {
   registry: AdapterRegistry;
@@ -444,21 +444,77 @@ export async function cmdImport(argv: string[], ctx: Ctx): Promise<number> {
 export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv, {
     strings: ["to", "cwd", "mode"],
-    booleans: ["live-tools", "dry-run"],
+    booleans: ["live-tools", "dry-run", "preview", "json"],
   });
   const prefix = args._[0];
   if (!prefix) throw new CliError("usage: sinter port <id-prefix> --to <harness>");
+  if (flagBool(args, "json") && !flagBool(args, "preview"))
+    throw new CliError("--json is currently available with --preview");
   const to = flagString(args, "to");
   if (!to) throw new CliError("sinter port needs --to <harness>");
   const target = parseHarness(to);
 
   const row = resolveRow(ctx, prefix);
-  let session = await readSessionForPort(ctx, row);
+  const source = await readSessionForPort(ctx, row);
   const mode = (flagString(args, "mode") ?? "full") as TransferMode;
   if (!TRANSFER_MODES.includes(mode))
     throw new CliError(`unknown --mode: ${mode} (known: ${TRANSFER_MODES.join(", ")})`);
-  session = applyTransfer(session, mode).session;
+  const transfer = applyTransfer(source, mode);
+  const session = transfer.session;
   validateSession(session);
+  if (flagBool(args, "preview")) {
+    if (flagBool(args, "dry-run")) throw new CliError("--preview and --dry-run are separate modes; choose one");
+    const adapter = await ctx.registry.get(target);
+    if (!adapter.write) throw new CliError(`${target} adapter cannot write sessions yet`);
+    let store: "detected" | "absent" | "check failed" = "absent";
+    try {
+      store = (await adapter.detect()) ? "detected" : "absent";
+    } catch {
+      store = "check failed";
+    }
+    const cwdFlag = flagString(args, "cwd");
+    const cwd = cwdFlag === "." ? process.cwd() : cwdFlag ?? session.cwd;
+    const reduction = transfer.stats.bytesBefore
+      ? Math.max(0, Math.round((1 - transfer.stats.bytesAfter / transfer.stats.bytesBefore) * 100))
+      : 0;
+    const preview = {
+      source: { harness: row.harness, nativeId: row.nativeId },
+      target: { harness: target, adapter: "write-capable", store },
+      mode,
+      cwd,
+      entries: { before: source.entries.length, after: session.entries.length },
+      payload: {
+        bytesBefore: transfer.stats.bytesBefore,
+        bytesAfter: transfer.stats.bytesAfter,
+        reductionPercent: reduction,
+      },
+      compact: {
+        toolResultsCollapsed: transfer.stats.resultsCollapsed,
+        thinkingDropped: transfer.stats.thinkingDropped,
+      },
+      historicalTools: flagBool(args, "live-tools") ? "live" : "inert",
+      writes: false,
+    };
+    if (flagBool(args, "json")) {
+      ctx.out(JSON.stringify(preview, null, 2));
+      return EXIT.OK;
+    }
+    const rows = [
+      ["source", `${row.harness}:${row.nativeId}`],
+      ["target", `${target} (${store}, write-capable)`],
+      ["mode", mode],
+      ["working directory", cwd],
+      ["entries", `${preview.entries.before} → ${preview.entries.after}`],
+      ["payload", `${fmtBytes(transfer.stats.bytesBefore)} → ${fmtBytes(transfer.stats.bytesAfter)} (${reduction}% smaller)`],
+      ["tool results collapsed", String(transfer.stats.resultsCollapsed)],
+      ["thinking blocks dropped", String(transfer.stats.thinkingDropped)],
+      ["historical tools", preview.historicalTools],
+      ["writes", "none — preview only"],
+    ];
+    ctx.out("Port preview");
+    ctx.out(renderTable([{ header: "FIELD" }, { header: "VALUE", flex: true }], rows, { width: ctx.width, pal: ctx.pal }));
+    return EXIT.OK;
+  }
   ctx.err(`porting ${row.harness}:${shortId(row.nativeId, 12)} → ${target}`);
   return writeInto(ctx, target, session, args);
 }
