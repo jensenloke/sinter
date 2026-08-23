@@ -43,6 +43,25 @@ the next one through real usage and privacy review.
    rendering an entire long-running session or emitting an incomplete
    machine-readable SIF document.
 
+## Next CLI candidates
+
+Prioritized candidates after the current draft stack, not release commitments:
+
+1. **Pinned sessions.** Keep a small, Sinter-local shortlist above the churn of
+   a large ledger with `pin`, `unpin`, and `pinned`; pins must survive rescans.
+2. **Thread inspection.** Expose a ported session's ordered lineage, transfer
+   modes, and resumable tip without requiring the interactive TUI.
+3. **Saved views.** Name reusable combinations of project, harness, recency, and
+   ghost/subagent filters without weakening the explicit command flags.
+4. **Capability matrix.** Report which installed adapters can read, write, and
+   resume, plus known limitations, in both human and versioned JSON forms.
+5. **Safe ghost housekeeping.** Preview and remove only disposable ledger rows;
+   never touch native harness stores, aliases, pins, or lineage implicitly.
+6. **Local tags and notes.** Add searchable user metadata without modifying
+   native sessions or uploading it anywhere.
+7. **Watch mode.** Refresh a project or recent-session view as local harness
+   stores change, with predictable terminal and non-interactive behavior.
+
 ## Phase 1: portable session capsules
 
 Add an encrypted `.sinter` capsule that can move independently of a particular
