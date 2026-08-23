@@ -14,6 +14,7 @@ import { DynamicAdapterRegistry } from "./adapters";
 import { loadProfile, type SinterProfile } from "./config";
 import {
   cmdCompletion,
+  cmdConfig,
   cmdDoctor,
   cmdExport,
   cmdFeedback,
@@ -43,7 +44,7 @@ import { trackTelemetry, type TelemetryEvent } from "./telemetry";
 export const VERSION = "0.1.10";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
-const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "privacy", "feedback", "telemetry", "completion"]);
+const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "privacy", "feedback", "telemetry", "completion", "config"]);
 
 /**
  * Keep the ledger fresh on every invocation: commands that resolve or list
@@ -74,6 +75,7 @@ async function autoScanLedger(ctx: Ctx, argv: string[]): Promise<void> {
 
 const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = {
   completion: cmdCompletion,
+  config: cmdConfig,
   scan: cmdScan,
   ls: cmdLs,
   list: cmdLs,
@@ -107,6 +109,7 @@ usage: sinter [command] [args]
   menu [--all] [--mode full|slim|compact]
                                          the same menu, explicitly
   scan                                   refresh the ledger from every available harness
+  config [show|path|validate]            inspect and validate local profile configuration
   ls [--harness x] [--cwd .] [--since 7d] [--limit n]
                                          list sessions, newest first
   recent [--harness x] [--cwd .] [-n 10]
@@ -147,6 +150,7 @@ ids: any unambiguous native-id prefix, optionally harness-scoped (codex:0199ab).
 `;
 
 const COMMAND_HELP: Record<string, string> = {
+  config: "usage: sinter config [show|path|validate] [--config file] [--json]\n\nShows profile store roots, prints the resolved config path, or validates every profile.",
   scan: "usage: sinter scan [--harness claude,codex]\n\nRefreshes the local ledger. Reads local stores only.",
   ls: "usage: sinter ls [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]",
   recent: "usage: sinter recent [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]\n\nLists the newest non-ghost parent sessions; defaults to 10.",
