@@ -38,6 +38,7 @@ import {
   cmdSearch,
   cmdShow,
   cmdTelemetry,
+  cmdThread,
   cmdUnpin,
   type Ctx,
 } from "./commands";
@@ -89,6 +90,7 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   recent: cmdRecent,
   pin: cmdPin,
   pinned: cmdPinned,
+  thread: cmdThread,
   last: cmdLast,
   search: cmdSearch,
   rename: cmdRename,
@@ -128,6 +130,7 @@ usage: sinter [command] [args]
   pin <id-prefix>                        bookmark a session in the local ledger
   unpin <id-prefix>                      remove a local session bookmark
   pinned [--harness x] [--cwd .]        list bookmarked sessions
+  thread <id-prefix> [--json]           inspect port lineage and resumable tip
   projects [--harness x] [--since 7d]   group resumable sessions by project
   last [--harness x] [--cwd .] [--exec]  print or run the newest resume command
   search <query>                         full-text match over aliases, titles + prompts
@@ -174,6 +177,7 @@ const COMMAND_HELP: Record<string, string> = {
   pin: "usage: sinter pin <id-prefix>\n\nBookmarks a session in Sinter's local ledger without modifying its harness store.",
   unpin: "usage: sinter unpin <id-prefix>\n\nRemoves a Sinter-local bookmark without modifying the session.",
   pinned: "usage: sinter pinned [--harness x] [--cwd .] [--since 7d] [--limit n] [--json] [--no-ghost] [--no-sub]\n\nLists local bookmarks. Pins survive rescans and native-session garbage collection.",
+  thread: "usage: sinter thread <id-prefix> [--json]\n\nShows cached port lineage, transfer modes, missing hops, and the newest resumable session without reading transcripts.",
   projects: "usage: sinter projects [--harness x] [--since 7d] [--limit n] [--json]\n\nGroups resumable parent sessions by working directory without reading transcript bodies.",
   last: "usage: sinter last [--harness x] [--cwd .] [--since 7d] [--id|--json|--exec]\n\nSelects the newest non-ghost parent session. By default, prints its native resume command.",
   search: "usage: sinter search <query> [--harness x] [--json]",

@@ -480,7 +480,7 @@ describe("write", () => {
     try {
       const source = await toolsSession();
       const target = new ClaudeAdapter({ root: join(root, "projects") });
-      const ref = await target.write(source, { cwd: "/tmp/ported-claude" });
+      const ref = await target.write(source, { cwd: "/tmp/ported-claude", mode: "compact" });
       const nativePath = ref.nativePath;
       expect(typeof nativePath).toBe("string");
       if (typeof nativePath !== "string") throw new Error("writer did not report a transcript path");
@@ -491,6 +491,7 @@ describe("write", () => {
       expect(native.cwd).toBe("/tmp/ported-claude");
       expect(native.origin.nativeId).toBe(ref.nativeId);
       expect(native.preserve?.sinter).toBeDefined();
+      expect((native.preserve?.sinter as { mode?: string }).mode).toBe("compact");
       expect(native.entries.some((entry) => entry.kind === "toolResult")).toBe(false);
       expect(JSON.stringify(native.entries)).toContain("historical tool call");
 

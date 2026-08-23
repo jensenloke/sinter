@@ -518,7 +518,7 @@ describe("write", () => {
     const adapter = new CodexAdapter({ home });
     const source = sourceSession();
 
-    const ref = await adapter.write(source, { cwd: "/tmp/target" });
+    const ref = await adapter.write(source, { cwd: "/tmp/target", mode: "compact" });
     expect(ref.harness).toBe("codex");
     const nativePath = ref.nativePath;
     expect(typeof nativePath).toBe("string");
@@ -526,12 +526,14 @@ describe("write", () => {
     expect(ref.created).toEqual([nativePath]);
     expect(existsSync(nativePath)).toBe(true);
     expect(ref.provenance?.chain.map((h) => h.harness)).toEqual(["omp", "codex"]);
+    expect(ref.provenance?.mode).toBe("compact");
 
     const native = await adapter.read({ harness: "codex", nativeId: ref.nativeId, nativePath });
     validateSession(native);
     expect(native.origin.nativeId).toBe(ref.nativeId);
     expect(native.cwd).toBe("/tmp/target");
     expect(provenanceOf(native)?.threadId).toBe(ref.provenance!.threadId);
+    expect(provenanceOf(native)?.mode).toBe("compact");
     expect(native.entries.some((e) => e.kind === "toolResult")).toBe(false);
     expect(JSON.stringify(native.entries)).toContain("historical tool call");
 

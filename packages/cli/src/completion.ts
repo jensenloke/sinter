@@ -8,6 +8,7 @@ const COMMANDS = [
   ["pin", "bookmark a session locally"],
   ["unpin", "remove a local bookmark"],
   ["pinned", "list bookmarked sessions"],
+  ["thread", "inspect session port lineage"],
   ["projects", "group sessions by working directory"],
   ["last", "resume the newest matching session"],
   ["search", "search sessions"],
@@ -68,6 +69,7 @@ ${commands}
     pin) _arguments $global_args '1:session id' ;;
     unpin) _arguments $global_args '1:session id' ;;
     pinned) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
+    thread) _arguments $global_args '1:session id' '--json' ;;
     projects) _arguments $global_args '--harness=[filter by harness]:harnesses' '--since=[time window]:duration' '--limit=[maximum projects]:count' '--json' ;;
     last) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--id' '--json' '--exec' ;;
     search) _arguments $global_args '1:query' '--harness=[filter by harness]:harnesses' '--json' ;;
@@ -145,6 +147,7 @@ function fish(): string {
     "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l no-ghost -d 'Hide missing native sessions'",
     "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l no-sub -d 'Hide subagent sessions'",
+    "complete -c sinter -n '__fish_seen_subcommand_from thread' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from show' -l json -d 'Emit one SIF JSON document'",
     "complete -c sinter -n '__fish_seen_subcommand_from show' -l ndjson -d 'Stream versioned transcript records'",
     "complete -c sinter -n '__fish_seen_subcommand_from show' -l tail -r -d 'Latest entries to render'",

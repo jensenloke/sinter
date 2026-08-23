@@ -9,7 +9,7 @@ import type {
   SifSession,
 } from "@sinter/core";
 import { provenanceOf, validateSession } from "@sinter/core";
-import type { Ledger, LedgerRow, ListOpts } from "@sinter/ledger";
+import type { Ledger, LedgerRow, LineageRow, ListOpts } from "@sinter/ledger";
 import {
   CliError,
   EXIT,
@@ -412,6 +412,113 @@ export async function cmdPinned(argv: string[], ctx: Ctx): Promise<number> {
   return EXIT.OK;
 }
 
+interface ThreadHopView {
+  hop: number;
+  harness: HarnessId;
+  nativeId: string;
+  parentHarness?: HarnessId;
+  parentNativeId?: string;
+  mode?: string;
+  portedAt?: string;
+  selected: boolean;
+  present: boolean;
+  ghost?: boolean;
+  resumable: boolean;
+  alias?: string;
+  title?: string;
+  cwd?: string;
+  updatedAt?: string;
+}
+
+function threadHop(link: LineageRow, selected: LedgerRow, ledger: Ledger): ThreadHopView {
+  const row = ledger.get(link.harness, link.nativeId);
+  return {
+    hop: link.hop,
+    harness: link.harness,
+    nativeId: link.nativeId,
+    parentHarness: link.parentHarness,
+    parentNativeId: link.parentNativeId,
+    mode: link.mode,
+    portedAt: link.portedAt,
+    selected: link.harness === selected.harness && link.nativeId === selected.nativeId,
+    present: !!row,
+    ghost: row?.ghost || undefined,
+    resumable: !!row && !row.ghost && !row.isSubagent,
+    alias: row?.alias,
+    title: row?.title ?? row?.firstPrompt,
+    cwd: row?.cwd,
+    updatedAt: row?.updatedAt ?? row?.createdAt,
+  };
+}
+
+/** Inspect the cached port lineage without reading transcript bodies or native stores. */
+export async function cmdThread(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { booleans: ["json"] });
+  if (args._.length !== 1) throw new CliError("usage: sinter thread <id-prefix> [--json]");
+  const selected = resolveRow(ctx, args._[0]!);
+  const ledger = ctx.ledger();
+  const cachedThreadId = ledger.threadIdOf(selected.harness, selected.nativeId);
+  const links: LineageRow[] = cachedThreadId
+    ? ledger.lineageFor(cachedThreadId)
+    : [{ harness: selected.harness, nativeId: selected.nativeId, threadId: `${selected.harness}:${selected.nativeId}`, hop: 0 }];
+  const hops = links.map((link) => threadHop(link, selected, ledger));
+  const tip = [...hops].reverse().find((hop) => hop.resumable);
+  const threadId = cachedThreadId ?? `${selected.harness}:${selected.nativeId}`;
+  const result = {
+    schema: "sinter.thread.v1",
+    threadId,
+    lineageCached: !!cachedThreadId,
+    ported: links.length > 1,
+    selected: { harness: selected.harness, nativeId: selected.nativeId },
+    hops,
+    resumableTip: tip
+      ? {
+          hop: tip.hop,
+          harness: tip.harness,
+          nativeId: tip.nativeId,
+          command: ["sinter", "resume", `${tip.harness}:${tip.nativeId}`],
+        }
+      : null,
+  };
+
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify(result, null, 2));
+    return EXIT.OK;
+  }
+
+  ctx.out(`Thread ${threadId}${cachedThreadId ? "" : " (no cached port lineage)"}`);
+  ctx.out(
+    renderTable(
+      [
+        { header: "HOP", max: 3, align: "right" },
+        { header: "SESSION", max: 24 },
+        { header: "MODE", max: 9 },
+        { header: "AGE", max: 5, align: "right" },
+        { header: "STATE", max: 14 },
+        { header: "TITLE", flex: true },
+      ],
+      hops.map((hop) => [
+        String(hop.hop),
+        `${hop.selected ? "→ " : "  "}${hop.harness}:${displayId(hop.nativeId)}`,
+        hop.hop === 0 ? "origin" : (hop.mode ?? "unknown"),
+        humanAge(hop.updatedAt ?? hop.portedAt, ctx.now),
+        !hop.present ? "metadata only" : hop.ghost ? "ghost" : hop.resumable ? "resumable" : "sidechain",
+        `${hop.alias ? `${hop.alias} · ` : ""}${hop.title ?? ""}`,
+      ]),
+      { width: ctx.width, pal: ctx.pal },
+    ),
+  );
+  if (tip) {
+    ctx.out("");
+    ctx.out(`resumable tip: ${ctx.pal.bold(`${tip.harness}:${tip.nativeId}`)}`);
+    ctx.out(ctx.pal.dim(`resume with: sinter resume ${tip.harness}:${tip.nativeId}`));
+  } else {
+    ctx.err("no resumable session remains in this thread");
+  }
+  if (!cachedThreadId) ctx.err(ctx.pal.dim("run `sinter relink` to rebuild lineage cached in native target sessions"));
+  return EXIT.OK;
+}
+
 /** Summarize resumable work by directory without parsing any transcripts. */
 export async function cmdProjects(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv, {
@@ -640,6 +747,7 @@ async function writeInto(
   target: HarnessId,
   session: SifSession,
   args: ParsedArgs,
+  mode?: string,
 ): Promise<number> {
   const adapter = await ctx.registry.get(target);
   if (!adapter.write) throw new CliError(`${target} adapter cannot write sessions yet`);
@@ -649,6 +757,7 @@ async function writeInto(
   const resolvedCwd = cwd === "." ? process.cwd() : cwd;
   const ref = await adapter.write(session, {
     cwd: resolvedCwd,
+    mode,
     liveTools: flagBool(args, "live-tools"),
     dryRun,
   });
@@ -791,7 +900,7 @@ export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
     return EXIT.OK;
   }
   ctx.err(`porting ${row.harness}:${shortId(row.nativeId, 12)} → ${target}`);
-  return writeInto(ctx, target, session, args);
+  return writeInto(ctx, target, session, args, mode);
 }
 
 export async function cmdResume(argv: string[], ctx: Ctx): Promise<number> {
@@ -824,6 +933,7 @@ export async function cmdResume(argv: string[], ctx: Ctx): Promise<number> {
     ctx.err(`porting ${row.harness}:${shortId(row.nativeId, 12)} → ${target}`);
     const native = await targetAdapter.write(session, {
       cwd: flagString(args, "cwd") === "." ? process.cwd() : flagString(args, "cwd"),
+      mode: "full",
       liveTools: flagBool(args, "live-tools"),
       dryRun: flagBool(args, "dry-run"),
     });

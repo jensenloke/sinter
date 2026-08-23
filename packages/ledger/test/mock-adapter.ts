@@ -73,6 +73,7 @@ export class MockAdapter implements HarnessAdapter {
       target: { harness: this.id, nativeId },
       sinterVersion: "0.1.0-mock",
       portedAt: new Date().toISOString(),
+      mode: opts?.mode,
       inertTools: !opts?.liveTools,
     });
     if (!opts?.dryRun) {

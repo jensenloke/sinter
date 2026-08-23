@@ -45,8 +45,6 @@ export interface NativeWriteOpts extends WriteOpts {
   nativeId?: string;
   /** Provenance to persist verbatim, overriding what this writer would build. */
   provenance?: SinterProvenance;
-  /** Transfer mode recorded in the provenance record: full | slim | compact | digest. */
-  mode?: string;
   /** Stash the source SIF for carry-forward reads. Default true. */
   carry?: boolean;
   /** Root for carry sidecars (`~/.sinter` by default). Tests point this at a temp dir. */

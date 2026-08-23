@@ -302,7 +302,14 @@ async function buildWriteProvenance(session: SifSession, nativeId: string, opts?
   const tail = prior?.chain[prior.chain.length - 1];
   const record = prior && tail?.harness === "devin" && tail.nativeId !== session.origin.nativeId
     ? prior
-    : buildProvenance({ source: session, target, sinterVersion: SINTER_VERSION, portedAt: new Date().toISOString(), inertTools: !opts?.liveTools });
+    : buildProvenance({
+        source: session,
+        target,
+        sinterVersion: SINTER_VERSION,
+        portedAt: new Date().toISOString(),
+        mode: opts?.mode,
+        inertTools: !opts?.liveTools,
+      });
   if (record.carry || record.carryRef) return record;
   const payload = carrySource(session);
   if (!opts?.dryRun) return { ...record, ...(await storeCarry(payload, target)) };

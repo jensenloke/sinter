@@ -156,7 +156,7 @@ describe("DevinAdapter", () => {
 
   test("writes a new resumable session with inert historical tools by default", async () => {
     const adapter = new DevinAdapter({ dbPath });
-    const ref = await adapter.write(portableSession());
+    const ref = await adapter.write(portableSession(), { mode: "compact" });
     expect(ref.harness).toBe("devin");
     expect(ref.nativeId).toMatch(/^sinter-[0-9a-f]{12}$/);
     expect(ref.created).toEqual([dbPath]);
@@ -168,6 +168,7 @@ describe("DevinAdapter", () => {
     db.close();
     expect(row.main_chain_id).toBe(2);
     expect(JSON.parse(row.metadata).sinter.chain.at(-1).harness).toBe("devin");
+    expect(JSON.parse(row.metadata).sinter.mode).toBe("compact");
     expect(messages.map((item) => item.role)).toEqual(["user", "assistant", "assistant"]);
     expect(messages[1]!.content).toContain("[historical tool call: exec");
     expect(messages[1]!.content).toContain("4 pass");

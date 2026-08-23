@@ -505,6 +505,7 @@ async function resolveProvenance(
         target,
         sinterVersion: SINTER_VERSION,
         portedAt: new Date().toISOString(),
+        mode: opts?.mode,
         inertTools: !opts?.liveTools,
       });
   if (record.carry || record.carryRef) return record;

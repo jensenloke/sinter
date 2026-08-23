@@ -167,6 +167,103 @@ describe("threads built from ledger lineage", () => {
   });
 });
 
+describe("sinter thread", () => {
+  async function inspect(id: string, json = true): Promise<{ code: number; out: string; err: string }> {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const code = await run(["thread", id, ...(json ? ["--json"] : [])], {
+      ...h.ctx,
+      out: (line) => stdout.push(line),
+      err: (line) => stderr.push(line),
+    });
+    return { code, out: stdout.join("\n"), err: stderr.join("\n") };
+  }
+
+  test("describes an unported session as a one-hop thread", async () => {
+    const result = await inspect("cdx-1");
+    expect(result.code).toBe(0);
+    const json = JSON.parse(result.out);
+    expect(json).toMatchObject({
+      schema: "sinter.thread.v1",
+      threadId: "codex:cdx-1",
+      lineageCached: false,
+      ported: false,
+      selected: { harness: "codex", nativeId: "cdx-1" },
+      resumableTip: { hop: 0, harness: "codex", nativeId: "cdx-1" },
+    });
+    expect(json.hops).toHaveLength(1);
+    expect(json.hops[0]).toMatchObject({ hop: 0, present: true, resumable: true, selected: true });
+  });
+
+  test("reports ordered transfer modes and the newest resumable tip", async () => {
+    const ompId = await port("cdx-1", "omp");
+    await h.ledger.scan([h.codex, h.omp, h.pi]);
+    const piId = await port(ompId, "pi", ["--mode", "compact"]);
+    await h.ledger.scan([h.codex, h.omp, h.pi]);
+
+    const result = await inspect(ompId);
+    const json = JSON.parse(result.out);
+    expect(json.schema).toBe("sinter.thread.v1");
+    expect(json.ported).toBe(true);
+    expect(json.hops.map((hop: { harness: string; mode?: string }) => [hop.harness, hop.mode])).toEqual([
+      ["codex", undefined],
+      ["omp", "full"],
+      ["pi", "compact"],
+    ]);
+    expect(json.hops.map((hop: { hop: number }) => hop.hop)).toEqual([0, 1, 2]);
+    expect(json.hops[1].selected).toBe(true);
+    expect(json.resumableTip).toEqual({
+      hop: 2,
+      harness: "pi",
+      nativeId: piId,
+      command: ["sinter", "resume", `pi:${piId}`],
+    });
+  });
+
+  test("falls back to the latest surviving hop and retains metadata-only ancestors", async () => {
+    const ompId = await port("cdx-1", "omp");
+    await h.ledger.scan([h.codex, h.omp, h.pi]);
+    const piId = await port(ompId, "pi");
+    await h.ledger.scan([h.codex, h.omp, h.pi]);
+    h.ledger.db.run("DELETE FROM sessions WHERE harness = 'codex' AND native_id = 'cdx-1'");
+    h.ledger.db.run("UPDATE sessions SET ghost = 1 WHERE harness = 'pi' AND native_id = ?", [piId]);
+
+    const result = await inspect(piId);
+    const json = JSON.parse(result.out);
+    expect(json.hops[0]).toMatchObject({ harness: "codex", present: false, resumable: false });
+    expect(json.hops[2]).toMatchObject({ harness: "pi", ghost: true, resumable: false, selected: true });
+    expect(json.resumableTip).toMatchObject({ hop: 1, harness: "omp", nativeId: ompId });
+  });
+
+  test("human output labels the selected hop, modes, and resume command", async () => {
+    const ompId = await port("cdx-1", "omp");
+    await h.ledger.scan([h.codex, h.omp, h.pi]);
+    const result = await inspect(ompId, false);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("Thread ");
+    expect(result.out).toContain("origin");
+    expect(result.out).toContain("full");
+    expect(result.out).toContain(`resumable tip: omp:${ompId}`);
+    expect(result.out).toContain(`sinter resume omp:${ompId}`);
+  });
+
+  test("requires exactly one session id", async () => {
+    const missingErr: string[] = [];
+    expect(await run(["thread"], { ...h.ctx, err: (line) => missingErr.push(line) })).toBe(1);
+    expect(missingErr.join("\n")).toContain("usage: sinter thread");
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    expect(
+      await run(["thread", "cdx-1", "extra"], {
+        ...h.ctx,
+        out: (line) => stdout.push(line),
+        err: (line) => stderr.push(line),
+      }),
+    ).toBe(1);
+    expect(stderr.join("\n")).toContain("usage: sinter thread");
+  });
+});
+
 describe("sinter relink", () => {
   test("rebuilds the lineage cache from the stores after it is lost", async () => {
     const ompId = await port("cdx-1", "omp");
