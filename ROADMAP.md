@@ -84,6 +84,45 @@ this release candidate until its security review is resolved. Cloud accounts,
 sync, telemetry enablement, npm publication, and deployment are also outside
 this checkpoint.
 
+## Evidence before expansion
+
+npm downloads are a distribution signal, not proof of active use: automated
+installs, caches, CI, upgrades, and mirrors can all inflate them. Product
+decisions should combine:
+
+- successful first scan and first useful action (`show`, `resume`, or `port`);
+- weekly active installations and four-week return rate;
+- transfer attempts, successes, target harnesses, and failure categories;
+- `sinter feedback`, GitHub issues, and short user interviews;
+- capsule/device-transfer demand expressed as a concrete workflow, not a vote.
+
+Any product analytics remain explicit opt-in, content-free, documented, and
+disabled until a collector and retention policy are approved. Session IDs,
+paths, prompts, titles, transcript content, repository identity, and account
+credentials are never product metrics. A small number of retained users with a
+repeated portability problem matters more than a large download count.
+
+## Post-release CLI research
+
+Feature-freeze the current release candidate. Validate these candidates with
+usage and support evidence before selecting another implementation batch:
+
+1. **Lightweight session info.** Resolve one prefix and show cached identity,
+   activity, project, model, metadata, capability, and lineage without reading
+   the transcript.
+2. **Unix pipelines.** Accept SIF from stdin and make stream/file behavior
+   explicit so export, inspection, redaction, and import compose safely.
+3. **Deep adapter self-test.** Add an explicit, reviewable diagnostic that can
+   round-trip synthetic content in a temporary target store without touching a
+   user's sessions.
+4. **Typo-aware command help.** Suggest the closest command and flag while
+   retaining stable exit codes and machine-readable errors.
+5. **Ledger backup and repair.** Preview migrations, create a local backup, and
+   verify/rebuild derived indexes without changing native harness stores.
+6. **Continuation brief.** Produce a deterministic, inspectable handoff summary
+   from selected turns as a separate artifact; never silently substitute it for
+   the full transcript.
+
 ## Phase 1: portable session capsules
 
 Add an encrypted `.sinter` capsule that can move independently of a particular
@@ -158,6 +197,13 @@ need explicit validation.
 The honest initial promise would be “start an isolated workspace from this
 session capsule,” not “reproduce the exact local machine.” Prototype this only
 after capsules and device transfer prove that users value portable context.
+
+Sinter should not build a terminal multiplexer, PTY host, background process
+supervisor, or SSH streaming layer. Products such as HerdR own the live runtime
+and process lifecycle; Sinter owns durable conversation state, provenance,
+inspection, transfer, and encrypted routing. If cloud execution is eventually
+validated, define an executor interface and integrate with a runtime rather
+than absorbing runtime supervision into the Sinter core.
 
 ## Product principles
 
