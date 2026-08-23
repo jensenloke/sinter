@@ -23,7 +23,7 @@ the next one through real usage and privacy review.
 4. **Consistent machine-readable output — first contract ready in draft PR
    #9.** Versioned JSON is available for scan and doctor health, port previews,
    config inspection, recent-session queries, and error envelopes. Versioned
-   NDJSON transcript streaming is ready in the stacked transcript checkpoint.
+   NDJSON transcript streaming is ready in PR #11 and integrated in PR #15.
 5. **Safe diagnostic bundles — ready in draft PR #7.** Let `sinter doctor
    --report` produce a reviewable support report containing versions and store
    health while excluding paths, prompts, titles, session IDs, transcripts,
@@ -32,15 +32,16 @@ the next one through real usage and privacy review.
    show|path|validate` for local profiles. Guided writes for defaults, update
    checks, and telemetry remain a later checkpoint because they require a
    stable, migration-safe config schema.
-7. **Project overview — ready in draft PR #12.** Group resumable parent sessions
-   by working directory so large multi-harness ledgers stay navigable without
-   parsing transcript bodies.
-8. **Transfer verification — ready in draft PR #13.** Compare source and target
-   transcript structure after a port without printing conversation content or
-   overstating count equality as semantic equivalence.
-9. **Large transcript navigation — ready in draft PR #14.** Add a bounded tail
-   view for quickly reading the latest turns without rendering an entire
-   long-running session or emitting an incomplete machine-readable SIF document.
+7. **Project overview — ready in draft PR #12, integrated in #15.** Group
+   resumable parent sessions by working directory so large multi-harness
+   ledgers stay navigable without parsing transcript bodies.
+8. **Transfer verification — ready in draft PR #13, integrated in #15.** Compare
+   source and target transcript structure after a port without printing
+   conversation content or overstating count equality as semantic equivalence.
+9. **Large transcript navigation — ready in draft PR #14, integrated in #15.**
+   Add a bounded tail view for quickly reading the latest turns without
+   rendering an entire long-running session or emitting an incomplete
+   machine-readable SIF document.
 
 ## Phase 1: portable session capsules
 
