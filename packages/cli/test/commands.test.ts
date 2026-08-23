@@ -159,6 +159,54 @@ describe("capabilities", () => {
   });
 });
 
+describe("ghost housekeeping", () => {
+  function seedGhosts() {
+    h.ledger.upsert(summary({ nativeId: "ghost-plain", ghost: true, title: "disposable" }));
+    h.ledger.upsert(summary({ nativeId: "ghost-named", ghost: true, title: "named" }));
+    h.ledger.upsert(summary({ nativeId: "ghost-pinned", ghost: true, title: "pinned" }));
+    h.ledger.setAlias("claude", "ghost-named", "keep this alias");
+    h.ledger.setPinned("claude", "ghost-pinned", true, "2026-07-01T00:00:00.000Z");
+    h.ledger.recordLineage({ harness: "claude", nativeId: "ghost-plain", threadId: "ghost-thread", hop: 0 });
+    h.ledger.db.run("UPDATE sessions SET scanned_at = '2026-07-01T00:00:00.000Z' WHERE native_id LIKE 'ghost-%'");
+  }
+
+  test("previews eligible and protected ghosts without changing the ledger", async () => {
+    seedGhosts();
+    expect(await run(["ghosts", "--json"], h.ctx)).toBe(0);
+    expect(JSON.parse(h.out())).toMatchObject({
+      schema: "sinter.ghosts.v1",
+      action: "preview",
+      olderThan: "30d",
+      eligible: 1,
+      protected: 2,
+      removed: 0,
+    });
+    expect(h.ledger.get("claude", "ghost-plain")).toBeDefined();
+  });
+
+  test("requires explicit confirmation and preserves local metadata and lineage", async () => {
+    seedGhosts();
+    expect(await run(["ghosts", "prune"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("without --yes");
+    expect(h.ledger.get("claude", "ghost-plain")).toBeDefined();
+
+    h.stdout.length = 0;
+    h.stderr.length = 0;
+    expect(await run(["ghosts", "prune", "--yes", "--json"], h.ctx)).toBe(0);
+    expect(JSON.parse(h.out())).toMatchObject({ action: "prune", eligible: 1, protected: 2, removed: 1 });
+    expect(h.ledger.get("claude", "ghost-plain")).toBeUndefined();
+    expect(h.ledger.get("claude", "ghost-named")?.alias).toBe("keep this alias");
+    expect(h.ledger.get("claude", "ghost-pinned")?.pinnedAt).toBeTruthy();
+    expect(h.ledger.lineageFor("ghost-thread")).toHaveLength(1);
+  });
+
+  test("validates action, age, and harness filters", async () => {
+    expect(await run(["ghosts", "destroy"], h.ctx)).toBe(1);
+    expect(await run(["ghosts", "--older-than", "someday"], h.ctx)).toBe(1);
+    expect(await run(["ghosts", "--harness", "cursor"], h.ctx)).toBe(1);
+  });
+});
+
 describe("config", () => {
   test("shows and validates every profile without touching the ledger", async () => {
     const dir = mkdtempSync(join(tmpdir(), "sinter-config-"));
@@ -1006,7 +1054,7 @@ describe("auto-scan (always-fresh ledger)", () => {
     }
   });
 
-  test("scan, privacy, and capabilities do not trigger an automatic ledger scan", async () => {
+  test("scan and metadata-only commands do not trigger an automatic ledger scan", async () => {
     h.ctx.autoScan = true;
     let lists = 0;
     const original = h.claude.list.bind(h.claude);
@@ -1023,6 +1071,9 @@ describe("auto-scan (always-fresh ledger)", () => {
     h.stdout.length = 0;
     await run(["capabilities"], h.ctx);
     expect(lists).toBe(afterScan); // capability checks detect stores but never enumerate sessions
+    h.stdout.length = 0;
+    await run(["ghosts"], h.ctx);
+    expect(lists).toBe(afterScan); // housekeeping acts only on the current ledger snapshot
     expect(h.ledger.list()).toHaveLength(4);
   });
 

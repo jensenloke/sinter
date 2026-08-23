@@ -36,6 +36,7 @@ sinter pin <id-prefix>          # keep an important session in a local shortlist
 sinter pinned                  # list bookmarks across harnesses
 sinter thread <id-prefix>      # inspect port lineage and the resumable tip
 sinter capabilities           # check read, write, store, and resume support
+sinter ghosts                 # preview disposable ghost rows older than 30 days
 sinter projects                 # group resumable sessions by working directory
 sinter last --cwd .             # print the newest native resume command
 sinter last --cwd . --exec      # resume it in this terminal
@@ -69,6 +70,19 @@ sinter capabilities --harness codex --json
 Machine output uses the versioned `sinter.capabilities.v1` schema. A loaded
 adapter, a detected session store, and a native resume binary are reported as
 separate facts so an installed integration is not mistaken for a runnable one.
+
+Old ledger rows whose native transcript has disappeared are retained as
+ghosts. Housekeeping is deliberately two-step and protects anything with a
+local alias or pin:
+
+```sh
+sinter ghosts --older-than 30d
+sinter ghosts prune --older-than 30d --yes
+```
+
+Pruning removes only eligible session and search-index rows. It never changes
+native harness stores, aliases, pins, or cached thread lineage; a later scan can
+rediscover a native session if it returns.
 
 Inspect profile configuration without starting a scan:
 

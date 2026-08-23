@@ -413,6 +413,105 @@ export async function cmdPinned(argv: string[], ctx: Ctx): Promise<number> {
   return EXIT.OK;
 }
 
+const GHOSTS_SCHEMA = "sinter.ghosts.v1";
+
+/** Preview or explicitly prune disposable, locally cached ghost rows. */
+export async function cmdGhosts(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["harness", "older-than"],
+    booleans: ["json", "yes"],
+  });
+  const action = args._[0] ?? "preview";
+  if (args._.length > 1 || !["preview", "prune"].includes(action))
+    throw new CliError("usage: sinter ghosts [preview|prune] [--older-than 30d] [--harness x] [--json] [--yes]");
+
+  const olderThan = flagString(args, "older-than") ?? "30d";
+  let cutoff: string;
+  try {
+    cutoff = parseSince(olderThan, ctx.now);
+  } catch {
+    throw new CliError(`bad --older-than value: ${olderThan} (try 30d, 12w, or 2026-07-01)`);
+  }
+  const harnessFlag = flagString(args, "harness");
+  const harness = harnessFlag ? parseHarness(harnessFlag) : undefined;
+  const opts = { ...(harness ? { harness } : {}), before: cutoff };
+  const rows = ctx.ledger().ghosts(opts);
+  const record = (row: LedgerRow) => {
+    const protectedBy = [row.alias ? "alias" : undefined, row.pinnedAt ? "pin" : undefined].filter(
+      (value): value is string => !!value,
+    );
+    return {
+      harness: row.harness,
+      nativeId: row.nativeId,
+      lastObservedAt: row.scannedAt ?? row.updatedAt ?? row.createdAt,
+      protectedBy,
+      prunable: protectedBy.length === 0,
+    };
+  };
+  const records = rows.map(record);
+  const eligible = records.filter((item) => item.prunable).length;
+  const protectedCount = records.length - eligible;
+
+  let removed = 0;
+  if (action === "prune" && eligible > 0) {
+    if (!flagBool(args, "yes"))
+      throw new CliError(`refusing to remove ${eligible} ghost row${eligible === 1 ? "" : "s"} without --yes; preview with \`sinter ghosts\` first`);
+    removed = ctx.ledger().pruneGhosts(opts).length;
+  }
+
+  if (flagBool(args, "json")) {
+    ctx.out(
+      JSON.stringify(
+        {
+          schema: GHOSTS_SCHEMA,
+          action,
+          olderThan,
+          cutoff,
+          eligible,
+          protected: protectedCount,
+          removed,
+          ghosts: records,
+        },
+        null,
+        2,
+      ),
+    );
+    return EXIT.OK;
+  }
+
+  if (records.length) {
+    ctx.out(
+      renderTable(
+        [
+          { header: "ID", max: 14 },
+          { header: "HARNESS" },
+          { header: "LAST SEEN", align: "right" },
+          { header: "STATUS", flex: true },
+        ],
+        rows.map((row, index) => [
+          displayId(row.nativeId),
+          ctx.pal.cyan(row.harness),
+          humanAge(records[index]!.lastObservedAt, ctx.now),
+          records[index]!.prunable ? "prunable" : `protected by ${records[index]!.protectedBy.join(" + ")}`,
+        ]),
+        { width: ctx.width, pal: ctx.pal },
+      ),
+    );
+  }
+
+  if (action === "prune") {
+    ctx.out(`removed ${removed} disposable ghost row${removed === 1 ? "" : "s"}; ${protectedCount} protected`);
+    ctx.out(ctx.pal.dim("native stores, aliases, pins, and lineage were not modified"));
+  } else if (!records.length) {
+    ctx.out(`no ghost rows older than ${olderThan}`);
+  } else {
+    ctx.out("");
+    ctx.out(`${eligible} prunable; ${protectedCount} protected by a local alias or pin`);
+    ctx.out(ctx.pal.dim(`preview only — apply with: sinter ghosts prune --older-than ${olderThan}${harness ? ` --harness ${harness}` : ""} --yes`));
+  }
+  return EXIT.OK;
+}
+
 interface ThreadHopView {
   hop: number;
   harness: HarnessId;

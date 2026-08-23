@@ -257,6 +257,51 @@ describe("session pins", () => {
   });
 });
 
+describe("ghost housekeeping", () => {
+  test("prunes only old disposable rows and preserves aliases, pins, and lineage", async () => {
+    const l = ledger();
+    l.upsert(summary({ nativeId: "plain", ghost: true, title: "plain ghost" }));
+    l.upsert(summary({ nativeId: "named", ghost: true, title: "named ghost" }));
+    l.upsert(summary({ nativeId: "pinned", ghost: true, title: "pinned ghost" }));
+    l.upsert(summary({ nativeId: "fresh", ghost: true, title: "fresh ghost" }));
+    l.upsert(summary({ nativeId: "live", title: "live session" }));
+    l.setAlias("claude", "named", "keep my name");
+    l.setPinned("claude", "pinned", true, "2026-08-01T00:00:00.000Z");
+    l.recordLineage({ harness: "claude", nativeId: "plain", threadId: "thread-1", hop: 0 });
+    l.db.run("UPDATE sessions SET scanned_at = '2026-07-01T00:00:00.000Z' WHERE native_id != 'fresh'");
+    l.db.run("UPDATE sessions SET scanned_at = '2026-08-23T00:00:00.000Z' WHERE native_id = 'fresh'");
+
+    const opts = { before: "2026-08-01T00:00:00.000Z" };
+    expect(l.ghosts(opts).map((row) => row.nativeId)).toEqual(["named", "pinned", "plain"]);
+    expect(l.pruneGhosts(opts).map((row) => row.nativeId)).toEqual(["plain"]);
+    expect(l.get("claude", "plain")).toBeUndefined();
+    expect(l.search("plain")).toEqual([]);
+    expect(l.get("claude", "named")?.alias).toBe("keep my name");
+    expect(l.get("claude", "pinned")?.pinnedAt).toBeTruthy();
+    expect(l.get("claude", "fresh")).toBeDefined();
+    expect(l.get("claude", "live")).toBeDefined();
+    expect(l.lineageFor("thread-1")).toHaveLength(1);
+
+    const adapter = new MockAdapter({ id: "claude", summaries: [summary({ nativeId: "plain" })] });
+    await l.scan([adapter]);
+    expect(l.get("claude", "plain")).toMatchObject({ ghost: false });
+    expect(l.lineageFor("thread-1")).toHaveLength(1);
+    l.close();
+  });
+
+  test("filters ghosts by harness and makes repeated pruning idempotent", () => {
+    const l = ledger();
+    l.upsert(summary({ nativeId: "c", ghost: true }));
+    l.upsert(summary({ nativeId: "p", harness: "pi", ghost: true }));
+    l.db.run("UPDATE sessions SET scanned_at = '2026-07-01T00:00:00.000Z'");
+    const opts = { harness: "pi" as const, before: "2026-08-01T00:00:00.000Z" };
+    expect(l.pruneGhosts(opts).map((row) => row.nativeId)).toEqual(["p"]);
+    expect(l.pruneGhosts(opts)).toEqual([]);
+    expect(l.get("claude", "c")).toBeDefined();
+    l.close();
+  });
+});
+
 describe("list filters", () => {
   const seed = (l: Ledger) => {
     l.upsert(summary({ nativeId: "old", updatedAt: "2026-01-01T00:00:00.000Z" }));

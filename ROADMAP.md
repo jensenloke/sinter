@@ -59,8 +59,10 @@ Prioritized candidates after the current draft stack, not release commitments:
    consumes the same resolver so its action availability cannot drift.
 4. **Saved views.** Name reusable combinations of project, harness, recency, and
    ghost/subagent filters without weakening the explicit command flags.
-5. **Safe ghost housekeeping.** Preview and remove only disposable ledger rows;
-   never touch native harness stores, aliases, pins, or lineage implicitly.
+5. **Safe ghost housekeeping — implemented on `feat/ghost-housekeeping`.**
+   Preview old ghost rows by default; pruning requires an explicit action and
+   confirmation, protects aliased or pinned rows, and never touches native
+   harness stores or lineage.
 6. **Local tags and notes.** Add searchable user metadata without modifying
    native sessions or uploading it anywhere.
 7. **Watch mode.** Refresh a project or recent-session view as local harness

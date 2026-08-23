@@ -67,6 +67,12 @@ export interface ListOpts {
   pinnedOnly?: boolean;
 }
 
+export interface GhostOpts {
+  harness?: HarnessId;
+  /** Include ghosts last observed at or before this ISO timestamp. */
+  before?: string;
+}
+
 export interface ScanHarnessStat {
   seen: number;
   inserted: number;
@@ -379,6 +385,42 @@ export class Ledger {
       }
     }
     return flipped;
+  }
+
+  /** Ghost rows eligible for housekeeping, oldest observation first. */
+  ghosts(opts: GhostOpts = {}): LedgerRow[] {
+    const where = ["s.ghost = 1"];
+    const params: unknown[] = [];
+    if (opts.harness) {
+      where.push("s.harness = ?");
+      params.push(opts.harness);
+    }
+    if (opts.before) {
+      where.push("COALESCE(s.scanned_at, s.updated_at, s.created_at, '') <= ?");
+      params.push(opts.before);
+    }
+    const sql = `${SESSION_SELECT} WHERE ${where.join(" AND ")}
+      ORDER BY COALESCE(s.scanned_at, s.updated_at, s.created_at, '') ASC, s.harness, s.native_id`;
+    return (this.db.query(sql).all(...(params as never[])) as Record<string, unknown>[]).map(rowFromDb);
+  }
+
+  /**
+   * Remove only disposable ghost session + FTS rows. Aliased and pinned rows
+   * are protected; their metadata and every lineage link remain untouched.
+   */
+  pruneGhosts(opts: GhostOpts): LedgerRow[] {
+    return this.db.transaction(() => {
+      const candidates = this.ghosts(opts).filter((row) => !row.alias && !row.pinnedAt);
+      const dropFts = this.db.prepare("DELETE FROM sessions_fts WHERE harness = ? AND native_id = ?");
+      const dropSession = this.db.prepare("DELETE FROM sessions WHERE harness = ? AND native_id = ? AND ghost = 1");
+      const removed: LedgerRow[] = [];
+      for (const row of candidates) {
+        dropFts.run(row.harness, row.nativeId);
+        const result = dropSession.run(row.harness, row.nativeId);
+        if (result.changes) removed.push(row);
+      }
+      return removed;
+    })();
   }
 
   // ------------------------------------------------------------- read path
