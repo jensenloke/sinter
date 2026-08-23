@@ -24,6 +24,7 @@ import {
   cmdLs,
   cmdMenu,
   cmdPort,
+  cmdProjects,
   cmdPrivacy,
   cmdRelink,
   cmdRecent,
@@ -90,6 +91,7 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   export: cmdExport,
   import: cmdImport,
   port: cmdPort,
+  projects: cmdProjects,
   resume: cmdResume,
   doctor: cmdDoctor,
   privacy: cmdPrivacy,
@@ -115,6 +117,7 @@ usage: sinter [command] [args]
                                          list sessions, newest first
   recent [--harness x] [--cwd .] [-n 10]
                                          list recent resumable parent sessions
+  projects [--harness x] [--since 7d]   group resumable sessions by project
   last [--harness x] [--cwd .] [--exec]  print or run the newest resume command
   search <query>                         full-text match over aliases, titles + prompts
   rename <id-prefix> <alias>             set a local alias that survives rescans
@@ -155,6 +158,7 @@ const COMMAND_HELP: Record<string, string> = {
   scan: "usage: sinter scan [--harness claude,codex] [--json]\n\nRefreshes the local ledger. Reads local stores only.",
   ls: "usage: sinter ls [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]",
   recent: "usage: sinter recent [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]\n\nLists the newest non-ghost parent sessions; defaults to 10.",
+  projects: "usage: sinter projects [--harness x] [--since 7d] [--limit n] [--json]\n\nGroups resumable parent sessions by working directory without reading transcript bodies.",
   last: "usage: sinter last [--harness x] [--cwd .] [--since 7d] [--id|--json|--exec]\n\nSelects the newest non-ghost parent session. By default, prints its native resume command.",
   search: "usage: sinter search <query> [--harness x] [--json]",
   rename: "usage: sinter rename <id-prefix> <alias> [--clear]\n\nStores a local alias in Sinter without modifying the native harness session.",
