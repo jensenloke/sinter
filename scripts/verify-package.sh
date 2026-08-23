@@ -2,10 +2,11 @@
 set -euo pipefail
 
 package_dir="$(mktemp -d)"
-install_dir="$(mktemp -d)"
+bun_install_dir="$(mktemp -d)"
+npm_install_dir="$(mktemp -d)"
 
 cleanup() {
-  rm -rf -- "$package_dir" "$install_dir"
+  rm -rf -- "$package_dir" "$bun_install_dir" "$npm_install_dir"
 }
 trap cleanup EXIT
 
@@ -29,20 +30,28 @@ for required in package/LICENSE package/README.md package/package.json package/d
   fi
 done
 
-BUN_INSTALL="$install_dir" bun add --global "${tarballs[0]}" >/dev/null
-installed="$install_dir/bin/sinter"
 expected="$(bun -e 'import pkg from "./packages/cli/package.json"; process.stdout.write(pkg.version)')"
-actual="$($installed --version)"
-if [[ "$actual" != "$expected" ]]; then
-  echo "installed CLI version $actual does not match package version $expected" >&2
+
+BUN_INSTALL="$bun_install_dir" bun add --global "${tarballs[0]}" >/dev/null
+bun_installed="$bun_install_dir/bin/sinter"
+bun_actual="$($bun_installed --version)"
+if [[ "$bun_actual" != "$expected" ]]; then
+  echo "Bun-installed CLI version $bun_actual does not match package version $expected" >&2
   exit 1
 fi
 
-"$installed" completion bash | bash -n
-snapshot="$($installed watch recent --no-scan --json --ledger "$install_dir/ledger.db" --no-update-check)"
+"$bun_installed" completion bash | bash -n
+snapshot="$($bun_installed watch recent --no-scan --json --ledger "$bun_install_dir/ledger.db" --no-update-check)"
 SNAPSHOT="$snapshot" bun -e '
   const value = JSON.parse(process.env.SNAPSHOT ?? "null");
   if (value?.schema !== "sinter.watch.v1" || !Array.isArray(value.sessions)) process.exit(1);
 '
 
-echo "verified globally installed @jensenloke/sinter@$actual"
+npm install --global --prefix "$npm_install_dir" "${tarballs[0]}" >/dev/null
+npm_actual="$("$npm_install_dir/bin/sinter" --version)"
+if [[ "$npm_actual" != "$expected" ]]; then
+  echo "npm-installed CLI version $npm_actual does not match package version $expected" >&2
+  exit 1
+fi
+
+echo "verified Bun and npm global installs for @jensenloke/sinter@$expected"
