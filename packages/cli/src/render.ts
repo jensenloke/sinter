@@ -10,6 +10,8 @@ export interface RenderOpts {
   toolResultChars?: number;
   /** Render nested subagent sessions inline. */
   subsessions?: boolean;
+  /** Render only the latest N entries from each rendered session. */
+  tailEntries?: number;
 }
 
 const textOf = (parts: { type: string; text?: string }[] | undefined): string =>
@@ -47,6 +49,9 @@ export function renderHeader(s: SifSession, opts: RenderOpts = {}): string {
           ? `  tokens ${s.usage.input ?? 0}in/${s.usage.output ?? 0}out`
           : ""),
     ),
+    ...(opts.tailEntries !== undefined && s.entries.length > opts.tailEntries
+      ? [pal.dim(`showing last ${opts.tailEntries} ${opts.tailEntries === 1 ? "entry" : "entries"}`)]
+      : []),
     "",
   ];
   return lines.join("\n");
@@ -109,15 +114,21 @@ export function renderEntry(e: SifEntry, opts: RenderOpts = {}): string {
 export function renderTranscript(s: SifSession, opts: RenderOpts = {}): string {
   const pal = opts.pal ?? palette(false);
   const out: string[] = [renderHeader(s, opts)];
-  for (const e of s.entries) out.push(renderEntry(e, opts));
+  const entries = opts.tailEntries === undefined ? s.entries : s.entries.slice(-opts.tailEntries);
+  for (const e of entries) out.push(renderEntry(e, opts));
 
   if (opts.subsessions !== false && s.subsessions?.length) {
     for (const sub of s.subsessions) {
+      const subEntries = opts.tailEntries === undefined ? sub.entries : sub.entries.slice(-opts.tailEntries);
+      const tailLabel =
+        subEntries.length < sub.entries.length
+          ? `, showing last ${subEntries.length} ${subEntries.length === 1 ? "entry" : "entries"}`
+          : "";
       out.push("");
-      out.push(pal.blue(`┌─ subsession ${sub.origin.nativeId} (${sub.entries.length} entries)`));
+      out.push(pal.blue(`┌─ subsession ${sub.origin.nativeId} (${sub.entries.length} entries${tailLabel})`));
       out.push(
         indent(
-          sub.entries.map((e) => renderEntry(e, opts)).join("\n"),
+          subEntries.map((e) => renderEntry(e, opts)).join("\n"),
           pal.blue("│ "),
         ),
       );

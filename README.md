@@ -37,6 +37,7 @@ sinter last --cwd . --exec      # resume it in this terminal
 sinter search "session alias or topic"
 sinter rename <id-prefix> "My important session"
 sinter show <id-prefix>
+sinter show <id-prefix> --tail 20  # render only the latest entries
 sinter port <id-prefix> --to codex --mode compact --preview
 sinter port <id-prefix> --to omp
 sinter resume <id-prefix> --in omp --exec

@@ -388,6 +388,32 @@ describe("show", () => {
     expect(s.entries).toHaveLength(3);
   });
 
+  test("--tail renders only the latest entries and keeps the full count visible", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["show", "aaa11111", "--tail", "1"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("3 entries");
+    expect(h.out()).toContain("showing last 1 entry");
+    expect(h.out()).toContain("line1");
+    expect(h.out()).not.toContain("hello world");
+    expect(h.out()).not.toContain("● assistant");
+  });
+
+  test("--tail validates its count and refuses incomplete SIF JSON", async () => {
+    await scan();
+    for (const value of ["0", "1.5", "many"]) {
+      h.stderr.length = 0;
+      expect(await run(["show", "aaa11111", "--tail", value], h.ctx)).toBe(1);
+      expect(h.err()).toContain(`bad --tail: ${value}`);
+    }
+    h.stderr.length = 0;
+    expect(await run(["show", "aaa11111", "--tail", "1", "--json"], h.ctx)).toBe(1);
+    expect(JSON.parse(h.err())).toMatchObject({
+      schema: "sinter.error.v1",
+      error: { kind: "usage", message: "--tail is for rendered output and cannot be combined with --json" },
+    });
+  });
+
   test("an unavailable adapter is reported, not crashed", async () => {
     await scan();
     h.ledger.upsert(summary({ nativeId: "zc-1", harness: "zcode" }));

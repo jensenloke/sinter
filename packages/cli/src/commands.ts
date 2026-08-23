@@ -429,9 +429,16 @@ export async function cmdRename(argv: string[], ctx: Ctx): Promise<number> {
 }
 
 export async function cmdShow(argv: string[], ctx: Ctx): Promise<number> {
-  const args = parseArgs(argv, { booleans: ["json", "no-sub"], strings: ["tool-chars"] });
+  const args = parseArgs(argv, { booleans: ["json", "no-sub"], strings: ["tool-chars", "tail"] });
   const prefix = args._[0];
   if (!prefix) throw new CliError("usage: sinter show <id-prefix>");
+  const tailValue = flagString(args, "tail");
+  let tailEntries: number | undefined;
+  if (tailValue !== undefined) {
+    tailEntries = Number(tailValue);
+    if (!Number.isInteger(tailEntries) || tailEntries <= 0) throw new CliError(`bad --tail: ${tailValue}`);
+    if (flagBool(args, "json")) throw new CliError("--tail is for rendered output and cannot be combined with --json");
+  }
   const row = resolveRow(ctx, prefix);
   if (row.ghost) ctx.err(ctx.pal.dim(`note: ${shortId(row.nativeId)} is a ghost row — the harness may have GC'd it`));
 
@@ -447,6 +454,7 @@ export async function cmdShow(argv: string[], ctx: Ctx): Promise<number> {
       pal: ctx.pal,
       toolResultChars: Number.isFinite(toolChars) ? toolChars : 240,
       subsessions: !flagBool(args, "no-sub"),
+      tailEntries,
     }),
   );
   return EXIT.OK;
