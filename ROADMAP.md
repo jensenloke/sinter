@@ -22,8 +22,9 @@ the next one through real usage and privacy review.
    prefixes.
 4. **Consistent machine-readable output — first contract ready in draft PR
    #9.** Versioned JSON is available for scan and doctor health, port previews,
-   config inspection, recent-session queries, and error envelopes. Versioned
-   NDJSON transcript streaming is ready in PR #11 and integrated in PR #15.
+   and error envelopes. Existing list, recent-session, search, and config JSON
+   shapes remain stable for backward compatibility. Versioned NDJSON transcript
+   streaming is ready in PR #11 and integrated in PR #15.
 5. **Safe diagnostic bundles — ready in draft PR #7.** Let `sinter doctor
    --report` produce a reviewable support report containing versions and store
    health while excluding paths, prompts, titles, session IDs, transcripts,
