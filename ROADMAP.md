@@ -64,7 +64,7 @@ Prioritized candidates after the current draft stack, not release commitments:
    Preview old ghost rows by default; pruning requires an explicit action and
    confirmation, protects rows carrying local metadata, and never touches native
    harness stores or lineage.
-6. **Local tags and notes — implemented on `feat/session-metadata`.** Add
+6. **Local tags and notes — ready in draft PR #21.** Add
    searchable, rescan-safe user metadata across CLI/TUI/GUI search without
    modifying native sessions or carrying the metadata into ports.
 7. **Watch mode.** Refresh a project or recent-session view as local harness
