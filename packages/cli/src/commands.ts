@@ -21,6 +21,14 @@ import {
   type ParsedArgs,
 } from "./args";
 import type { AdapterRegistry } from "./adapters";
+import {
+  CapsuleError,
+  decryptCapsule,
+  encryptCapsule,
+  findSensitiveContent,
+  makeCapsulePayload,
+  type CapsulePayloadV1,
+} from "./capsule";
 import { defaultConfigPath, inspectConfig, PROFILE_EXAMPLE, type SinterProfile } from "./config";
 
 import {
@@ -469,6 +477,149 @@ export async function cmdExport(argv: string[], ctx: Ctx): Promise<number> {
     ctx.out(json);
   }
   return EXIT.OK;
+}
+
+async function capsulePassphrase(args: ParsedArgs, ctx: Ctx): Promise<string> {
+  const path = flagString(args, "passphrase-file");
+  if (!path) throw new CliError("capsule commands require --passphrase-file <file>");
+  let passphrase: string;
+  try {
+    passphrase = await ctx.readFile(path);
+  } catch {
+    throw new CliError(`cannot read passphrase file: ${path}`);
+  }
+  return passphrase.replace(/\r?\n$/, "");
+}
+
+function capsuleError(error: unknown): CliError {
+  return new CliError(error instanceof CapsuleError ? error.message : error instanceof Error ? error.message : String(error));
+}
+
+export async function cmdBundle(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["output", "passphrase-file", "mode"],
+    booleans: ["context-only", "include-workspace", "allow-sensitive", "json"],
+    alias: { o: "output" },
+  });
+  const prefix = args._[0];
+  if (!prefix) throw new CliError("usage: sinter bundle <id-prefix> --context-only --passphrase-file <file>");
+  if (flagBool(args, "include-workspace"))
+    throw new CliError("workspace capsules are not implemented; no workspace files were read");
+  const row = resolveRow(ctx, prefix);
+  const mode = (flagString(args, "mode") ?? "slim") as TransferMode;
+  if (!TRANSFER_MODES.includes(mode))
+    throw new CliError(`unknown --mode: ${mode} (known: ${TRANSFER_MODES.join(", ")})`);
+  const source = await readSessionForPort(ctx, row);
+  const session = applyTransfer(source, mode).session;
+  validateSession(session);
+  const findings = findSensitiveContent(session);
+  if (findings.length && !flagBool(args, "allow-sensitive")) {
+    throw new CliError(
+      `capsule review found possible sensitive content (${findings.map((finding) => finding.category).join(", ")}); ` +
+        "review the source and rerun with --allow-sensitive to acknowledge",
+    );
+  }
+  const passphrase = await capsulePassphrase(args, ctx);
+  let serialized: string;
+  try {
+    serialized = encryptCapsule(makeCapsulePayload(session, mode, new Date(ctx.now).toISOString()), passphrase);
+  } catch (error) {
+    throw capsuleError(error);
+  }
+  const safeId = row.nativeId.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64);
+  const output = flagString(args, "output") ?? `sinter-${safeId}.sinter`;
+  await ctx.writeFile(output, serialized);
+  const result = {
+    schema: "sinter.bundle.v1",
+    output,
+    kind: "context-only",
+    transferMode: mode,
+    entries: session.entries.length,
+    encryptedBytes: Buffer.byteLength(serialized),
+    sensitiveFindings: findings.map((finding) => finding.category),
+    workspaceFiles: 0,
+  };
+  if (flagBool(args, "json")) ctx.out(JSON.stringify(result, null, 2));
+  else {
+    ctx.out(`wrote encrypted context capsule: ${output}`);
+    ctx.out(`  ${session.entries.length} entries · ${mode} · workspace files: none`);
+    if (findings.length) ctx.out(`  acknowledged sensitive categories: ${result.sensitiveFindings.join(", ")}`);
+    ctx.out("  inspect before sharing: sinter inspect <file> --passphrase-file <file>");
+  }
+  return EXIT.OK;
+}
+
+export async function cmdInspect(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { strings: ["passphrase-file"], booleans: ["json"] });
+  const file = args._[0];
+  if (!file) throw new CliError("usage: sinter inspect <file.sinter> --passphrase-file <file>");
+  const passphrase = await capsulePassphrase(args, ctx);
+  let payload: CapsulePayloadV1;
+  try {
+    payload = decryptCapsule(await ctx.readFile(file), passphrase);
+  } catch (error) {
+    throw capsuleError(error);
+  }
+  const findings = findSensitiveContent(payload.session);
+  const inspection = {
+    schema: "sinter.inspect.v1",
+    format: "sinter-capsule",
+    version: 1,
+    kind: payload.kind,
+    createdAt: payload.createdAt,
+    transferMode: payload.transferMode,
+    origin: payload.session.origin,
+    cwd: payload.session.cwd,
+    title: payload.session.title?.text,
+    entries: payload.session.entries.length,
+    sensitiveFindings: findings.map((finding) => finding.category),
+    workspaceFiles: 0,
+  };
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify(inspection, null, 2));
+    return EXIT.OK;
+  }
+  ctx.out("Sinter capsule");
+  ctx.out(
+    renderTable(
+      [{ header: "FIELD" }, { header: "VALUE", flex: true }],
+      [
+        ["kind", inspection.kind],
+        ["created", inspection.createdAt],
+        ["transfer mode", inspection.transferMode],
+        ["origin", `${inspection.origin.harness}:${inspection.origin.nativeId}`],
+        ["working directory", inspection.cwd],
+        ["title", inspection.title ?? "-"],
+        ["entries", String(inspection.entries)],
+        ["sensitive review", inspection.sensitiveFindings.join(", ") || "no known patterns found"],
+        ["workspace files", "none"],
+      ],
+      { width: ctx.width, pal: ctx.pal },
+    ),
+  );
+  return EXIT.OK;
+}
+
+export async function cmdOpenCapsule(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["in", "cwd", "passphrase-file"],
+    booleans: ["dry-run", "live-tools"],
+  });
+  const file = args._[0];
+  if (!file) throw new CliError("usage: sinter open <file.sinter> --in <harness> --passphrase-file <file>");
+  const inFlag = flagString(args, "in");
+  if (!inFlag) throw new CliError("sinter open needs --in <harness>");
+  const target = parseHarness(inFlag);
+  const passphrase = await capsulePassphrase(args, ctx);
+  let payload: CapsulePayloadV1;
+  try {
+    payload = decryptCapsule(await ctx.readFile(file), passphrase);
+  } catch (error) {
+    throw capsuleError(error);
+  }
+  validateSession(payload.session);
+  ctx.err(`opening encrypted ${payload.kind} capsule → ${target}`);
+  return writeInto(ctx, target, payload.session, args);
 }
 
 async function writeInto(

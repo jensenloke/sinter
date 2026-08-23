@@ -420,6 +420,90 @@ describe("export", () => {
   });
 });
 
+describe("encrypted capsules", () => {
+  const keyFile = "/tmp/capsule-key.txt";
+
+  test("bundles, inspects, and opens a context-only session", async () => {
+    h.files[keyFile] = "correct horse battery staple\n";
+    await scan();
+    h.stdout.length = 0;
+    h.stderr.length = 0;
+    expect(
+      await run(
+        ["bundle", "aaa11111", "--context-only", "-o", "/tmp/handoff.sinter", "--passphrase-file", keyFile],
+        h.ctx,
+      ),
+    ).toBe(0);
+    const capsule = h.written["/tmp/handoff.sinter"]!;
+    expect(capsule).toContain('"format": "sinter-capsule"');
+    expect(capsule).not.toContain("aaa11111-1111");
+    expect(capsule).not.toContain("porting sessions between harnesses");
+    expect(h.omp.written).toHaveLength(0);
+
+    h.files["/tmp/handoff.sinter"] = capsule;
+    h.stdout.length = 0;
+    expect(await run(["inspect", "/tmp/handoff.sinter", "--passphrase-file", keyFile, "--json"], h.ctx)).toBe(0);
+    const inspection = JSON.parse(h.out());
+    expect(inspection).toMatchObject({
+      schema: "sinter.inspect.v1",
+      kind: "context-only",
+      transferMode: "slim",
+      origin: { harness: "claude", nativeId: "aaa11111-1111" },
+      workspaceFiles: 0,
+    });
+
+    h.stdout.length = 0;
+    expect(
+      await run(["open", "/tmp/handoff.sinter", "--in", "omp", "--passphrase-file", keyFile], h.ctx),
+    ).toBe(0);
+    expect(h.omp.written).toHaveLength(1);
+    expect(h.omp.written[0]!.opts?.liveTools).toBe(false);
+    expect(h.omp.written[0]!.session.entries.every((entry) => entry.raw === undefined)).toBe(true);
+    expect(h.out()).toContain("omp --resume new-omp-1");
+  });
+
+  test("blocks possible secrets until explicitly acknowledged", async () => {
+    h.files[keyFile] = "correct horse battery staple";
+    const source = h.claude.sessions["aaa11111-1111"]!;
+    (source.entries[0] as any).content = [{ type: "text", text: "api_key=sk-abcdefghijklmnopqrstuvwxyz123456" }];
+    await scan();
+    expect(
+      await run(["bundle", "aaa11111", "-o", "/tmp/blocked.sinter", "--passphrase-file", keyFile], h.ctx),
+    ).toBe(1);
+    expect(h.err()).toContain("possible sensitive content");
+    expect(h.err()).not.toContain("abcdefghijklmnopqrstuvwxyz123456");
+    expect(h.written["/tmp/blocked.sinter"]).toBeUndefined();
+
+    h.stderr.length = 0;
+    expect(
+      await run(
+        ["bundle", "aaa11111", "-o", "/tmp/allowed.sinter", "--passphrase-file", keyFile, "--allow-sensitive"],
+        h.ctx,
+      ),
+    ).toBe(0);
+    expect(h.written["/tmp/allowed.sinter"]).toContain('"payload"');
+  });
+
+  test("fails closed for wrong passphrases and workspace inclusion", async () => {
+    h.files[keyFile] = "correct horse battery staple";
+    await scan();
+    await run(["bundle", "aaa11111", "-o", "/tmp/locked.sinter", "--passphrase-file", keyFile], h.ctx);
+    h.files["/tmp/locked.sinter"] = h.written["/tmp/locked.sinter"]!;
+    h.files["/tmp/wrong-key.txt"] = "this passphrase is definitely wrong";
+    h.stderr.length = 0;
+    expect(
+      await run(["inspect", "/tmp/locked.sinter", "--passphrase-file", "/tmp/wrong-key.txt"], h.ctx),
+    ).toBe(1);
+    expect(h.err()).toContain("wrong passphrase or damaged file");
+
+    h.stderr.length = 0;
+    expect(
+      await run(["bundle", "aaa11111", "--include-workspace", "--passphrase-file", keyFile], h.ctx),
+    ).toBe(1);
+    expect(h.err()).toContain("no workspace files were read");
+  });
+});
+
 describe("import", () => {
   test("validates then writes into the target harness and prints the resume command", async () => {
     h.files["/tmp/in.json"] = JSON.stringify(session("src-1"));

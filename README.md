@@ -37,6 +37,9 @@ sinter last --cwd . --exec      # resume it in this terminal
 sinter search "session alias or topic"
 sinter rename <id-prefix> "My important session"
 sinter show <id-prefix>
+sinter bundle <id-prefix> --context-only -o handoff.sinter --passphrase-file key.txt
+sinter inspect handoff.sinter --passphrase-file key.txt
+sinter open handoff.sinter --in codex --passphrase-file key.txt
 sinter port <id-prefix> --to codex --mode compact --preview
 sinter port <id-prefix> --to omp
 sinter resume <id-prefix> --in omp --exec
@@ -46,6 +49,25 @@ sinter gui
 
 Commands with `--json` keep stdout machine-readable and return errors on stderr
 using the versioned `sinter.error.v1` envelope.
+
+## Encrypted session capsules
+
+The experimental v1 capsule workflow moves conversation context without a
+native harness store:
+
+```sh
+sinter bundle <id-prefix> --context-only --mode slim -o handoff.sinter --passphrase-file key.txt
+sinter inspect handoff.sinter --passphrase-file key.txt
+sinter open handoff.sinter --in codex --passphrase-file key.txt
+```
+
+Capsules use AES-256-GCM with a scrypt-derived key and contain no plaintext
+session metadata. Keep the passphrase file separate from the capsule. `bundle`
+performs a best-effort secret-pattern review and blocks findings until they are
+explicitly acknowledged with `--allow-sensitive`; this is not a proof that a
+transcript contains no secrets. Version 1 never includes workspace files,
+environment variables, credentials, or MCP configuration. See the
+[capsule format and threat model](docs/capsule-format-v1.md).
 
 Inspect profile configuration without starting a scan:
 

@@ -13,6 +13,7 @@ import { CliError, EXIT } from "./args";
 import { DynamicAdapterRegistry } from "./adapters";
 import { loadProfile, type SinterProfile } from "./config";
 import {
+  cmdBundle,
   cmdCompletion,
   cmdConfig,
   cmdDoctor,
@@ -20,9 +21,11 @@ import {
   cmdFeedback,
   cmdGui,
   cmdImport,
+  cmdInspect,
   cmdLast,
   cmdLs,
   cmdMenu,
+  cmdOpenCapsule,
   cmdPort,
   cmdPrivacy,
   cmdRelink,
@@ -44,7 +47,7 @@ import { trackTelemetry, type TelemetryEvent } from "./telemetry";
 export const VERSION = "0.1.10";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
-const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "privacy", "feedback", "telemetry", "completion", "config"]);
+const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "privacy", "feedback", "telemetry", "completion", "config", "inspect", "open"]);
 
 /**
  * Keep the ledger fresh on every invocation: commands that resolve or list
@@ -75,6 +78,7 @@ async function autoScanLedger(ctx: Ctx, argv: string[]): Promise<void> {
 }
 
 const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = {
+  bundle: cmdBundle,
   completion: cmdCompletion,
   config: cmdConfig,
   scan: cmdScan,
@@ -89,6 +93,8 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   setup: cmdSetup,
   export: cmdExport,
   import: cmdImport,
+  inspect: cmdInspect,
+  open: cmdOpenCapsule,
   port: cmdPort,
   resume: cmdResume,
   doctor: cmdDoctor,
@@ -120,6 +126,9 @@ usage: sinter [command] [args]
   rename <id-prefix> <alias>             set a local alias that survives rescans
   show <id-prefix> [--json]              render a transcript from any harness
   export <id-prefix> [-o file] [--slim]  write the session as SIF JSON
+  bundle <id> --context-only [...]       create an encrypted portable capsule
+  inspect <file.sinter> [...]            decrypt and review a capsule without writing
+  open <file.sinter> --in <harness> [...] create a target session from a capsule
   import <file> --to <harness> [...]     synthesize a new native session from SIF
   setup [--yes] [--no-menu]              detect stores, build the ledger, then open the menu
   port <id-prefix> --to <harness> [...]  create a new target-native session
@@ -161,6 +170,9 @@ const COMMAND_HELP: Record<string, string> = {
   alias: "usage: sinter rename <id-prefix> <alias> [--clear]",
   show: "usage: sinter show <id-prefix> [--json] [--tool-chars n] [--no-sub]",
   export: "usage: sinter export <id-prefix> [-o file] [--slim]\n\nWithout -o, writes SIF JSON to stdout.",
+  bundle: "usage: sinter bundle <id-prefix> --context-only [--mode full|slim|compact] [-o file.sinter] --passphrase-file <file> [--allow-sensitive]\n\nCreates an encrypted context-only capsule. Workspace files, environment values, and credentials are never added implicitly.",
+  inspect: "usage: sinter inspect <file.sinter> --passphrase-file <file> [--json]\n\nAuthenticates, decrypts, validates, and reviews a capsule without invoking a harness writer.",
+  open: "usage: sinter open <file.sinter> --in <harness> --passphrase-file <file> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target-native session; never modifies the capsule.",
   import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",
   port: "usage: sinter port <id-prefix> --to <harness> [--mode full|slim|compact] [--preview [--json]] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.\n--preview reports target readiness and transfer impact without invoking the target writer.\n--dry-run asks the target writer to validate and describe its planned native output.\nHistorical tool calls are inert unless --live-tools is explicit.",
   resume: "usage: sinter resume <id-prefix> [--in <harness>] [--exec]\n\n--exec hands this terminal to the target harness.",

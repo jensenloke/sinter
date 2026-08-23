@@ -10,6 +10,9 @@ const COMMANDS = [
   ["rename", "set a local session alias"],
   ["show", "render a transcript"],
   ["export", "export a SIF session"],
+  ["bundle", "create an encrypted session capsule"],
+  ["inspect", "review an encrypted session capsule"],
+  ["open", "open a capsule in a target harness"],
   ["import", "import a SIF session"],
   ["port", "port a session to another harness"],
   ["resume", "print or run a native resume command"],
@@ -65,6 +68,9 @@ ${commands}
     rename) _arguments $global_args '1:session id' '2:alias' '--clear' ;;
     show) _arguments $global_args '1:session id' '--json' '--tool-chars=[tool result limit]:characters' '--no-sub' ;;
     export) _arguments $global_args '1:session id' '(-o --output)'{-o,--output}'=[output file]:file:_files' '--slim' ;;
+    bundle) _arguments $global_args '1:session id' '--context-only' '--include-workspace' '--mode=[transfer mode]:mode:($modes)' '(-o --output)'{-o,--output}'=[capsule file]:file:_files' '--passphrase-file=[passphrase file]:file:_files' '--allow-sensitive' '--json' ;;
+    inspect) _arguments $global_args '1:capsule file:_files' '--passphrase-file=[passphrase file]:file:_files' '--json' ;;
+    open) _arguments $global_args '1:capsule file:_files' '--in=[target harness]:harness:($harnesses)' '--passphrase-file=[passphrase file]:file:_files' '--cwd=[target directory]:directory:_directories' '--dry-run' '--live-tools' ;;
     import) _arguments $global_args '1:SIF file:_files' '--to=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--dry-run' '--live-tools' ;;
     port) _arguments $global_args '1:session id' '--to=[target harness]:harness:($harnesses)' '--mode=[transfer mode]:mode:($modes)' '--cwd=[target directory]:directory:_directories' '--preview' '--json' '--dry-run' '--live-tools' ;;
     resume) _arguments $global_args '1:session id' '--in=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--exec' '--dry-run' '--live-tools' ;;
@@ -100,7 +106,7 @@ function bash(): string {
   case "$previous" in
     --to|--in) COMPREPLY=( $(compgen -W '${HARNESSES.join(" ")}' -- "$current") ); return ;;
     --mode) COMPREPLY=( $(compgen -W '${MODES.join(" ")}' -- "$current") ); return ;;
-    --cwd|--config|--ledger|-o|--output) COMPREPLY=( $(compgen -f -- "$current") ); return ;;
+    --cwd|--config|--ledger|--passphrase-file|-o|--output) COMPREPLY=( $(compgen -f -- "$current") ); return ;;
   esac
   if [[ $command == completion ]]; then
     COMPREPLY=( $(compgen -W 'zsh bash fish' -- "$current") )
