@@ -46,6 +46,11 @@ SNAPSHOT="$snapshot" bun -e '
   const value = JSON.parse(process.env.SNAPSHOT ?? "null");
   if (value?.schema !== "sinter.watch.v1" || !Array.isArray(value.sessions)) process.exit(1);
 '
+capabilities="$($bun_installed capabilities --json --no-update-check)"
+CAPABILITIES="$capabilities" bun -e '
+  const value = JSON.parse(process.env.CAPABILITIES ?? "null");
+  if (value?.schema !== "sinter.capabilities.v1" || value.capabilities?.length !== 7) process.exit(1);
+'
 
 npm install --global --prefix "$npm_install_dir" "${tarballs[0]}" >/dev/null
 npm_actual="$("$npm_install_dir/bin/sinter" --version)"
