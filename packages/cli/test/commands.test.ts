@@ -466,6 +466,41 @@ describe("show", () => {
   });
 });
 
+describe("compare", () => {
+  test("emits a versioned structural comparison without transcript content", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["compare", "aaa11111", "omp:omp-1", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result).toMatchObject({
+      schema: "sinter.compare.v1",
+      left: { origin: { harness: "claude", nativeId: "aaa11111-1111" }, entries: 3 },
+      right: { origin: { harness: "omp", nativeId: "omp-1" }, entries: 3 },
+      delta: { entries: 0 },
+    });
+    expect(h.out()).not.toContain("hello world");
+    expect(h.out()).not.toContain("hi there");
+  });
+
+  test("renders right-minus-left deltas with an explicit interpretation warning", async () => {
+    await scan();
+    h.omp.sessions["omp-1"]!.entries.pop();
+    h.stdout.length = 0;
+    expect(await run(["compare", "aaa11111", "omp:omp-1"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("entry:toolResult");
+    expect(h.out()).toContain("-1");
+    expect(h.err()).toContain("matching counts do not prove semantic equivalence");
+  });
+
+  test("requires exactly two resolvable session ids", async () => {
+    expect(await run(["compare", "aaa11111"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("usage: sinter compare");
+    h.stderr.length = 0;
+    expect(await run(["compare", "missing", "omp:omp-1", "--json"], h.ctx)).toBe(2);
+    expect(JSON.parse(h.err())).toMatchObject({ schema: "sinter.error.v1", error: { kind: "resolution" } });
+  });
+});
+
 describe("export", () => {
   test("writes SIF to a file", async () => {
     await scan();

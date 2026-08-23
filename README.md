@@ -39,6 +39,7 @@ sinter search "session alias or topic"
 sinter rename <id-prefix> "My important session"
 sinter show <id-prefix>
 sinter show <id-prefix> --ndjson       # one versioned JSON record per line
+sinter compare <source-id> <target-id>  # structural transfer check; no content printed
 sinter port <id-prefix> --to codex --mode compact --preview
 sinter port <id-prefix> --to omp
 sinter resume <id-prefix> --in omp --exec
@@ -49,7 +50,8 @@ sinter gui
 Commands with `--json` or `--ndjson` keep stdout machine-readable and return
 errors on stderr using the versioned `sinter.error.v1` envelope. Transcript
 streams use `sinter.transcript.ndjson.v1`: session metadata first, then ordered
-entries, followed by linked nested sessions.
+entries, followed by linked nested sessions. Structural comparisons use
+`sinter.compare.v1` and never include transcript content.
 
 Inspect profile configuration without starting a scan:
 

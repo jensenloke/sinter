@@ -21,6 +21,7 @@ import {
   type ParsedArgs,
 } from "./args";
 import type { AdapterRegistry } from "./adapters";
+import { compareSessions, CONTENT_TYPES, ENTRY_KINDS } from "./compare";
 import { defaultConfigPath, inspectConfig, PROFILE_EXAMPLE, type SinterProfile } from "./config";
 
 import {
@@ -502,6 +503,63 @@ export async function cmdShow(argv: string[], ctx: Ctx): Promise<number> {
       subsessions: !flagBool(args, "no-sub"),
     }),
   );
+  return EXIT.OK;
+}
+
+/** Compare transcript shape without printing conversation content. */
+export async function cmdCompare(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { booleans: ["json"] });
+  if (args._.length !== 2) throw new CliError("usage: sinter compare <left-id> <right-id> [--json]");
+  const leftRow = resolveRow(ctx, args._[0]!);
+  const rightRow = resolveRow(ctx, args._[1]!);
+  const comparison = compareSessions(await readSession(ctx, leftRow), await readSession(ctx, rightRow));
+
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify(comparison, null, 2));
+    return EXIT.OK;
+  }
+
+  const delta = (value: number) => (value > 0 ? `+${value}` : String(value));
+  const metrics: Array<[string, number, number, number]> = [
+    ["sessions", comparison.left.sessions, comparison.right.sessions, comparison.delta.sessions],
+    ["entries", comparison.left.entries, comparison.right.entries, comparison.delta.entries],
+    ...ENTRY_KINDS.map((kind) => [
+      `entry:${kind}`,
+      comparison.left.entryKinds[kind],
+      comparison.right.entryKinds[kind],
+      comparison.delta.entryKinds[kind],
+    ] as [string, number, number, number]),
+    ...CONTENT_TYPES.map((type) => [
+      `part:${type}`,
+      comparison.left.contentParts[type],
+      comparison.right.contentParts[type],
+      comparison.delta.contentParts[type],
+    ] as [string, number, number, number]),
+    ["entries:raw", comparison.left.entriesWithRaw, comparison.right.entriesWithRaw, comparison.delta.entriesWithRaw],
+    [
+      "sessions:preserve",
+      comparison.left.sessionsWithPreserve,
+      comparison.right.sessionsWithPreserve,
+      comparison.delta.sessionsWithPreserve,
+    ],
+  ];
+  ctx.out(`left:  ${leftRow.harness}:${shortId(leftRow.nativeId)}`);
+  ctx.out(`right: ${rightRow.harness}:${shortId(rightRow.nativeId)}`);
+  ctx.out(
+    renderTable(
+      [
+        { header: "METRIC", flex: true },
+        { header: "LEFT", max: 9, align: "right" },
+        { header: "RIGHT", max: 9, align: "right" },
+        { header: "DELTA", max: 9, align: "right" },
+      ],
+      metrics.map(([name, left, right, difference]) => [name, String(left), String(right), delta(difference)]),
+      { width: ctx.width, pal: ctx.pal },
+    ),
+  );
+  ctx.out(`models left:  ${comparison.left.models.join(", ") || "-"}`);
+  ctx.out(`models right: ${comparison.right.models.join(", ") || "-"}`);
+  ctx.err(ctx.pal.dim("structural inventory only; matching counts do not prove semantic equivalence"));
   return EXIT.OK;
 }
 

@@ -35,6 +35,9 @@ the next one through real usage and privacy review.
 7. **Project overview — ready in draft PR #12.** Group resumable parent sessions
    by working directory so large multi-harness ledgers stay navigable without
    parsing transcript bodies.
+8. **Transfer verification — ready in draft PR #13.** Compare source and target
+   transcript structure after a port without printing conversation content or
+   overstating count equality as semantic equivalence.
 
 ## Phase 1: portable session capsules
 
