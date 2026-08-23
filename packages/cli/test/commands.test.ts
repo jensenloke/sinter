@@ -129,6 +129,36 @@ describe("CLI conventions", () => {
   });
 });
 
+describe("capabilities", () => {
+  test("renders the canonical support matrix without touching the ledger", async () => {
+    expect(await run(["capabilities"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("HARNESS");
+    expect(h.out()).toContain("claude");
+    expect(h.out()).toContain("zcode");
+    expect(h.out()).toContain("adapter package unavailable");
+    expect(h.ledger.list()).toHaveLength(0);
+  });
+
+  test("filters versioned JSON without leaking adapter errors", async () => {
+    expect(await run(["capabilities", "--harness", "zcode", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result).toMatchObject({
+      schema: "sinter.capabilities.v1",
+      capabilities: [
+        {
+          harness: "zcode",
+          adapter: "unavailable",
+          store: "not-checked",
+          read: false,
+          write: false,
+          resume: "unavailable",
+        },
+      ],
+    });
+    expect(h.out()).not.toContain("cannot find module");
+  });
+});
+
 describe("config", () => {
   test("shows and validates every profile without touching the ledger", async () => {
     const dir = mkdtempSync(join(tmpdir(), "sinter-config-"));
@@ -976,7 +1006,7 @@ describe("auto-scan (always-fresh ledger)", () => {
     }
   });
 
-  test("scan and privacy are not auto-scanned a second time", async () => {
+  test("scan, privacy, and capabilities do not trigger an automatic ledger scan", async () => {
     h.ctx.autoScan = true;
     let lists = 0;
     const original = h.claude.list.bind(h.claude);
@@ -990,6 +1020,9 @@ describe("auto-scan (always-fresh ledger)", () => {
     h.stdout.length = 0;
     await run(["privacy"], h.ctx);
     expect(lists).toBe(afterScan); // privacy does not trigger a scan
+    h.stdout.length = 0;
+    await run(["capabilities"], h.ctx);
+    expect(lists).toBe(afterScan); // capability checks detect stores but never enumerate sessions
     expect(h.ledger.list()).toHaveLength(4);
   });
 

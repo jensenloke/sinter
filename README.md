@@ -35,6 +35,7 @@ sinter recent --cwd .
 sinter pin <id-prefix>          # keep an important session in a local shortlist
 sinter pinned                  # list bookmarks across harnesses
 sinter thread <id-prefix>      # inspect port lineage and the resumable tip
+sinter capabilities           # check read, write, store, and resume support
 sinter projects                 # group resumable sessions by working directory
 sinter last --cwd .             # print the newest native resume command
 sinter last --cwd . --exec      # resume it in this terminal
@@ -56,6 +57,18 @@ errors on stderr using the versioned `sinter.error.v1` envelope. Transcript
 streams use `sinter.transcript.ndjson.v1`: session metadata first, then ordered
 entries, followed by linked nested sessions. Structural comparisons use
 `sinter.compare.v1` and never include transcript content.
+
+Inspect the support Sinter can actually use on this machine without reading
+transcripts or opening the ledger:
+
+```sh
+sinter capabilities
+sinter capabilities --harness codex --json
+```
+
+Machine output uses the versioned `sinter.capabilities.v1` schema. A loaded
+adapter, a detected session store, and a native resume binary are reported as
+separate facts so an installed integration is not mistaken for a runnable one.
 
 Inspect profile configuration without starting a scan:
 
@@ -135,7 +148,7 @@ directory managed by your shell or dotfiles.
 | Codex CLI | yes | yes | yes |
 | Devin CLI | yes | yes | yes |
 | opencode | yes | yes | yes |
-| ZCode | yes | experimental | unverified |
+| ZCode | yes | no | unverified |
 | Oh My Pi | yes | yes | yes |
 | pi | yes | yes | yes |
 

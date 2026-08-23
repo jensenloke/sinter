@@ -21,6 +21,7 @@ import {
   type ParsedArgs,
 } from "./args";
 import type { AdapterRegistry } from "./adapters";
+import { adapterCapabilities, CAPABILITIES_SCHEMA } from "./capabilities";
 import { compareSessions, CONTENT_TYPES, ENTRY_KINDS } from "./compare";
 import { defaultConfigPath, inspectConfig, PROFILE_EXAMPLE, type SinterProfile } from "./config";
 
@@ -1120,6 +1121,45 @@ export async function cmdPrivacy(argv: string[], ctx: Ctx): Promise<number> {
   ctx.out(PROFILE_EXAMPLE.trimEnd());
   ctx.out("Profiles: one configured local store per harness. Additional accounts, profile directories,");
   ctx.out("and cloud-only history are not discovered automatically. Verify with `sinter doctor` before porting.");
+  return EXIT.OK;
+}
+
+export async function cmdCapabilities(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { strings: ["harness"], booleans: ["json"] });
+  const harness = flagString(args, "harness");
+  const selected = harness ? parseHarness(harness) : undefined;
+  const all = await adapterCapabilities(ctx.registry);
+  const capabilities = selected ? all.filter((capability) => capability.harness === selected) : all;
+
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify({ schema: CAPABILITIES_SCHEMA, capabilities }, null, 2));
+    return EXIT.OK;
+  }
+
+  const yesNo = (value: boolean): string => (value ? ctx.pal.green("yes") : ctx.pal.dim("no"));
+  ctx.out(
+    renderTable(
+      [
+        { header: "HARNESS" },
+        { header: "ADAPTER" },
+        { header: "STORE" },
+        { header: "READ" },
+        { header: "WRITE" },
+        { header: "RESUME" },
+        { header: "LIMITATIONS", flex: true },
+      ],
+      capabilities.map((capability) => [
+        ctx.pal.cyan(capability.harness),
+        capability.adapter === "available" ? ctx.pal.green("yes") : ctx.pal.dim("no"),
+        capability.store,
+        yesNo(capability.read),
+        yesNo(capability.write),
+        capability.resume,
+        capability.limitations.join("; ") || "-",
+      ]),
+      { width: ctx.width, pal: ctx.pal },
+    ),
+  );
   return EXIT.OK;
 }
 

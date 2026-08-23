@@ -53,10 +53,12 @@ Prioritized candidates after the current draft stack, not release commitments:
 2. **Thread inspection — ready in draft PR #17.** Expose a ported session's
    ordered lineage, transfer modes, and resumable tip without requiring the
    interactive TUI.
-3. **Saved views.** Name reusable combinations of project, harness, recency, and
+3. **Capability matrix — implemented on `feat/adapter-capabilities`.** Report
+   adapter loading, store detection, read/write support, native resume
+   readiness, and known limitations in human and versioned JSON forms. The TUI
+   consumes the same resolver so its action availability cannot drift.
+4. **Saved views.** Name reusable combinations of project, harness, recency, and
    ghost/subagent filters without weakening the explicit command flags.
-4. **Capability matrix.** Report which installed adapters can read, write, and
-   resume, plus known limitations, in both human and versioned JSON forms.
 5. **Safe ghost housekeeping.** Preview and remove only disposable ledger rows;
    never touch native harness stores, aliases, pins, or lineage implicitly.
 6. **Local tags and notes.** Add searchable user metadata without modifying

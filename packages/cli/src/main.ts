@@ -15,6 +15,7 @@ import { loadProfile, type SinterProfile } from "./config";
 import {
   cmdCompletion,
   cmdCompare,
+  cmdCapabilities,
   cmdConfig,
   cmdDoctor,
   cmdExport,
@@ -50,7 +51,7 @@ import { trackTelemetry, type TelemetryEvent } from "./telemetry";
 export const VERSION = "0.1.10";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
-const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "privacy", "feedback", "telemetry", "completion", "config"]);
+const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "capabilities", "privacy", "feedback", "telemetry", "completion", "config"]);
 
 /**
  * Keep the ledger fresh on every invocation: commands that resolve or list
@@ -83,6 +84,7 @@ async function autoScanLedger(ctx: Ctx, argv: string[]): Promise<void> {
 const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = {
   completion: cmdCompletion,
   compare: cmdCompare,
+  capabilities: cmdCapabilities,
   config: cmdConfig,
   scan: cmdScan,
   ls: cmdLs,
@@ -145,6 +147,7 @@ usage: sinter [command] [args]
   resume <id-prefix> [--in <harness>] [--exec]
                                          print (or run) the native resume command
   doctor [--json|--report [-o file]]     detect stores or create a privacy-safe report
+  capabilities [--harness x] [--json]   show adapter read, write, and resume support
   privacy                                explain local storage and support limits
   feedback [--title text] [--no-open]    open a safe, prefilled GitHub issue
   telemetry [status|enable|disable]      control anonymous active-use measurement
@@ -190,6 +193,7 @@ const COMMAND_HELP: Record<string, string> = {
   port: "usage: sinter port <id-prefix> --to <harness> [--mode full|slim|compact] [--preview [--json]] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.\n--preview reports target readiness and transfer impact without invoking the target writer.\n--dry-run asks the target writer to validate and describe its planned native output.\nHistorical tool calls are inert unless --live-tools is explicit.",
   resume: "usage: sinter resume <id-prefix> [--in <harness>] [--exec]\n\n--exec hands this terminal to the target harness.",
   doctor: "usage: sinter doctor [--json|--report [-o file]]\n\nNormal output shows resolved local store paths. --json emits safe structured health. --report emits a reviewable support report that excludes paths, prompts, titles, session IDs, transcripts, and raw errors.",
+  capabilities: "usage: sinter capabilities [--harness x] [--json]\n\nChecks adapter loading, local-store detection, write support, and native resume availability without reading transcripts or touching the ledger.",
   setup: "usage: sinter setup [--yes] [--no-menu]\n\nShows detected local stores. Interactive setup asks before scanning and opening the menu; --yes scans without opening it.",
   privacy: "usage: sinter privacy\n\nExplains local storage, profile limits, and harness support.",
   feedback: "usage: sinter feedback [--title text] [--no-open]\n\nOpens a prefilled GitHub issue with safe diagnostics only.",

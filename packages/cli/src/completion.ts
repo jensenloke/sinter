@@ -21,6 +21,7 @@ const COMMANDS = [
   ["resume", "print or run a native resume command"],
   ["setup", "detect stores and build the ledger"],
   ["doctor", "report store and ledger health"],
+  ["capabilities", "show adapter support matrix"],
   ["privacy", "explain local data handling"],
   ["feedback", "open a safe GitHub issue"],
   ["telemetry", "control anonymous usage measurement"],
@@ -82,6 +83,7 @@ ${commands}
     resume) _arguments $global_args '1:session id' '--in=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--exec' '--dry-run' '--live-tools' ;;
     setup) _arguments $global_args '--yes' '--no-menu' ;;
     doctor) _arguments $global_args '--json' '--report' '(-o --output)'{-o,--output}'=[diagnostic report file]:file:_files' ;;
+    capabilities) _arguments $global_args '--harness=[filter by harness]:harness:($harnesses)' '--json' ;;
     feedback) _arguments $global_args '--title=[issue title]:title' '--no-open' ;;
     telemetry) _arguments $global_args '1:action:(status enable disable)' '--endpoint=[collector URL]:url' ;;
     gui) _arguments $global_args '--port=[local port]:port' '--no-open' ;;
@@ -140,6 +142,8 @@ function fish(): string {
     "complete -c sinter -n '__fish_seen_subcommand_from completion' -a 'zsh bash fish' -d 'Shell'",
     "complete -c sinter -n '__fish_seen_subcommand_from port' -l preview -d 'Preview without writing'",
     "complete -c sinter -n '__fish_seen_subcommand_from doctor' -l report -d 'Generate a privacy-safe report'",
+    `complete -c sinter -n '__fish_seen_subcommand_from capabilities' -l harness -xa '${HARNESSES.join(" ")}' -d 'Filter by harness'`,
+    "complete -c sinter -n '__fish_seen_subcommand_from capabilities' -l json -d 'Emit versioned JSON'",
     `complete -c sinter -n '__fish_seen_subcommand_from pinned' -l harness -xa '${HARNESSES.join(" ")}' -d 'Filter by harness'`,
     "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l cwd -r -d 'Filter by directory'",
     "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l since -r -d 'Filter by age'",
