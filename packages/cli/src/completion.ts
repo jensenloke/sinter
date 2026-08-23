@@ -5,6 +5,9 @@ const COMMANDS = [
   ["config", "inspect and validate profile configuration"],
   ["ls", "list sessions"],
   ["recent", "list recent resumable sessions"],
+  ["pin", "bookmark a session locally"],
+  ["unpin", "remove a local bookmark"],
+  ["pinned", "list bookmarked sessions"],
   ["projects", "group sessions by working directory"],
   ["last", "resume the newest matching session"],
   ["search", "search sessions"],
@@ -62,6 +65,9 @@ ${commands}
     config) _arguments $global_args '1:action:(show path validate)' '--json' ;;
     ls) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
     recent) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' ;;
+    pin) _arguments $global_args '1:session id' ;;
+    unpin) _arguments $global_args '1:session id' ;;
+    pinned) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
     projects) _arguments $global_args '--harness=[filter by harness]:harnesses' '--since=[time window]:duration' '--limit=[maximum projects]:count' '--json' ;;
     last) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--id' '--json' '--exec' ;;
     search) _arguments $global_args '1:query' '--harness=[filter by harness]:harnesses' '--json' ;;
@@ -132,6 +138,13 @@ function fish(): string {
     "complete -c sinter -n '__fish_seen_subcommand_from completion' -a 'zsh bash fish' -d 'Shell'",
     "complete -c sinter -n '__fish_seen_subcommand_from port' -l preview -d 'Preview without writing'",
     "complete -c sinter -n '__fish_seen_subcommand_from doctor' -l report -d 'Generate a privacy-safe report'",
+    `complete -c sinter -n '__fish_seen_subcommand_from pinned' -l harness -xa '${HARNESSES.join(" ")}' -d 'Filter by harness'`,
+    "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l cwd -r -d 'Filter by directory'",
+    "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l since -r -d 'Filter by age'",
+    "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l limit -r -d 'Maximum rows'",
+    "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l json -d 'Emit versioned JSON'",
+    "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l no-ghost -d 'Hide missing native sessions'",
+    "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l no-sub -d 'Hide subagent sessions'",
     "complete -c sinter -n '__fish_seen_subcommand_from show' -l json -d 'Emit one SIF JSON document'",
     "complete -c sinter -n '__fish_seen_subcommand_from show' -l ndjson -d 'Stream versioned transcript records'",
     "complete -c sinter -n '__fish_seen_subcommand_from show' -l tail -r -d 'Latest entries to render'",

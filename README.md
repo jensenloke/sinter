@@ -32,6 +32,8 @@ sinter scan
 sinter scan --json
 sinter ls --since 7d
 sinter recent --cwd .
+sinter pin <id-prefix>          # keep an important session in a local shortlist
+sinter pinned                  # list bookmarks across harnesses
 sinter projects                 # group resumable sessions by working directory
 sinter last --cwd .             # print the newest native resume command
 sinter last --cwd . --exec      # resume it in this terminal

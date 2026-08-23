@@ -289,6 +289,57 @@ describe("recent", () => {
   });
 });
 
+describe("session pins", () => {
+  test("pins, lists, and unpins a session without modifying the adapter", async () => {
+    await scan();
+    const before = structuredClone(h.claude.summaries);
+    expect(await run(["pin", "aaa11111"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("pinned claude:aaa11111");
+    expect(h.ledger.get("claude", "aaa11111-1111")!.pinnedAt).toBeTruthy();
+    expect(h.claude.summaries).toEqual(before);
+
+    h.stdout.length = 0;
+    expect(await run(["pinned"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("★");
+    expect(h.out()).toContain("porting sessions between harnesses");
+    expect(h.out()).not.toContain("unrelated work");
+
+    h.stdout.length = 0;
+    expect(await run(["unpin", "aaa11111"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("unpinned claude:aaa11111");
+    expect(h.ledger.get("claude", "aaa11111-1111")!.pinnedAt).toBeUndefined();
+  });
+
+  test("offers filtered, versioned JSON and survives rescans", async () => {
+    await scan();
+    await run(["pin", "aaa11111"], h.ctx);
+    await run(["pin", "omp:omp-1"], h.ctx);
+    await scan();
+    h.stdout.length = 0;
+    h.stderr.length = 0;
+    expect(await run(["pinned", "--harness", "omp", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result.schema).toBe("sinter.pinned.v1");
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0]).toMatchObject({ harness: "omp", nativeId: "omp-1" });
+    expect(result.sessions[0].pinnedAt).toBeTruthy();
+    expect(h.err()).toBe("");
+  });
+
+  test("is idempotent and reports usage and resolution errors", async () => {
+    await scan();
+    expect(await run(["pin", "aaa11111"], h.ctx)).toBe(0);
+    expect(await run(["pin", "aaa11111"], h.ctx)).toBe(0);
+    expect(h.ledger.list({ pinnedOnly: true })).toHaveLength(1);
+    h.stderr.length = 0;
+    expect(await run(["pin"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("usage: sinter pin");
+    h.stderr.length = 0;
+    expect(await run(["unpin", "missing"], h.ctx)).toBe(2);
+    expect(h.err()).toContain("no session matches");
+  });
+});
+
 describe("projects", () => {
   test("groups resumable sessions by cwd with a versioned JSON contract", async () => {
     await scan();

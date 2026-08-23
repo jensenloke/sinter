@@ -12,6 +12,8 @@ export interface LedgerRow {
   cwd?: string;
   title?: string;
   alias?: string;
+  /** Sinter-local bookmark timestamp; never written into a harness store. */
+  pinnedAt?: string;
   firstPrompt?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -61,6 +63,8 @@ export interface ListOpts {
   includeGhost?: boolean;
   /** Include subagent/sidechain rows (default true). */
   includeSubagents?: boolean;
+  /** Include only sessions bookmarked in the Sinter-local pin table. */
+  pinnedOnly?: boolean;
 }
 
 export interface ScanHarnessStat {
@@ -81,10 +85,12 @@ export interface ResolveResult {
   candidates: LedgerRow[];
 }
 
-const SESSION_SELECT = `SELECT s.*, a.alias AS alias
+const SESSION_SELECT = `SELECT s.*, a.alias AS alias, p.pinned_at AS pinned_at
 FROM sessions AS s
 LEFT JOIN session_aliases AS a
-  ON a.harness = s.harness AND a.native_id = s.native_id`;
+  ON a.harness = s.harness AND a.native_id = s.native_id
+LEFT JOIN session_pins AS p
+  ON p.harness = s.harness AND p.native_id = s.native_id`;
 
 const COLUMNS = [
   "harness",
@@ -127,6 +133,7 @@ function rowFromDb(r: Record<string, unknown>): LedgerRow {
     cwd: (r.cwd as string) ?? undefined,
     title: (r.title as string) ?? undefined,
     alias: (r.alias as string) ?? undefined,
+    pinnedAt: (r.pinned_at as string) ?? undefined,
     firstPrompt: (r.first_prompt as string) ?? undefined,
     createdAt: (r.created_at as string) ?? undefined,
     updatedAt: (r.updated_at as string) ?? undefined,
@@ -306,6 +313,19 @@ export class Ledger {
     })();
   }
 
+  /** Set or clear a Sinter-local bookmark without modifying the native session. */
+  setPinned(harness: HarnessId, nativeId: string, pinned: boolean, pinnedAt = new Date().toISOString()): void {
+    if (!pinned) {
+      this.db.run("DELETE FROM session_pins WHERE harness = ? AND native_id = ?", [harness, nativeId]);
+      return;
+    }
+    this.db.run(
+      `INSERT INTO session_pins (harness, native_id, pinned_at) VALUES (?, ?, ?)
+       ON CONFLICT(harness, native_id) DO UPDATE SET pinned_at = excluded.pinned_at`,
+      [harness, nativeId, pinnedAt],
+    );
+  }
+
   /**
    * Incremental refresh from every adapter's list().
    * An adapter that throws is recorded and skipped — the others still scan, and
@@ -391,6 +411,7 @@ export class Ledger {
     }
     if (opts.includeGhost === false) where.push("s.ghost = 0");
     if (opts.includeSubagents === false) where.push("s.is_subagent = 0");
+    if (opts.pinnedOnly) where.push("p.pinned_at IS NOT NULL");
 
     const sql =
       SESSION_SELECT +
@@ -429,6 +450,7 @@ export class Ledger {
       if (opts.since && (row.updatedAt ?? row.createdAt ?? "") < opts.since) continue;
       if (opts.includeGhost === false && row.ghost) continue;
       if (opts.includeSubagents === false && row.isSubagent) continue;
+      if (opts.pinnedOnly && !row.pinnedAt) continue;
       out.push(row);
       if (opts.limit && out.length >= opts.limit) break;
     }

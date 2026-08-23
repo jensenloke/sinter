@@ -24,6 +24,8 @@ import {
   cmdLast,
   cmdLs,
   cmdMenu,
+  cmdPin,
+  cmdPinned,
   cmdPort,
   cmdProjects,
   cmdPrivacy,
@@ -36,6 +38,7 @@ import {
   cmdSearch,
   cmdShow,
   cmdTelemetry,
+  cmdUnpin,
   type Ctx,
 } from "./commands";
 import { colorEnabled, palette, termWidth } from "./format";
@@ -84,6 +87,8 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   ls: cmdLs,
   list: cmdLs,
   recent: cmdRecent,
+  pin: cmdPin,
+  pinned: cmdPinned,
   last: cmdLast,
   search: cmdSearch,
   rename: cmdRename,
@@ -99,6 +104,7 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   privacy: cmdPrivacy,
   feedback: cmdFeedback,
   telemetry: cmdTelemetry,
+  unpin: cmdUnpin,
   gui: cmdGui,
   relink: cmdRelink,
   menu: cmdMenu,
@@ -119,6 +125,9 @@ usage: sinter [command] [args]
                                          list sessions, newest first
   recent [--harness x] [--cwd .] [-n 10]
                                          list recent resumable parent sessions
+  pin <id-prefix>                        bookmark a session in the local ledger
+  unpin <id-prefix>                      remove a local session bookmark
+  pinned [--harness x] [--cwd .]        list bookmarked sessions
   projects [--harness x] [--since 7d]   group resumable sessions by project
   last [--harness x] [--cwd .] [--exec]  print or run the newest resume command
   search <query>                         full-text match over aliases, titles + prompts
@@ -162,6 +171,9 @@ const COMMAND_HELP: Record<string, string> = {
   scan: "usage: sinter scan [--harness claude,codex] [--json]\n\nRefreshes the local ledger. Reads local stores only.",
   ls: "usage: sinter ls [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]",
   recent: "usage: sinter recent [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]\n\nLists the newest non-ghost parent sessions; defaults to 10.",
+  pin: "usage: sinter pin <id-prefix>\n\nBookmarks a session in Sinter's local ledger without modifying its harness store.",
+  unpin: "usage: sinter unpin <id-prefix>\n\nRemoves a Sinter-local bookmark without modifying the session.",
+  pinned: "usage: sinter pinned [--harness x] [--cwd .] [--since 7d] [--limit n] [--json] [--no-ghost] [--no-sub]\n\nLists local bookmarks. Pins survive rescans and native-session garbage collection.",
   projects: "usage: sinter projects [--harness x] [--since 7d] [--limit n] [--json]\n\nGroups resumable parent sessions by working directory without reading transcript bodies.",
   last: "usage: sinter last [--harness x] [--cwd .] [--since 7d] [--id|--json|--exec]\n\nSelects the newest non-ghost parent session. By default, prints its native resume command.",
   search: "usage: sinter search <query> [--harness x] [--json]",

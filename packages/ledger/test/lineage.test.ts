@@ -315,26 +315,29 @@ describe("additive schema migration", () => {
     expect(l.get("codex", "old-249")!.title).toBe("precious 249");
     expect(l.search("precious")).toHaveLength(250);
 
-    // and the additive lineage and alias tables exist and work
+    // and the additive lineage, alias, and pin tables exist and work
     expect(l.lineageCount()).toBe(0);
     l.recordProvenance(prov({ threadId: "post", chain: [hop("claude", "old-0"), hop("codex", "old-1")] }));
     expect(shape(l.lineageFor("post"))).toEqual(["claude:old-0@0", "codex:old-1@1<-claude:old-0"]);
     l.setAlias("claude", "old-0", "migration nickname");
     expect(l.get("claude", "old-0")!.alias).toBe("migration nickname");
     expect(l.search("nickname").map((row) => row.nativeId)).toEqual(["old-0"]);
+    l.setPinned("claude", "old-0", true, "2026-08-24T01:00:00.000Z");
+    expect(l.get("claude", "old-0")!.pinnedAt).toBe("2026-08-24T01:00:00.000Z");
 
     // version was recorded, not acted on
     const v = l.db.query("SELECT value FROM meta WHERE key = 'schema_version'").get() as {
       value: string;
     };
     expect(v.value).toBe(String(SCHEMA_VERSION));
-    expect(SCHEMA_VERSION).toBe(3);
+    expect(SCHEMA_VERSION).toBe(4);
 
     // reopening again is still non-destructive
     l.close();
     const l2 = new Ledger(path);
     expect(l2.list()).toHaveLength(250);
     expect(l2.get("claude", "old-0")!.alias).toBe("migration nickname");
+    expect(l2.get("claude", "old-0")!.pinnedAt).toBe("2026-08-24T01:00:00.000Z");
     expect(l2.lineageCount()).toBe(2);
     l2.close();
 

@@ -102,7 +102,10 @@ export function rowsTable(rows: LedgerRow[], ctx: Ctx): string {
       p.dim(humanAge(r.updatedAt ?? r.createdAt, ctx.now)),
       p.dim(shortenPath(r.cwd, 28)),
       formatCount(r.messageCount),
-      (r.isSubagent ? p.blue("↳ ") : "") + (r.ghost ? p.dim("†") : "") + truncate(label, 400),
+      (r.pinnedAt ? p.yellow("★ ") : "") +
+        (r.isSubagent ? p.blue("↳ ") : "") +
+        (r.ghost ? p.dim("†") : "") +
+        truncate(label, 400),
     ];
   });
   return renderTable(
@@ -366,6 +369,47 @@ export async function cmdRecent(argv: string[], ctx: Ctx): Promise<number> {
   opts.includeSubagents = false;
   opts.limit ??= 10;
   return printRows(ctx.ledger().list(opts), ctx, args);
+}
+
+export async function cmdPin(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv);
+  if (args._.length !== 1) throw new CliError("usage: sinter pin <id-prefix>");
+  const row = resolveRow(ctx, args._[0]!);
+  ctx.ledger().setPinned(row.harness, row.nativeId, true);
+  ctx.out(`pinned ${row.harness}:${displayId(row.nativeId)}`);
+  return EXIT.OK;
+}
+
+export async function cmdUnpin(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv);
+  if (args._.length !== 1) throw new CliError("usage: sinter unpin <id-prefix>");
+  const row = resolveRow(ctx, args._[0]!);
+  ctx.ledger().setPinned(row.harness, row.nativeId, false);
+  ctx.out(`unpinned ${row.harness}:${displayId(row.nativeId)}`);
+  return EXIT.OK;
+}
+
+/** List Sinter-local bookmarks; pins survive rescans and native-session GC. */
+export async function cmdPinned(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["harness", "cwd", "since", "limit"],
+    booleans: ["json", "no-ghost", "no-sub"],
+    alias: { n: "limit" },
+  });
+  const opts = filterOpts(args, ctx.now);
+  opts.pinnedOnly = true;
+  opts.limit ??= 30;
+  const rows = ctx.ledger().list(opts);
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify({ schema: "sinter.pinned.v1", sessions: rows }, null, 2));
+    return EXIT.OK;
+  }
+  if (!rows.length) {
+    ctx.err("no pinned sessions");
+    return EXIT.OK;
+  }
+  ctx.out(rowsTable(rows, ctx));
+  return EXIT.OK;
 }
 
 /** Summarize resumable work by directory without parsing any transcripts. */

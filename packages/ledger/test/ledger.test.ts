@@ -218,6 +218,45 @@ describe("session aliases", () => {
   });
 });
 
+describe("session pins", () => {
+  test("sets, filters, and clears local bookmarks without changing session rows", () => {
+    const l = ledger();
+    l.upsert(summary({ nativeId: "pin-1", title: "source title" }));
+    l.upsert(summary({ nativeId: "plain" }));
+
+    l.setPinned("claude", "pin-1", true, "2026-08-24T01:00:00.000Z");
+    expect(l.get("claude", "pin-1")).toMatchObject({
+      title: "source title",
+      pinnedAt: "2026-08-24T01:00:00.000Z",
+    });
+    expect(l.list({ pinnedOnly: true }).map((row) => row.nativeId)).toEqual(["pin-1"]);
+
+    l.setPinned("claude", "pin-1", false);
+    expect(l.get("claude", "pin-1")!.pinnedAt).toBeUndefined();
+    expect(l.list({ pinnedOnly: true })).toEqual([]);
+    l.close();
+  });
+
+  test("pins are harness-scoped and survive rescans that ghost a session", async () => {
+    const l = ledger();
+    const adapter = new MockAdapter({
+      id: "claude",
+      summaries: [summary({ nativeId: "same" })],
+    });
+    await l.scan([adapter]);
+    l.upsert(summary({ nativeId: "same", harness: "codex" }));
+    l.setPinned("claude", "same", true);
+    expect(l.get("codex", "same")!.pinnedAt).toBeUndefined();
+
+    adapter.summaries = [];
+    await l.scan([adapter]);
+    expect(l.get("claude", "same")).toMatchObject({ ghost: true });
+    expect(l.get("claude", "same")!.pinnedAt).toBeTruthy();
+    expect(l.list({ pinnedOnly: true })[0]).toMatchObject({ harness: "claude", nativeId: "same" });
+    l.close();
+  });
+});
+
 describe("list filters", () => {
   const seed = (l: Ledger) => {
     l.upsert(summary({ nativeId: "old", updatedAt: "2026-01-01T00:00:00.000Z" }));

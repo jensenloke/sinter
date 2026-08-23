@@ -12,6 +12,8 @@ describe("shell completions", () => {
     expect(script).toContain("gui");
     expect(script).toContain("recent");
     expect(script).toContain("projects");
+    expect(script).toContain("pinned");
+    expect(script).toContain("unpin");
     expect(script).toContain("last");
     expect(script).toContain("config");
     expect(script).toContain("preview");
