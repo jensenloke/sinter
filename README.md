@@ -35,11 +35,48 @@ sinter rename <id-prefix> "My important session"
 sinter show <id-prefix>
 sinter port <id-prefix> --to omp
 sinter resume <id-prefix> --in omp --exec
+sinter feedback
+sinter gui
 ```
+
+## Feedback
+
+Run `sinter feedback` to open a prefilled GitHub issue. Sinter includes only its
+version, the Bun version, OS/architecture, and the names of detected harnesses.
+It never includes paths, session IDs, prompts, or transcript content. Use
+`sinter feedback --no-open` to print the URL instead.
+
+## Local GUI
+
+`sinter gui` opens a local session workspace with harness filters, search,
+thread lineage, transcript preview, resume, and port actions. The server binds
+only to `127.0.0.1`; a random URL token protects its data and action endpoints.
+The browser reads the same local ledger and adapters as the CLI, so transcripts
+do not leave the machine. Use `sinter gui --no-open` to print the URL without
+launching a browser.
+
+## Anonymous usage measurement
+
+Telemetry is disabled by default. Users can explicitly enable the small,
+documented event stream with:
+
+```sh
+sinter telemetry enable --endpoint https://your-collector.example/events
+sinter telemetry status
+sinter telemetry disable
+```
+
+Events contain only a random installation ID, Sinter version, OS/architecture,
+event name (`first_run`, `scan`, `port_success`, `resume`, or `gui_open`), and
+timestamp. CI and non-interactive invocations never emit events. Set
+`SINTER_TELEMETRY=0` for an additional environment-level kill switch. The
+collector endpoint is intentionally operator-configured until Sinter has a
+published first-party privacy policy and endpoint.
 
 ## Privacy and safety
 
 - Sinter reads local session stores only; it does not upload transcripts.
+- Anonymous product telemetry is off by default and never contains session data.
 - Source stores are read-only. A port creates a new target-native session.
 - Historical tool calls are rendered inert by default. Use `--live-tools` only when that behavior is explicitly required.
 - `sinter privacy` describes local data handling and `sinter doctor` reports detected stores.
