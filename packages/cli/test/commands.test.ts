@@ -115,6 +115,7 @@ describe("CLI conventions", () => {
   test("explains local-only storage and unsupported desktop surfaces", async () => {
     expect(await run(["privacy"], h.ctx)).toBe(0);
     expect(h.out()).toContain("does not upload transcripts");
+    expect(h.out()).toContain("owner read/write only");
     expect(h.out()).toContain("zcode: read-only");
     expect(h.out()).toContain("ChatGPT.app / Codex desktop: future work");
   });

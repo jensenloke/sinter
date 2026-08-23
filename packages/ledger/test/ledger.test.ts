@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { chmodSync, statSync } from "node:fs";
 import { Ledger } from "../src/index";
 import { MockAdapter, summary } from "./mock-adapter";
 
@@ -534,6 +535,22 @@ describe("counts", () => {
 });
 
 describe("persistence", () => {
+  test("hardens an existing ledger and its SQLite sidecars to owner-only", async () => {
+    const dir = `/tmp/sinter-ledger-permissions-${Bun.randomUUIDv7()}`;
+    const path = `${dir}/ledger.db`;
+    const initial = new Ledger(path);
+    initial.close();
+    chmodSync(path, 0o644);
+
+    const reopened = new Ledger(path);
+    reopened.upsert(summary({ nativeId: "private-session", firstPrompt: "private prompt" }));
+    for (const candidate of [path, `${path}-wal`, `${path}-shm`]) {
+      expect(statSync(candidate).mode & 0o777).toBe(0o600);
+    }
+    reopened.close();
+    await Bun.$`rm -rf ${dir}`.quiet();
+  });
+
   test("survives reopen of an on-disk ledger", async () => {
     const dir = `/tmp/sinter-ledger-test-${Bun.randomUUIDv7()}`;
     const path = `${dir}/ledger.db`;

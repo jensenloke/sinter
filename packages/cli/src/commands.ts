@@ -1536,6 +1536,7 @@ export async function cmdPrivacy(argv: string[], ctx: Ctx): Promise<number> {
   ctx.out("");
   ctx.out("Sinter data:");
   ctx.out(`  ledger: ${ctx.ledger().path}`);
+  ctx.out("    on POSIX systems, SQLite files are restricted to the current user (owner read/write only)");
   ctx.out("  carry-forward data: stored beside a target session only when a port needs it");
   ctx.out("  telemetry: disabled unless you explicitly run `sinter telemetry enable`");
   ctx.out("    events contain a random installation id, version, OS/architecture, event name, and time only");

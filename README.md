@@ -196,6 +196,7 @@ directory managed by your shell or dotfiles.
 ## Privacy and safety
 
 - Sinter reads local session stores only; it does not upload transcripts.
+- On POSIX systems, the local SQLite ledger and sidecar files are restricted to the current user (`0600`).
 - Anonymous product telemetry is off by default and never contains session data.
 - Source stores are read-only. A port creates a new target-native session.
 - Historical tool calls are rendered inert by default. Use `--live-tools` only when that behavior is explicitly required.

@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir, hostname } from "node:os";
 import type { HarnessAdapter, HarnessId, SessionSummary, SinterProvenance } from "@sinter/core";
@@ -261,6 +261,21 @@ function bindValues(s: SessionSummary, host: string, scannedAt: string): unknown
   ];
 }
 
+/** The ledger contains session titles, prompts, and paths. Keep every SQLite
+ * file owner-only even when an older install created it under a permissive
+ * umask. Windows does not implement POSIX permission bits, so chmod failures
+ * there are not actionable. */
+function secureLedgerFiles(path: string): void {
+  for (const candidate of [path, `${path}-wal`, `${path}-shm`]) {
+    if (!existsSync(candidate)) continue;
+    try {
+      chmodSync(candidate, 0o600);
+    } catch (error) {
+      if (process.platform !== "win32") throw error;
+    }
+  }
+}
+
 export class Ledger {
   readonly db: Database;
   readonly path: string;
@@ -268,13 +283,18 @@ export class Ledger {
 
   constructor(path: string = defaultLedgerPath()) {
     this.path = path;
-    if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
+    if (path !== ":memory:") {
+      mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+      closeSync(openSync(path, "a", 0o600));
+      secureLedgerFiles(path);
+    }
     this.db = new Database(path, { create: true });
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec(SCHEMA_SQL);
     this.db.run("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)", [
       String(SCHEMA_VERSION),
     ]);
+    if (path !== ":memory:") secureLedgerFiles(path);
     this.host = process.env.SINTER_HOST ?? hostname();
   }
 
