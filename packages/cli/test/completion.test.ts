@@ -7,6 +7,7 @@ describe("shell completions", () => {
     expect(script).toContain("sinter");
     expect(script).toContain("completion");
     expect(script).toContain("port");
+    expect(script).toContain("compare");
     expect(script).toContain("feedback");
     expect(script).toContain("gui");
     expect(script).toContain("recent");

@@ -9,6 +9,7 @@ const COMMANDS = [
   ["search", "search sessions"],
   ["rename", "set a local session alias"],
   ["show", "render a transcript"],
+  ["compare", "compare transcript structure"],
   ["export", "export a SIF session"],
   ["import", "import a SIF session"],
   ["port", "port a session to another harness"],
@@ -64,6 +65,7 @@ ${commands}
     search) _arguments $global_args '1:query' '--harness=[filter by harness]:harnesses' '--json' ;;
     rename) _arguments $global_args '1:session id' '2:alias' '--clear' ;;
     show) _arguments $global_args '1:session id' '--json' '--tool-chars=[tool result limit]:characters' '--no-sub' ;;
+    compare) _arguments $global_args '1:left session id' '2:right session id' '--json' ;;
     export) _arguments $global_args '1:session id' '(-o --output)'{-o,--output}'=[output file]:file:_files' '--slim' ;;
     import) _arguments $global_args '1:SIF file:_files' '--to=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--dry-run' '--live-tools' ;;
     port) _arguments $global_args '1:session id' '--to=[target harness]:harness:($harnesses)' '--mode=[transfer mode]:mode:($modes)' '--cwd=[target directory]:directory:_directories' '--preview' '--json' '--dry-run' '--live-tools' ;;

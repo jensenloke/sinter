@@ -14,6 +14,7 @@ import { DynamicAdapterRegistry } from "./adapters";
 import { loadProfile, type SinterProfile } from "./config";
 import {
   cmdCompletion,
+  cmdCompare,
   cmdConfig,
   cmdDoctor,
   cmdExport,
@@ -76,6 +77,7 @@ async function autoScanLedger(ctx: Ctx, argv: string[]): Promise<void> {
 
 const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = {
   completion: cmdCompletion,
+  compare: cmdCompare,
   config: cmdConfig,
   scan: cmdScan,
   ls: cmdLs,
@@ -119,6 +121,7 @@ usage: sinter [command] [args]
   search <query>                         full-text match over aliases, titles + prompts
   rename <id-prefix> <alias>             set a local alias that survives rescans
   show <id-prefix> [--json]              render a transcript from any harness
+  compare <left-id> <right-id> [--json]  compare transcript structure, not content
   export <id-prefix> [-o file] [--slim]  write the session as SIF JSON
   import <file> --to <harness> [...]     synthesize a new native session from SIF
   setup [--yes] [--no-menu]              detect stores, build the ledger, then open the menu
@@ -160,6 +163,7 @@ const COMMAND_HELP: Record<string, string> = {
   rename: "usage: sinter rename <id-prefix> <alias> [--clear]\n\nStores a local alias in Sinter without modifying the native harness session.",
   alias: "usage: sinter rename <id-prefix> <alias> [--clear]",
   show: "usage: sinter show <id-prefix> [--json] [--tool-chars n] [--no-sub]",
+  compare: "usage: sinter compare <left-id> <right-id> [--json]\n\nCompares structural counts without printing transcript content. Matching counts do not prove semantic equivalence.",
   export: "usage: sinter export <id-prefix> [-o file] [--slim]\n\nWithout -o, writes SIF JSON to stdout.",
   import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",
   port: "usage: sinter port <id-prefix> --to <harness> [--mode full|slim|compact] [--preview [--json]] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.\n--preview reports target readiness and transfer impact without invoking the target writer.\n--dry-run asks the target writer to validate and describe its planned native output.\nHistorical tool calls are inert unless --live-tools is explicit.",

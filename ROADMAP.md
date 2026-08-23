@@ -32,6 +32,9 @@ the next one through real usage and privacy review.
    show|path|validate` for local profiles. Guided writes for defaults, update
    checks, and telemetry remain a later checkpoint because they require a
    stable, migration-safe config schema.
+7. **Transfer verification — in implementation.** Compare source and target
+   transcript structure after a port without printing conversation content or
+   overstating count equality as semantic equivalence.
 
 ## Phase 1: portable session capsules
 
