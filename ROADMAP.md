@@ -11,19 +11,22 @@ the next one through real usage and privacy review.
 
 ## Near term: better CLI ergonomics
 
-1. **Shell completions — in progress.** Generate native completion scripts for
-   zsh, bash, and fish covering commands, flags, harnesses, and transfer modes.
-2. **Port preview.** Add a side-effect-free view of target readiness, payload
-   size, dropped content, required files, and the exact native session that
-   would be created before a port runs.
-3. **Recent-session shortcuts.** Make `sinter recent`, `sinter last`, and
-   project-scoped history reduce the need to copy session ID prefixes.
+1. **Shell completions — ready in draft PR #4.** Generate native completion
+   scripts for zsh, bash, and fish covering commands, flags, harnesses, and
+   transfer modes.
+2. **Port preview — ready in draft PR #5.** Add a side-effect-free view of
+   target readiness, payload reduction, entry changes, working directory, and
+   historical tool behavior before a port runs.
+3. **Recent-session shortcuts — ready in draft PR #6.** Make `sinter recent`,
+   `sinter last`, and project-scoped history reduce the need to copy session ID
+   prefixes.
 4. **Consistent machine-readable output.** Extend `--json`/NDJSON and stable
    error codes across commands so scripts and editor integrations do not parse
    human tables.
-5. **Safe diagnostic bundles.** Let `sinter doctor --report` produce a
-   reviewable support bundle containing versions and store health while
-   excluding paths, prompts, session IDs, and transcripts by default.
+5. **Safe diagnostic bundles — ready in draft PR #7.** Let `sinter doctor
+   --report` produce a reviewable support report containing versions and store
+   health while excluding paths, prompts, titles, session IDs, transcripts,
+   and raw adapter errors by default.
 6. **Configuration UX.** Add `sinter config show|set|path` and guided validation
    for profiles, defaults, update checks, and telemetry settings.
 
