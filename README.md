@@ -103,6 +103,7 @@ directory managed by your shell or dotfiles.
 - Source stores are read-only. A port creates a new target-native session.
 - Historical tool calls are rendered inert by default. Use `--live-tools` only when that behavior is explicitly required.
 - `sinter privacy` describes local data handling and `sinter doctor` reports detected stores.
+- `sinter doctor --report -o sinter-diagnostics.md` creates a reviewable support report without paths, prompts, titles, session IDs, transcripts, or raw adapter errors.
 
 ## Harness support
 
