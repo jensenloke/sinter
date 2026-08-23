@@ -47,9 +47,9 @@ the next one through real usage and privacy review.
 
 Prioritized candidates after the current draft stack, not release commitments:
 
-1. **Pinned sessions — in implementation.** Keep a small, Sinter-local shortlist
-   above the churn of a large ledger with `pin`, `unpin`, and `pinned`; pins
-   must survive rescans.
+1. **Pinned sessions — ready in draft PR #16.** Keep a small, Sinter-local
+   shortlist above the churn of a large ledger with `pin`, `unpin`, and
+   `pinned`; pins survive rescans.
 2. **Thread inspection.** Expose a ported session's ordered lineage, transfer
    modes, and resumable tip without requiring the interactive TUI.
 3. **Saved views.** Name reusable combinations of project, harness, recency, and
