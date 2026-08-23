@@ -2,7 +2,10 @@ export type CompletionShell = "zsh" | "bash" | "fish";
 
 const COMMANDS = [
   ["scan", "refresh the local ledger"],
+  ["config", "inspect and validate profile configuration"],
   ["ls", "list sessions"],
+  ["recent", "list recent resumable sessions"],
+  ["last", "resume the newest matching session"],
   ["search", "search sessions"],
   ["rename", "set a local session alias"],
   ["show", "render a transcript"],
@@ -54,15 +57,19 @@ ${commands}
 
   case $words[2] in
     scan) _arguments $global_args '--harness=[comma-separated harnesses]:harnesses' ;;
+    config) _arguments $global_args '1:action:(show path validate)' '--json' ;;
     ls) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
+    recent) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' ;;
+    last) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--id' '--json' '--exec' ;;
     search) _arguments $global_args '1:query' '--harness=[filter by harness]:harnesses' '--json' ;;
     rename) _arguments $global_args '1:session id' '2:alias' '--clear' ;;
     show) _arguments $global_args '1:session id' '--json' '--tool-chars=[tool result limit]:characters' '--no-sub' ;;
     export) _arguments $global_args '1:session id' '(-o --output)'{-o,--output}'=[output file]:file:_files' '--slim' ;;
     import) _arguments $global_args '1:SIF file:_files' '--to=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--dry-run' '--live-tools' ;;
-    port) _arguments $global_args '1:session id' '--to=[target harness]:harness:($harnesses)' '--mode=[transfer mode]:mode:($modes)' '--cwd=[target directory]:directory:_directories' '--dry-run' '--live-tools' ;;
+    port) _arguments $global_args '1:session id' '--to=[target harness]:harness:($harnesses)' '--mode=[transfer mode]:mode:($modes)' '--cwd=[target directory]:directory:_directories' '--preview' '--json' '--dry-run' '--live-tools' ;;
     resume) _arguments $global_args '1:session id' '--in=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--exec' '--dry-run' '--live-tools' ;;
     setup) _arguments $global_args '--yes' '--no-menu' ;;
+    doctor) _arguments $global_args '--report' '(-o --output)'{-o,--output}'=[diagnostic report file]:file:_files' ;;
     feedback) _arguments $global_args '--title=[issue title]:title' '--no-open' ;;
     telemetry) _arguments $global_args '1:action:(status enable disable)' '--endpoint=[collector URL]:url' ;;
     gui) _arguments $global_args '--port=[local port]:port' '--no-open' ;;
@@ -99,7 +106,11 @@ function bash(): string {
     COMPREPLY=( $(compgen -W 'zsh bash fish' -- "$current") )
     return
   fi
-  COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --cwd --since --limit --json --to --in --mode --dry-run --live-tools --exec --no-open' -- "$current") )
+  if [[ $command == config ]]; then
+    COMPREPLY=( $(compgen -W 'show path validate --json' -- "$current") )
+    return
+  fi
+  COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --cwd --since --limit --json --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open' -- "$current") )
 }
 complete -F _sinter_completion sinter
 `;
@@ -113,7 +124,10 @@ function fish(): string {
     `complete -c sinter -n '__fish_seen_subcommand_from port import' -l to -xa '${HARNESSES.join(" ")}' -d 'Target harness'`,
     `complete -c sinter -n '__fish_seen_subcommand_from resume' -l in -xa '${HARNESSES.join(" ")}' -d 'Target harness'`,
     `complete -c sinter -n '__fish_seen_subcommand_from port menu' -l mode -xa '${MODES.join(" ")}' -d 'Transfer mode'`,
+    "complete -c sinter -n '__fish_seen_subcommand_from config' -a 'show path validate' -d 'Action'",
     "complete -c sinter -n '__fish_seen_subcommand_from completion' -a 'zsh bash fish' -d 'Shell'",
+    "complete -c sinter -n '__fish_seen_subcommand_from port' -l preview -d 'Preview without writing'",
+    "complete -c sinter -n '__fish_seen_subcommand_from doctor' -l report -d 'Generate a privacy-safe report'",
     "complete -c sinter -l no-scan -d 'Skip automatic ledger refresh'",
     "complete -c sinter -l no-update-check -d 'Skip the update check'",
     "complete -c sinter -s h -l help -d 'Show help'",

@@ -9,6 +9,11 @@ describe("shell completions", () => {
     expect(script).toContain("port");
     expect(script).toContain("feedback");
     expect(script).toContain("gui");
+    expect(script).toContain("recent");
+    expect(script).toContain("last");
+    expect(script).toContain("config");
+    expect(script).toContain("preview");
+    expect(script).toContain("report");
     expect(script).toContain("codex");
     expect(script).toContain("compact");
     expect(script).not.toContain("/Users/");
