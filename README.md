@@ -40,6 +40,7 @@ sinter rename <id-prefix> "My important session"
 sinter show <id-prefix>
 sinter show <id-prefix> --ndjson       # one versioned JSON record per line
 sinter compare <source-id> <target-id>  # structural transfer check; no content printed
+sinter show <id-prefix> --tail 20       # render only the latest entries
 sinter port <id-prefix> --to codex --mode compact --preview
 sinter port <id-prefix> --to omp
 sinter resume <id-prefix> --in omp --exec

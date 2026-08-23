@@ -123,7 +123,8 @@ usage: sinter [command] [args]
   last [--harness x] [--cwd .] [--exec]  print or run the newest resume command
   search <query>                         full-text match over aliases, titles + prompts
   rename <id-prefix> <alias>             set a local alias that survives rescans
-  show <id-prefix> [--json|--ndjson]     render or stream a transcript from any harness
+  show <id-prefix> [--tail n|--json|--ndjson]
+                                         render or stream a transcript from any harness
   compare <left-id> <right-id> [--json]  compare transcript structure, not content
   export <id-prefix> [-o file] [--slim]  write the session as SIF JSON
   import <file> --to <harness> [...]     synthesize a new native session from SIF
@@ -166,7 +167,7 @@ const COMMAND_HELP: Record<string, string> = {
   search: "usage: sinter search <query> [--harness x] [--json]",
   rename: "usage: sinter rename <id-prefix> <alias> [--clear]\n\nStores a local alias in Sinter without modifying the native harness session.",
   alias: "usage: sinter rename <id-prefix> <alias> [--clear]",
-  show: "usage: sinter show <id-prefix> [--json|--ndjson] [--tool-chars n] [--no-sub]\n\n--ndjson emits a versioned session record followed by one record per entry, then nested sessions.",
+  show: "usage: sinter show <id-prefix> [--tail n|--json|--ndjson] [--tool-chars n] [--no-sub]\n\n--tail renders only the latest n entries from each session. It cannot be combined with machine output because the result would not be a complete SIF document.\n--ndjson emits a versioned session record followed by one record per entry, then nested sessions.",
   compare: "usage: sinter compare <left-id> <right-id> [--json]\n\nCompares structural counts without printing transcript content. Matching counts do not prove semantic equivalence.",
   export: "usage: sinter export <id-prefix> [-o file] [--slim]\n\nWithout -o, writes SIF JSON to stdout.",
   import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",

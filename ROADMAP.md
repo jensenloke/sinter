@@ -38,6 +38,9 @@ the next one through real usage and privacy review.
 8. **Transfer verification — ready in draft PR #13.** Compare source and target
    transcript structure after a port without printing conversation content or
    overstating count equality as semantic equivalence.
+9. **Large transcript navigation — ready in draft PR #14.** Add a bounded tail
+   view for quickly reading the latest turns without rendering an entire
+   long-running session or emitting an incomplete machine-readable SIF document.
 
 ## Phase 1: portable session capsules
 

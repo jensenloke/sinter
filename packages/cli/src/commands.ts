@@ -476,15 +476,23 @@ export async function cmdRename(argv: string[], ctx: Ctx): Promise<number> {
 }
 
 export async function cmdShow(argv: string[], ctx: Ctx): Promise<number> {
-  const args = parseArgs(argv, { booleans: ["json", "ndjson", "no-sub"], strings: ["tool-chars"] });
+  const args = parseArgs(argv, { booleans: ["json", "ndjson", "no-sub"], strings: ["tool-chars", "tail"] });
   const prefix = args._[0];
   if (!prefix) throw new CliError("usage: sinter show <id-prefix>");
+  if (flagBool(args, "json") && flagBool(args, "ndjson"))
+    throw new CliError("choose one output mode: --json or --ndjson");
+  const tailValue = flagString(args, "tail");
+  let tailEntries: number | undefined;
+  if (tailValue !== undefined) {
+    tailEntries = Number(tailValue);
+    if (!Number.isInteger(tailEntries) || tailEntries <= 0) throw new CliError(`bad --tail: ${tailValue}`);
+    if (flagBool(args, "json") || flagBool(args, "ndjson"))
+      throw new CliError("--tail is for rendered output and cannot be combined with --json or --ndjson");
+  }
   const row = resolveRow(ctx, prefix);
   if (row.ghost) ctx.err(ctx.pal.dim(`note: ${shortId(row.nativeId)} is a ghost row — the harness may have GC'd it`));
 
   const session = await readSession(ctx, row);
-  if (flagBool(args, "json") && flagBool(args, "ndjson"))
-    throw new CliError("choose one output mode: --json or --ndjson");
   if (flagBool(args, "json")) {
     ctx.out(JSON.stringify(session, null, 2));
     return EXIT.OK;
@@ -501,6 +509,7 @@ export async function cmdShow(argv: string[], ctx: Ctx): Promise<number> {
       pal: ctx.pal,
       toolResultChars: Number.isFinite(toolChars) ? toolChars : 240,
       subsessions: !flagBool(args, "no-sub"),
+      tailEntries,
     }),
   );
   return EXIT.OK;

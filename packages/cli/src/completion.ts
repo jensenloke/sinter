@@ -66,7 +66,7 @@ ${commands}
     last) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--id' '--json' '--exec' ;;
     search) _arguments $global_args '1:query' '--harness=[filter by harness]:harnesses' '--json' ;;
     rename) _arguments $global_args '1:session id' '2:alias' '--clear' ;;
-    show) _arguments $global_args '1:session id' '--json' '--ndjson' '--tool-chars=[tool result limit]:characters' '--no-sub' ;;
+    show) _arguments $global_args '1:session id' '--json' '--ndjson' '--tail=[latest entries to render]:count' '--tool-chars=[tool result limit]:characters' '--no-sub' ;;
     compare) _arguments $global_args '1:left session id' '2:right session id' '--json' ;;
     export) _arguments $global_args '1:session id' '(-o --output)'{-o,--output}'=[output file]:file:_files' '--slim' ;;
     import) _arguments $global_args '1:SIF file:_files' '--to=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--dry-run' '--live-tools' ;;
@@ -114,7 +114,7 @@ function bash(): string {
     COMPREPLY=( $(compgen -W 'show path validate --json' -- "$current") )
     return
   fi
-  COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --cwd --since --limit --json --ndjson --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open' -- "$current") )
+  COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --cwd --since --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open' -- "$current") )
 }
 complete -F _sinter_completion sinter
 `;
@@ -134,6 +134,7 @@ function fish(): string {
     "complete -c sinter -n '__fish_seen_subcommand_from doctor' -l report -d 'Generate a privacy-safe report'",
     "complete -c sinter -n '__fish_seen_subcommand_from show' -l json -d 'Emit one SIF JSON document'",
     "complete -c sinter -n '__fish_seen_subcommand_from show' -l ndjson -d 'Stream versioned transcript records'",
+    "complete -c sinter -n '__fish_seen_subcommand_from show' -l tail -r -d 'Latest entries to render'",
     "complete -c sinter -l no-scan -d 'Skip automatic ledger refresh'",
     "complete -c sinter -l no-update-check -d 'Skip the update check'",
     "complete -c sinter -s h -l help -d 'Show help'",
