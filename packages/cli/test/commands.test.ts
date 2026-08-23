@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Ledger } from "@sinter/ledger";
-import { StaticAdapterRegistry } from "../src/adapters";
+import { StaticAdapterRegistry, type AdapterRegistry } from "../src/adapters";
 import { loadProfile } from "../src/config";
 import { palette } from "../src/format";
 import type { Ctx } from "../src/commands";
@@ -531,5 +531,65 @@ describe("immediate resolvability after write (issue #1)", () => {
     const resolved = h2.ledger.resolve(`codex:${newId}`);
     expect(resolved.row).toBeTruthy();
     expect(resolved.row!.nativeId).toBe(newId);
+  });
+});
+
+describe("auto-scan (always-fresh ledger)", () => {
+  test("refreshes the ledger before the command when autoScan is enabled", async () => {
+    h.ctx.autoScan = true;
+    expect(await run(["ls"], h.ctx)).toBe(0);
+    expect(h.ledger.list()).toHaveLength(4);
+    expect(h.out()).toContain("porting sessions between harnesses");
+  });
+
+  test("is disabled when autoScan is not set (hand-built test ctx)", async () => {
+    expect(await run(["ls"], h.ctx)).toBe(0);
+    expect(h.ledger.list()).toHaveLength(0);
+    expect(h.err()).toContain("no sessions matched");
+  });
+
+  test("--no-scan skips the automatic refresh", async () => {
+    h.ctx.autoScan = true;
+    expect(await run(["ls", "--no-scan"], h.ctx)).toBe(0);
+    expect(h.ledger.list()).toHaveLength(0);
+    expect(h.err()).toContain("no sessions matched");
+  });
+
+  test("SINTER_NO_SCAN=1 skips the automatic refresh", async () => {
+    h.ctx.autoScan = true;
+    process.env.SINTER_NO_SCAN = "1";
+    try {
+      expect(await run(["ls"], h.ctx)).toBe(0);
+      expect(h.ledger.list()).toHaveLength(0);
+    } finally {
+      delete process.env.SINTER_NO_SCAN;
+    }
+  });
+
+  test("scan and privacy are not auto-scanned a second time", async () => {
+    h.ctx.autoScan = true;
+    let lists = 0;
+    const original = h.claude.list.bind(h.claude);
+    h.claude.list = () => {
+      lists++;
+      return original();
+    };
+    await run(["scan"], h.ctx);
+    const afterScan = lists;
+    expect(afterScan).toBe(1); // only the explicit scan; no double auto-scan
+    h.stdout.length = 0;
+    await run(["privacy"], h.ctx);
+    expect(lists).toBe(afterScan); // privacy does not trigger a scan
+    expect(h.ledger.list()).toHaveLength(4);
+  });
+
+  test("an auto-scan error never fails the command", async () => {
+    h.ctx.autoScan = true;
+    h.omp.throwOnList = "*";
+    h.stdout.length = 0;
+    expect(await run(["ls"], h.ctx)).toBe(0);
+    // claude still scanned; omp failure is reported but not fatal
+    expect(h.ledger.list({ harness: "claude" })).toHaveLength(3);
+    expect(h.err()).toContain("scan warning [omp]");
   });
 });

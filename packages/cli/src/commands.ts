@@ -52,7 +52,13 @@ export interface Ctx {
   profile?: SinterProfile;
   /** Setup confirmation; injectable so the command stays testable. */
   confirm?: (question: string) => Promise<boolean>;
-
+  /**
+   * Refresh the ledger with an automatic scan before the command runs. The
+   * real CLI enables it via `makeCtx`; tests build their ctx without it so the
+   * in-memory ledger stays deterministic. `--no-scan` / SINTER_NO_SCAN=1
+   * override this off for any run.
+   */
+  autoScan?: boolean;
 }
 
 // ------------------------------------------------------------------ helpers

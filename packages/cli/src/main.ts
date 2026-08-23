@@ -33,7 +33,37 @@ import { colorEnabled, palette, termWidth } from "./format";
 import { canRunMenu } from "./tui/menu";
 import { maybePromptForUpdate } from "./update";
 
-export const VERSION = "0.1.8";
+export const VERSION = "0.1.9";
+
+/** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
+const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "privacy"]);
+
+/**
+ * Keep the ledger fresh on every invocation: commands that resolve or list
+ * sessions read the ledger, and it goes stale the moment the user works in a
+ * native harness between two sinter invocations. This is the automatic
+ * counterpart of `sinter scan`.
+ *
+ * Deliberately quiet and never fatal: it prints only when rows actually
+ * changed (or a store fails), and a failure degrades to the stale ledger.
+ * Enabled by the real CLI (`makeCtx` sets `autoScan: true`); hand-built test
+ * contexts leave it off. Opt out per-run with `--no-scan` or SINTER_NO_SCAN=1.
+ */
+async function autoScanLedger(ctx: Ctx, argv: string[]): Promise<void> {
+  if (!ctx.autoScan || argv.includes("--no-scan") || process.env.SINTER_NO_SCAN === "1") return;
+  try {
+    const loads = await ctx.registry.load();
+    const adapters = loads.filter((l) => l.adapter).map((l) => l.adapter!);
+    if (!adapters.length) return;
+    const result = await ctx.ledger().scan(adapters);
+    const inserted = Object.values(result.harnesses).reduce((n, s) => n + s.inserted, 0);
+    const updated = Object.values(result.harnesses).reduce((n, s) => n + s.updated, 0);
+    if (inserted || updated) ctx.err(ctx.pal.dim(`(ledger: ${inserted} new, ${updated} updated)`));
+    for (const e of result.errors) ctx.err(ctx.pal.dim(`(scan warning [${e.harness}]: ${e.error})`));
+  } catch (err) {
+    ctx.err(ctx.pal.dim(`(auto-scan skipped: ${err instanceof Error ? err.message : String(err)})`));
+  }
+}
 
 const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = {
   scan: cmdScan,
@@ -84,6 +114,8 @@ global flags:
   --config <path>   use a different profile config file
   --ledger <path>   use a different ledger db (default ~/.sinter/ledger.db)
   --no-color        disable ANSI colour (NO_COLOR is honoured too)
+  --no-scan         skip the automatic ledger refresh before the command runs
+                   (SINTER_NO_SCAN=1 does the same for scripts/CI)
   --no-update-check disable the cached interactive npm update check
   -h, --help        this help
   --version         print version
@@ -113,7 +145,7 @@ const COMMAND_HELP: Record<string, string> = {
 };
 
 function helpFor(command: string): string {
-  return `${COMMAND_HELP[command] ?? HELP.trimEnd()}\n\nGlobal flags: --profile <name>, --config <path>, --ledger <path>, --no-color, --no-update-check, -h/--help`;
+  return `${COMMAND_HELP[command] ?? HELP.trimEnd()}\n\nGlobal flags: --profile <name>, --config <path>, --ledger <path>, --no-color, --no-scan, --no-update-check, -h/--help`;
 }
 
 export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile?: SinterProfile } = {}): Ctx {
@@ -141,6 +173,7 @@ export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile
         return await proc.exited;
       }),
     profile: overrides.profile,
+    autoScan: overrides.autoScan ?? true,
   };
 }
 
@@ -149,7 +182,10 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
   const rest = argv.slice(1);
 
   if (!cmd) {
-    if (canRunMenu()) return cmdMenu([], ctx);
+    if (canRunMenu()) {
+      await autoScanLedger(ctx, argv);
+      return cmdMenu([], ctx);
+    }
     ctx.out(HELP.trimEnd());
     return EXIT.OK;
   }
@@ -171,6 +207,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     ctx.out(helpFor(cmd));
     return EXIT.OK;
   }
+
+  if (!AUTO_SCAN_SKIP.has(cmd)) await autoScanLedger(ctx, argv);
 
   try {
     return await fn(rest, ctx);
