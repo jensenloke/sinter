@@ -9,12 +9,25 @@ cleanup() {
 }
 trap cleanup EXIT
 
+if ! cmp -s LICENSE packages/cli/LICENSE; then
+  echo "package license does not match the repository license" >&2
+  exit 1
+fi
+
 npm pack --workspace packages/cli --pack-destination "$package_dir" >/dev/null
 tarballs=("$package_dir"/*.tgz)
 if [[ ${#tarballs[@]} -ne 1 || ! -f "${tarballs[0]}" ]]; then
   echo "expected exactly one package tarball" >&2
   exit 1
 fi
+
+contents="$(tar -tzf "${tarballs[0]}")"
+for required in package/LICENSE package/README.md package/package.json package/dist/main.js; do
+  if ! grep -qx "$required" <<<"$contents"; then
+    echo "package tarball is missing $required" >&2
+    exit 1
+  fi
+done
 
 BUN_INSTALL="$install_dir" bun add --global "${tarballs[0]}" >/dev/null
 installed="$install_dir/bin/sinter"
