@@ -9,7 +9,7 @@ import type {
   SifSession,
 } from "@sinter/core";
 import { provenanceOf, validateSession } from "@sinter/core";
-import type { Ledger, LedgerRow, ListOpts } from "@sinter/ledger";
+import type { Ledger, LedgerRow, LineageRow, ListOpts } from "@sinter/ledger";
 import {
   CliError,
   EXIT,
@@ -21,7 +21,9 @@ import {
   type ParsedArgs,
 } from "./args";
 import type { AdapterRegistry } from "./adapters";
-import { PROFILE_EXAMPLE, type SinterProfile } from "./config";
+import { adapterCapabilities, CAPABILITIES_SCHEMA } from "./capabilities";
+import { compareSessions, CONTENT_TYPES, ENTRY_KINDS } from "./compare";
+import { defaultConfigPath, inspectConfig, PROFILE_EXAMPLE, type SinterProfile } from "./config";
 
 import {
   displayId,
@@ -34,7 +36,10 @@ import {
   type Palette,
 } from "./format";
 import { renderTranscript, slimSession } from "./render";
-import { applyTransfer, TRANSFER_MODES, type TransferMode } from "./transfer";
+import { transcriptRecords } from "./ndjson";
+import { PROJECTS_SCHEMA, projectSummaries } from "./projects";
+import { renderSupportReport, supportPlatform, type SupportHarnessStatus } from "./support-report";
+import { applyTransfer, fmtBytes, TRANSFER_MODES, type TransferMode } from "./transfer";
 
 export interface Ctx {
   registry: AdapterRegistry;
@@ -61,6 +66,9 @@ export interface Ctx {
   autoScan?: boolean;
   /** Runtime CLI version, injected by main so helpers do not import it circularly. */
   version?: string;
+  /** Terminal capabilities and delay are injectable so long-running commands stay testable. */
+  interactive?: boolean;
+  sleep?: (ms: number) => Promise<void>;
 }
 
 // ------------------------------------------------------------------ helpers
@@ -92,13 +100,17 @@ export function rowsTable(rows: LedgerRow[], ctx: Ctx): string {
   const body = rows.map((r) => {
     const nativeLabel = r.title || r.firstPrompt || "";
     const label = r.alias ? `${r.alias}${nativeLabel && nativeLabel !== r.alias ? ` · ${nativeLabel}` : ""}` : nativeLabel;
+    const metadata = [r.tags?.map((tag) => `#${tag}`).join(" "), r.note ? "✎" : ""].filter(Boolean).join(" ");
     return [
       r.ghost ? p.dim(displayId(r.nativeId)) : p.bold(displayId(r.nativeId)),
       p.cyan(r.harness),
       p.dim(humanAge(r.updatedAt ?? r.createdAt, ctx.now)),
       p.dim(shortenPath(r.cwd, 28)),
       formatCount(r.messageCount),
-      (r.isSubagent ? p.blue("↳ ") : "") + (r.ghost ? p.dim("†") : "") + truncate(label, 400),
+      (r.pinnedAt ? p.yellow("★ ") : "") +
+        (r.isSubagent ? p.blue("↳ ") : "") +
+        (r.ghost ? p.dim("†") : "") +
+        truncate(`${label}${metadata ? `  ${metadata}` : ""}`, 400),
     ];
   });
   return renderTable(
@@ -233,8 +245,49 @@ async function readSessionForPort(ctx: Ctx, row: LedgerRow): Promise<SifSession>
 
 // ----------------------------------------------------------------- commands
 
+export async function cmdConfig(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { strings: ["config"], booleans: ["json"] });
+  const action = args._[0] ?? "show";
+  if (args._.length > 1 || !["show", "path", "validate"].includes(action))
+    throw new CliError("usage: sinter config [show|path|validate] [--config file] [--json]");
+  const configPath = flagString(args, "config") ?? defaultConfigPath();
+  if (action === "path") {
+    if (flagBool(args, "json")) ctx.out(JSON.stringify({ configPath }, null, 2));
+    else ctx.out(configPath);
+    return EXIT.OK;
+  }
+
+  const summary = inspectConfig(configPath);
+  if (action === "validate") {
+    const stores = summary.profiles.reduce((total, profile) => total + Object.keys(profile.stores).length, 0);
+    if (flagBool(args, "json")) {
+      ctx.out(JSON.stringify({ valid: true, configPath, profiles: summary.profiles.length, stores }, null, 2));
+    } else {
+      ctx.out(`valid config: ${summary.profiles.length} profile(s), ${stores} store root(s)`);
+    }
+    return EXIT.OK;
+  }
+
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify(summary, null, 2));
+    return EXIT.OK;
+  }
+  ctx.out(`config: ${configPath}`);
+  const rows = summary.profiles.flatMap((profile) =>
+    Object.entries(profile.stores).map(([harness, path]) => [profile.name, harness, path ?? ""]),
+  );
+  ctx.out(
+    renderTable(
+      [{ header: "PROFILE" }, { header: "HARNESS" }, { header: "STORE ROOT", flex: true }],
+      rows,
+      { width: ctx.width, pal: ctx.pal },
+    ),
+  );
+  return EXIT.OK;
+}
+
 export async function cmdScan(argv: string[], ctx: Ctx): Promise<number> {
-  const args = parseArgs(argv, { strings: ["harness"] });
+  const args = parseArgs(argv, { strings: ["harness"], booleans: ["json"] });
   const only = flagString(args, "harness")
     ?.split(",")
     .map((h) => parseHarness(h));
@@ -246,6 +299,7 @@ export async function cmdScan(argv: string[], ctx: Ctx): Promise<number> {
   const unavailable = loads.filter((l) => !l.adapter && (!only || only.includes(l.id as never)));
 
   if (!adapters.length) {
+    if (flagBool(args, "json")) throw new CliError("no adapters available — nothing to scan");
     ctx.err("no adapters available — nothing to scan");
     for (const u of unavailable) ctx.err(`  adapter not available: ${u.id} (${u.error})`);
     return EXIT.ERROR;
@@ -253,6 +307,23 @@ export async function cmdScan(argv: string[], ctx: Ctx): Promise<number> {
 
   const ledger = ctx.ledger();
   const result = await ledger.scan(adapters);
+
+  if (flagBool(args, "json")) {
+    ctx.out(
+      JSON.stringify(
+        {
+          schema: "sinter.scan.v1",
+          ok: result.errors.length === 0,
+          harnesses: result.harnesses,
+          unavailable: unavailable.map((adapter) => ({ harness: adapter.id })),
+          errors: result.errors.map((error) => ({ harness: error.harness, message: error.error })),
+        },
+        null,
+        2,
+      ),
+    );
+    return result.errors.length ? EXIT.ERROR : EXIT.OK;
+  }
 
   const rows = Object.entries(result.harnesses).map(([h, s]) => [
     ctx.pal.cyan(h),
@@ -291,6 +362,681 @@ export async function cmdLs(argv: string[], ctx: Ctx): Promise<number> {
   return printRows(ctx.ledger().list(opts), ctx, args);
 }
 
+/** A low-noise view for quickly finding the work a user just left. */
+export async function cmdRecent(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["harness", "cwd", "since", "limit"],
+    booleans: ["json"],
+    alias: { n: "limit" },
+  });
+  const opts = filterOpts(args, ctx.now);
+  opts.includeGhost = false;
+  opts.includeSubagents = false;
+  opts.limit ??= 10;
+  return printRows(ctx.ledger().list(opts), ctx, args);
+}
+
+const WATCH_SCHEMA = "sinter.watch.v1";
+
+function watchInterval(value: string | undefined): number {
+  const input = value ?? "2s";
+  const match = /^(\d+(?:\.\d+)?)\s*(ms|s|m)$/i.exec(input.trim());
+  if (!match) throw new CliError(`bad --interval: ${input} (try 2s, 500ms, or 1m)`);
+  const unit = match[2]!.toLowerCase();
+  const ms = Number(match[1]) * (unit === "m" ? 60_000 : unit === "s" ? 1_000 : 1);
+  if (!Number.isFinite(ms) || ms < 250 || ms > 3_600_000)
+    throw new CliError("--interval must be between 250ms and 1h");
+  return Math.floor(ms);
+}
+
+function positiveInteger(value: string | undefined, name: string): number | undefined {
+  if (value === undefined) return undefined;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number <= 0) throw new CliError(`bad --${name}: ${value}`);
+  return number;
+}
+
+function renderProjects(projects: ReturnType<typeof projectSummaries>, ctx: Ctx): string {
+  return renderTable(
+    [
+      { header: "AGE", max: 5, align: "right" },
+      { header: "SESS", max: 5, align: "right" },
+      { header: "MSG", max: 7, align: "right" },
+      { header: "HARNESSES", max: 24 },
+      { header: "PROJECT", flex: true },
+    ],
+    projects.map((project) => [
+      ctx.pal.dim(humanAge(project.latestAt, ctx.now)),
+      String(project.sessionCount),
+      project.messageCountSessions ? String(project.messageCount) : "-",
+      project.harnesses.join(","),
+      shortenPath(project.cwd, 400),
+    ]),
+    { width: ctx.width, pal: ctx.pal },
+  );
+}
+
+/** Continuously rescan and render a bounded recent-session or project view. */
+export async function cmdWatch(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["harness", "cwd", "since", "limit", "interval", "count"],
+    booleans: ["json", "no-clear"],
+    alias: { n: "limit" },
+  });
+  const view = args._[0] ?? "recent";
+  if (args._.length > 1 || (view !== "recent" && view !== "projects"))
+    throw new CliError("usage: sinter watch [recent|projects] [--interval 2s] [--count n] [--harness x] [--cwd .] [--since 7d] [--limit n] [--json] [--no-clear]");
+
+  const intervalMs = watchInterval(flagString(args, "interval"));
+  const requestedCount = positiveInteger(flagString(args, "count"), "count");
+  const cycles = requestedCount ?? (ctx.interactive ? Number.POSITIVE_INFINITY : 1);
+  const limit = positiveInteger(flagString(args, "limit"), "limit") ?? (view === "recent" ? 10 : 30);
+  const opts = filterOpts(args, ctx.now);
+  opts.includeGhost = false;
+  opts.includeSubagents = false;
+  if (view === "recent") opts.limit = limit;
+  else delete opts.limit;
+
+  const noScan = flagBool(args, "no-scan") || process.env.SINTER_NO_SCAN === "1";
+  const onlyHarnesses = opts.harness;
+  const loads = noScan ? [] : await ctx.registry.load();
+  const adapters = loads
+    .filter((load) => load.adapter && (!onlyHarnesses || onlyHarnesses.includes(load.id as HarnessId)))
+    .map((load) => load.adapter!);
+  if (!noScan && !adapters.length) throw new CliError("no adapters available — nothing to watch");
+
+  let previous = "";
+  for (let sequence = 1; sequence <= cycles; sequence++) {
+    const scan = noScan ? undefined : await ctx.ledger().scan(adapters);
+    const rows = ctx.ledger().list(opts);
+    // A scan refreshes `scannedAt` even when the native session is unchanged;
+    // omit that bookkeeping field from snapshots and change detection.
+    const visibleRows = rows.map(({ scannedAt: _scannedAt, ...row }) => row);
+    const data = view === "recent" ? visibleRows : projectSummaries(rows).slice(0, limit);
+    const fingerprint = JSON.stringify(data);
+    const changed = sequence === 1 || fingerprint !== previous;
+    previous = fingerprint;
+
+    if (flagBool(args, "json")) {
+      ctx.out(JSON.stringify({
+        schema: WATCH_SCHEMA,
+        sequence,
+        view,
+        changed,
+        scan: scan
+          ? { ok: scan.errors.length === 0, harnesses: scan.harnesses, errors: scan.errors.map((error) => ({ harness: error.harness, message: error.error })) }
+          : { skipped: true },
+        ...(view === "recent" ? { sessions: data } : { projects: data }),
+      }));
+    } else {
+      const heading = `watch ${view} · refresh ${intervalMs}ms · cycle ${sequence}${Number.isFinite(cycles) ? `/${cycles}` : ""}`;
+      const body = data.length
+        ? view === "recent"
+          ? rowsTable(data as LedgerRow[], ctx)
+          : renderProjects(data as ReturnType<typeof projectSummaries>, ctx)
+        : `no ${view === "recent" ? "recent sessions" : "projects"} matched`;
+      const frame = `${ctx.pal.dim(heading)}\n${body}`;
+      if (ctx.interactive && !flagBool(args, "no-clear") && sequence > 1) ctx.out(`\x1b[2J\x1b[H${frame}`);
+      else ctx.out(frame);
+      if (scan) for (const error of scan.errors) ctx.err(ctx.pal.dim(`(scan warning [${error.harness}]: ${error.error})`));
+    }
+
+    if (sequence < cycles) await (ctx.sleep ?? Bun.sleep)(intervalMs);
+  }
+  return EXIT.OK;
+}
+
+export async function cmdPin(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv);
+  if (args._.length !== 1) throw new CliError("usage: sinter pin <id-prefix>");
+  const row = resolveRow(ctx, args._[0]!);
+  ctx.ledger().setPinned(row.harness, row.nativeId, true);
+  ctx.out(`pinned ${row.harness}:${displayId(row.nativeId)}`);
+  return EXIT.OK;
+}
+
+export async function cmdUnpin(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv);
+  if (args._.length !== 1) throw new CliError("usage: sinter unpin <id-prefix>");
+  const row = resolveRow(ctx, args._[0]!);
+  ctx.ledger().setPinned(row.harness, row.nativeId, false);
+  ctx.out(`unpinned ${row.harness}:${displayId(row.nativeId)}`);
+  return EXIT.OK;
+}
+
+const TAG_NAME = /^[a-z0-9][a-z0-9._/-]{0,31}$/;
+
+function normalizedTags(values: string[]): string[] {
+  const tags = [...new Set(values.map((value) => value.trim().replace(/^#/, "").toLowerCase()).filter(Boolean))];
+  if (!tags.length) throw new CliError("at least one non-empty tag is required");
+  const invalid = tags.find((tag) => !TAG_NAME.test(tag));
+  if (invalid)
+    throw new CliError(`bad tag: ${invalid} (use 1-32 letters, numbers, dots, dashes, underscores, or slashes)`);
+  return tags;
+}
+
+export async function cmdTag(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv);
+  if (args._.length < 2) throw new CliError("usage: sinter tag <id-prefix> <tag...>");
+  const row = resolveRow(ctx, args._[0]!);
+  const tags = normalizedTags(args._.slice(1));
+  ctx.ledger().addTags(row.harness, row.nativeId, tags);
+  ctx.out(`tagged ${row.harness}:${displayId(row.nativeId)} ${tags.map((tag) => `#${tag}`).join(" ")}`);
+  return EXIT.OK;
+}
+
+export async function cmdUntag(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { booleans: ["all"] });
+  if (!args._[0] || (!flagBool(args, "all") && args._.length < 2) || (flagBool(args, "all") && args._.length !== 1))
+    throw new CliError("usage: sinter untag <id-prefix> <tag...>|--all");
+  const row = resolveRow(ctx, args._[0]);
+  const tags = flagBool(args, "all") ? undefined : normalizedTags(args._.slice(1));
+  ctx.ledger().removeTags(row.harness, row.nativeId, tags);
+  ctx.out(tags ? `removed ${tags.map((tag) => `#${tag}`).join(" ")} from ${row.harness}:${displayId(row.nativeId)}` : `cleared tags for ${row.harness}:${displayId(row.nativeId)}`);
+  return EXIT.OK;
+}
+
+export async function cmdNote(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { booleans: ["clear"] });
+  if (!args._[0]) throw new CliError("usage: sinter note <id-prefix> <text>|--clear");
+  const text = args._.slice(1).join(" ").trim();
+  if (flagBool(args, "clear") && text) throw new CliError("--clear cannot be combined with note text");
+  if (!flagBool(args, "clear") && !text) throw new CliError("sinter note needs text (or --clear)");
+  if (text.length > 4000) throw new CliError("note is too long (maximum 4000 characters)");
+  const row = resolveRow(ctx, args._[0]);
+  ctx.ledger().setNote(row.harness, row.nativeId, text || undefined, new Date(ctx.now).toISOString());
+  ctx.out(text ? `noted ${row.harness}:${displayId(row.nativeId)}` : `cleared note for ${row.harness}:${displayId(row.nativeId)}`);
+  return EXIT.OK;
+}
+
+export async function cmdTags(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { booleans: ["json"] });
+  if (args._.length) throw new CliError("usage: sinter tags [--json]");
+  const tags = ctx.ledger().tagCounts();
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify({ schema: "sinter.tags.v1", tags }, null, 2));
+  } else if (!tags.length) {
+    ctx.out("no local session tags");
+  } else {
+    ctx.out(renderTable(
+      [{ header: "TAG", flex: true }, { header: "SESSIONS", align: "right" }],
+      tags.map((tag) => [`#${tag.tag}`, String(tag.sessions)]),
+      { width: ctx.width, pal: ctx.pal },
+    ));
+  }
+  return EXIT.OK;
+}
+
+/** List Sinter-local bookmarks; pins survive rescans and native-session GC. */
+export async function cmdPinned(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["harness", "cwd", "since", "limit"],
+    booleans: ["json", "no-ghost", "no-sub"],
+    alias: { n: "limit" },
+  });
+  const opts = filterOpts(args, ctx.now);
+  opts.pinnedOnly = true;
+  opts.limit ??= 30;
+  const rows = ctx.ledger().list(opts);
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify({ schema: "sinter.pinned.v1", sessions: rows }, null, 2));
+    return EXIT.OK;
+  }
+  if (!rows.length) {
+    ctx.err("no pinned sessions");
+    return EXIT.OK;
+  }
+  ctx.out(rowsTable(rows, ctx));
+  return EXIT.OK;
+}
+
+const GHOSTS_SCHEMA = "sinter.ghosts.v1";
+
+/** Preview or explicitly prune disposable, locally cached ghost rows. */
+export async function cmdGhosts(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["harness", "older-than"],
+    booleans: ["json", "yes"],
+  });
+  const action = args._[0] ?? "preview";
+  if (args._.length > 1 || !["preview", "prune"].includes(action))
+    throw new CliError("usage: sinter ghosts [preview|prune] [--older-than 30d] [--harness x] [--json] [--yes]");
+
+  const olderThan = flagString(args, "older-than") ?? "30d";
+  let cutoff: string;
+  try {
+    cutoff = parseSince(olderThan, ctx.now);
+  } catch {
+    throw new CliError(`bad --older-than value: ${olderThan} (try 30d, 12w, or 2026-07-01)`);
+  }
+  const harnessFlag = flagString(args, "harness");
+  const harness = harnessFlag ? parseHarness(harnessFlag) : undefined;
+  const opts = { ...(harness ? { harness } : {}), before: cutoff };
+  const rows = ctx.ledger().ghosts(opts);
+  const record = (row: LedgerRow) => {
+    const protectedBy = [
+      row.alias ? "alias" : undefined,
+      row.pinnedAt ? "pin" : undefined,
+      row.note ? "note" : undefined,
+      row.tags?.length ? "tag" : undefined,
+    ].filter(
+      (value): value is string => !!value,
+    );
+    return {
+      harness: row.harness,
+      nativeId: row.nativeId,
+      lastObservedAt: row.scannedAt ?? row.updatedAt ?? row.createdAt,
+      protectedBy,
+      prunable: protectedBy.length === 0,
+    };
+  };
+  const records = rows.map(record);
+  const eligible = records.filter((item) => item.prunable).length;
+  const protectedCount = records.length - eligible;
+
+  let removed = 0;
+  if (action === "prune" && eligible > 0) {
+    if (!flagBool(args, "yes"))
+      throw new CliError(`refusing to remove ${eligible} ghost row${eligible === 1 ? "" : "s"} without --yes; preview with \`sinter ghosts\` first`);
+    removed = ctx.ledger().pruneGhosts(opts).length;
+  }
+
+  if (flagBool(args, "json")) {
+    ctx.out(
+      JSON.stringify(
+        {
+          schema: GHOSTS_SCHEMA,
+          action,
+          olderThan,
+          cutoff,
+          eligible,
+          protected: protectedCount,
+          removed,
+          ghosts: records,
+        },
+        null,
+        2,
+      ),
+    );
+    return EXIT.OK;
+  }
+
+  if (records.length) {
+    ctx.out(
+      renderTable(
+        [
+          { header: "ID", max: 14 },
+          { header: "HARNESS" },
+          { header: "LAST SEEN", align: "right" },
+          { header: "STATUS", flex: true },
+        ],
+        rows.map((row, index) => [
+          displayId(row.nativeId),
+          ctx.pal.cyan(row.harness),
+          humanAge(records[index]!.lastObservedAt, ctx.now),
+          records[index]!.prunable ? "prunable" : `protected by ${records[index]!.protectedBy.join(" + ")}`,
+        ]),
+        { width: ctx.width, pal: ctx.pal },
+      ),
+    );
+  }
+
+  if (action === "prune") {
+    ctx.out(`removed ${removed} disposable ghost row${removed === 1 ? "" : "s"}; ${protectedCount} protected`);
+    ctx.out(ctx.pal.dim("native stores, local metadata, and lineage were not modified"));
+  } else if (!records.length) {
+    ctx.out(`no ghost rows older than ${olderThan}`);
+  } else {
+    ctx.out("");
+    ctx.out(`${eligible} prunable; ${protectedCount} protected by local metadata`);
+    ctx.out(ctx.pal.dim(`preview only — apply with: sinter ghosts prune --older-than ${olderThan}${harness ? ` --harness ${harness}` : ""} --yes`));
+  }
+  return EXIT.OK;
+}
+
+const VIEW_NAME = /^[a-z0-9][a-z0-9._-]{0,39}$/i;
+
+function requireViewName(name: string | undefined): string {
+  if (!name || !VIEW_NAME.test(name))
+    throw new CliError("view name must be 1-40 letters, numbers, dots, dashes, or underscores");
+  return name;
+}
+
+function viewLimit(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const limit = Number(value);
+  if (!Number.isFinite(limit) || limit <= 0) throw new CliError(`bad --limit: ${value}`);
+  return Math.floor(limit);
+}
+
+/** Manage reusable, Sinter-local list filters. */
+export async function cmdView(argv: string[], ctx: Ctx): Promise<number> {
+  const hasAction = !!argv[0] && !argv[0]!.startsWith("-");
+  const action = hasAction ? argv[0]! : "list";
+  const rest = hasAction ? argv.slice(1) : argv;
+  const ledger = ctx.ledger();
+
+  if (action === "list") {
+    const args = parseArgs(rest, { booleans: ["json"] });
+    if (args._.length) throw new CliError("usage: sinter view list [--json]");
+    const views = ledger.listViews();
+    if (flagBool(args, "json")) {
+      ctx.out(JSON.stringify({ schema: "sinter.views.v1", views }, null, 2));
+      return EXIT.OK;
+    }
+    if (!views.length) {
+      ctx.out("no saved views");
+      return EXIT.OK;
+    }
+    ctx.out(
+      renderTable(
+        [
+          { header: "NAME" },
+          { header: "HARNESSES" },
+          { header: "CWD", max: 28 },
+          { header: "SINCE" },
+          { header: "LIMIT", align: "right" },
+          { header: "INCLUDES", flex: true },
+        ],
+        views.map((view) => [
+          view.name,
+          view.harnesses?.join(",") ?? "all",
+          shortenPath(view.cwd, 28),
+          view.since ?? "all",
+          view.limit ? String(view.limit) : "-",
+          [view.includeGhost ? "ghosts" : "", view.includeSubagents ? "subagents" : ""].filter(Boolean).join(",") || "-",
+        ]),
+        { width: ctx.width, pal: ctx.pal },
+      ),
+    );
+    return EXIT.OK;
+  }
+
+  if (action === "save") {
+    const args = parseArgs(rest, {
+      strings: ["harness", "cwd", "since", "limit"],
+      booleans: ["ghosts", "subagents", "force", "json"],
+    });
+    if (args._.length !== 1)
+      throw new CliError("usage: sinter view save <name> [--harness x] [--cwd .] [--since 7d] [--limit n] [--ghosts] [--subagents] [--force]");
+    const name = requireViewName(args._[0]);
+    if (ledger.getView(name) && !flagBool(args, "force"))
+      throw new CliError(`saved view already exists: ${name} (use --force to replace it)`);
+    const harnessFlag = flagString(args, "harness");
+    const harnesses = harnessFlag
+      ? harnessFlag.split(",").map((id) => parseHarness(id)) as HarnessId[]
+      : undefined;
+    const cwdFlag = flagString(args, "cwd");
+    const cwd = cwdFlag === "." ? process.cwd() : cwdFlag?.replace(/\/$/, "");
+    const since = flagString(args, "since");
+    if (since) parseSince(since, ctx.now);
+    const limit = viewLimit(flagString(args, "limit"));
+    const saved = ledger.saveView({
+      name,
+      ...(harnesses?.length ? { harnesses } : {}),
+      ...(cwd ? { cwd } : {}),
+      ...(since ? { since } : {}),
+      ...(limit ? { limit } : {}),
+      includeGhost: flagBool(args, "ghosts"),
+      includeSubagents: flagBool(args, "subagents"),
+    }, new Date(ctx.now).toISOString());
+    if (flagBool(args, "json")) ctx.out(JSON.stringify({ schema: "sinter.view.v1", view: saved }, null, 2));
+    else ctx.out(`saved view ${saved.name}`);
+    return EXIT.OK;
+  }
+
+  if (action === "show") {
+    const args = parseArgs(rest, { booleans: ["json"] });
+    if (args._.length !== 1) throw new CliError("usage: sinter view show <name> [--json]");
+    const name = requireViewName(args._[0]);
+    const view = ledger.getView(name);
+    if (!view) throw new CliError(`saved view not found: ${name}`);
+    if (flagBool(args, "json")) {
+      ctx.out(JSON.stringify({ schema: "sinter.view.v1", view }, null, 2));
+    } else {
+      ctx.out(`view ${view.name}`);
+      ctx.out(`  harnesses: ${view.harnesses?.join(",") ?? "all"}`);
+      ctx.out(`  cwd: ${view.cwd ?? "all"}`);
+      ctx.out(`  since: ${view.since ?? "all"}`);
+      ctx.out(`  limit: ${view.limit ?? "default (30)"}`);
+      ctx.out(`  ghosts: ${view.includeGhost ? "include" : "hide"}`);
+      ctx.out(`  subagents: ${view.includeSubagents ? "include" : "hide"}`);
+    }
+    return EXIT.OK;
+  }
+
+  if (action === "delete") {
+    const args = parseArgs(rest);
+    if (args._.length !== 1) throw new CliError("usage: sinter view delete <name>");
+    const name = requireViewName(args._[0]);
+    if (!ledger.deleteView(name)) throw new CliError(`saved view not found: ${name}`);
+    ctx.out(`deleted view ${name}`);
+    return EXIT.OK;
+  }
+
+  if (action === "run") {
+    const args = parseArgs(rest, {
+      strings: ["harness", "cwd", "since", "limit"],
+      booleans: ["json", "ghosts", "no-ghosts", "subagents", "no-subagents", "all-harnesses", "all-cwd", "all-time"],
+    });
+    if (args._.length !== 1)
+      throw new CliError("usage: sinter view run <name> [--harness x|--all-harnesses] [--cwd .|--all-cwd] [--since 7d|--all-time] [--limit n] [--ghosts|--no-ghosts] [--subagents|--no-subagents] [--json]");
+    if (flagBool(args, "ghosts") && flagBool(args, "no-ghosts"))
+      throw new CliError("choose one: --ghosts or --no-ghosts");
+    if (flagBool(args, "subagents") && flagBool(args, "no-subagents"))
+      throw new CliError("choose one: --subagents or --no-subagents");
+    if (flagBool(args, "all-harnesses") && flagString(args, "harness"))
+      throw new CliError("choose one: --harness or --all-harnesses");
+    if (flagBool(args, "all-cwd") && flagString(args, "cwd"))
+      throw new CliError("choose one: --cwd or --all-cwd");
+    if (flagBool(args, "all-time") && flagString(args, "since"))
+      throw new CliError("choose one: --since or --all-time");
+    const name = requireViewName(args._[0]);
+    const view = ledger.getView(name);
+    if (!view) throw new CliError(`saved view not found: ${name}`);
+
+    const harnessFlag = flagString(args, "harness");
+    const cwdFlag = flagString(args, "cwd");
+    const sinceFlag = flagString(args, "since");
+    const limitFlag = viewLimit(flagString(args, "limit"));
+    const sinceWindow = flagBool(args, "all-time") ? undefined : sinceFlag ?? view.since;
+    const opts: ListOpts = {
+      ...(!flagBool(args, "all-harnesses") && harnessFlag
+        ? { harness: harnessFlag.split(",").map((id) => parseHarness(id)) as HarnessId[] }
+        : !flagBool(args, "all-harnesses") && view.harnesses ? { harness: view.harnesses } : {}),
+      ...(!flagBool(args, "all-cwd") && (cwdFlag ?? view.cwd)
+        ? { cwd: cwdFlag === "." ? process.cwd() : (cwdFlag ?? view.cwd)!.replace(/\/$/, "") }
+        : {}),
+      ...(sinceWindow ? { since: parseSince(sinceWindow, ctx.now) } : {}),
+      limit: limitFlag ?? view.limit ?? 30,
+      includeGhost: flagBool(args, "ghosts") ? true : flagBool(args, "no-ghosts") ? false : view.includeGhost,
+      includeSubagents: flagBool(args, "subagents") ? true : flagBool(args, "no-subagents") ? false : view.includeSubagents,
+    };
+    const sessions = ledger.list(opts);
+    if (flagBool(args, "json")) {
+      ctx.out(JSON.stringify({ schema: "sinter.view.v1", view, effective: opts, sessions }, null, 2));
+    } else if (!sessions.length) {
+      ctx.err(`no sessions matched view ${view.name}`);
+    } else {
+      ctx.out(ctx.pal.dim(`view ${view.name} · ${sessions.length} session${sessions.length === 1 ? "" : "s"}`));
+      ctx.out(rowsTable(sessions, ctx));
+    }
+    return EXIT.OK;
+  }
+
+  throw new CliError(`unknown view action: ${action} (known: save, list, show, run, delete)`);
+}
+
+interface ThreadHopView {
+  hop: number;
+  harness: HarnessId;
+  nativeId: string;
+  parentHarness?: HarnessId;
+  parentNativeId?: string;
+  mode?: string;
+  portedAt?: string;
+  selected: boolean;
+  present: boolean;
+  ghost?: boolean;
+  resumable: boolean;
+  alias?: string;
+  title?: string;
+  cwd?: string;
+  updatedAt?: string;
+}
+
+function threadHop(link: LineageRow, selected: LedgerRow, ledger: Ledger): ThreadHopView {
+  const row = ledger.get(link.harness, link.nativeId);
+  return {
+    hop: link.hop,
+    harness: link.harness,
+    nativeId: link.nativeId,
+    parentHarness: link.parentHarness,
+    parentNativeId: link.parentNativeId,
+    mode: link.mode,
+    portedAt: link.portedAt,
+    selected: link.harness === selected.harness && link.nativeId === selected.nativeId,
+    present: !!row,
+    ghost: row?.ghost || undefined,
+    resumable: !!row && !row.ghost && !row.isSubagent,
+    alias: row?.alias,
+    title: row?.title ?? row?.firstPrompt,
+    cwd: row?.cwd,
+    updatedAt: row?.updatedAt ?? row?.createdAt,
+  };
+}
+
+/** Inspect the cached port lineage without reading transcript bodies or native stores. */
+export async function cmdThread(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { booleans: ["json"] });
+  if (args._.length !== 1) throw new CliError("usage: sinter thread <id-prefix> [--json]");
+  const selected = resolveRow(ctx, args._[0]!);
+  const ledger = ctx.ledger();
+  const cachedThreadId = ledger.threadIdOf(selected.harness, selected.nativeId);
+  const links: LineageRow[] = cachedThreadId
+    ? ledger.lineageFor(cachedThreadId)
+    : [{ harness: selected.harness, nativeId: selected.nativeId, threadId: `${selected.harness}:${selected.nativeId}`, hop: 0 }];
+  const hops = links.map((link) => threadHop(link, selected, ledger));
+  const tip = [...hops].reverse().find((hop) => hop.resumable);
+  const threadId = cachedThreadId ?? `${selected.harness}:${selected.nativeId}`;
+  const result = {
+    schema: "sinter.thread.v1",
+    threadId,
+    lineageCached: !!cachedThreadId,
+    ported: links.length > 1,
+    selected: { harness: selected.harness, nativeId: selected.nativeId },
+    hops,
+    resumableTip: tip
+      ? {
+          hop: tip.hop,
+          harness: tip.harness,
+          nativeId: tip.nativeId,
+          command: ["sinter", "resume", `${tip.harness}:${tip.nativeId}`],
+        }
+      : null,
+  };
+
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify(result, null, 2));
+    return EXIT.OK;
+  }
+
+  ctx.out(`Thread ${threadId}${cachedThreadId ? "" : " (no cached port lineage)"}`);
+  ctx.out(
+    renderTable(
+      [
+        { header: "HOP", max: 3, align: "right" },
+        { header: "SESSION", max: 24 },
+        { header: "MODE", max: 9 },
+        { header: "AGE", max: 5, align: "right" },
+        { header: "STATE", max: 14 },
+        { header: "TITLE", flex: true },
+      ],
+      hops.map((hop) => [
+        String(hop.hop),
+        `${hop.selected ? "→ " : "  "}${hop.harness}:${displayId(hop.nativeId)}`,
+        hop.hop === 0 ? "origin" : (hop.mode ?? "unknown"),
+        humanAge(hop.updatedAt ?? hop.portedAt, ctx.now),
+        !hop.present ? "metadata only" : hop.ghost ? "ghost" : hop.resumable ? "resumable" : "sidechain",
+        `${hop.alias ? `${hop.alias} · ` : ""}${hop.title ?? ""}`,
+      ]),
+      { width: ctx.width, pal: ctx.pal },
+    ),
+  );
+  if (tip) {
+    ctx.out("");
+    ctx.out(`resumable tip: ${ctx.pal.bold(`${tip.harness}:${tip.nativeId}`)}`);
+    ctx.out(ctx.pal.dim(`resume with: sinter resume ${tip.harness}:${tip.nativeId}`));
+  } else {
+    ctx.err("no resumable session remains in this thread");
+  }
+  if (!cachedThreadId) ctx.err(ctx.pal.dim("run `sinter relink` to rebuild lineage cached in native target sessions"));
+  return EXIT.OK;
+}
+
+/** Summarize resumable work by directory without parsing any transcripts. */
+export async function cmdProjects(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["harness", "since", "limit"],
+    booleans: ["json"],
+    alias: { n: "limit" },
+  });
+  const opts = filterOpts(args, ctx.now);
+  const limit = opts.limit ?? 30;
+  delete opts.limit;
+  opts.includeGhost = false;
+  opts.includeSubagents = false;
+  const projects = projectSummaries(ctx.ledger().list(opts)).slice(0, limit);
+
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify({ schema: PROJECTS_SCHEMA, projects }, null, 2));
+    return EXIT.OK;
+  }
+  if (!projects.length) {
+    ctx.err("no projects matched (run `sinter scan` first?)");
+    return EXIT.OK;
+  }
+  ctx.out(renderProjects(projects, ctx));
+  return EXIT.OK;
+}
+
+/** Print or execute the native resume command for the newest matching session. */
+export async function cmdLast(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["harness", "cwd", "since"],
+    booleans: ["exec", "id", "json"],
+  });
+  const selected = ["exec", "id", "json"].filter((flag) => flagBool(args, flag));
+  if (selected.length > 1) throw new CliError(`choose one output mode: ${selected.map((flag) => `--${flag}`).join(", ")}`);
+
+  const opts = filterOpts(args, ctx.now);
+  opts.includeGhost = false;
+  opts.includeSubagents = false;
+  opts.limit = 1;
+  const row = ctx.ledger().list(opts)[0];
+  if (!row) throw new CliError("no recent sessions matched (run `sinter scan` first?)", EXIT.AMBIGUOUS);
+
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify(row, null, 2));
+    return EXIT.OK;
+  }
+  if (flagBool(args, "id")) {
+    ctx.out(`${row.harness}:${row.nativeId}`);
+    return EXIT.OK;
+  }
+
+  const adapter = await ctx.registry.get(row.harness);
+  const ref = { harness: row.harness, nativeId: row.nativeId, nativePath: row.nativePath };
+  if (flagBool(args, "exec")) {
+    if (!ctx.exec) throw new CliError("--exec is not available in this context");
+    const resumeArgv = adapter.resumeCommand(ref);
+    ctx.err(ctx.pal.dim(`exec: ${quoteArgv(resumeArgv)}`));
+    return await ctx.exec(resumeArgv);
+  }
+  printResume(ctx, adapter, ref);
+  return EXIT.OK;
+}
+
 export async function cmdSearch(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv, {
     strings: ["harness", "cwd", "since", "limit"],
@@ -318,15 +1064,30 @@ export async function cmdRename(argv: string[], ctx: Ctx): Promise<number> {
 }
 
 export async function cmdShow(argv: string[], ctx: Ctx): Promise<number> {
-  const args = parseArgs(argv, { booleans: ["json", "no-sub"], strings: ["tool-chars"] });
+  const args = parseArgs(argv, { booleans: ["json", "ndjson", "no-sub"], strings: ["tool-chars", "tail"] });
   const prefix = args._[0];
   if (!prefix) throw new CliError("usage: sinter show <id-prefix>");
+  if (flagBool(args, "json") && flagBool(args, "ndjson"))
+    throw new CliError("choose one output mode: --json or --ndjson");
+  const tailValue = flagString(args, "tail");
+  let tailEntries: number | undefined;
+  if (tailValue !== undefined) {
+    tailEntries = Number(tailValue);
+    if (!Number.isInteger(tailEntries) || tailEntries <= 0) throw new CliError(`bad --tail: ${tailValue}`);
+    if (flagBool(args, "json") || flagBool(args, "ndjson"))
+      throw new CliError("--tail is for rendered output and cannot be combined with --json or --ndjson");
+  }
   const row = resolveRow(ctx, prefix);
   if (row.ghost) ctx.err(ctx.pal.dim(`note: ${shortId(row.nativeId)} is a ghost row — the harness may have GC'd it`));
 
   const session = await readSession(ctx, row);
   if (flagBool(args, "json")) {
     ctx.out(JSON.stringify(session, null, 2));
+    return EXIT.OK;
+  }
+  if (flagBool(args, "ndjson")) {
+    for (const record of transcriptRecords(session, { subsessions: !flagBool(args, "no-sub") }))
+      ctx.out(JSON.stringify(record));
     return EXIT.OK;
   }
   const toolChars = Number(flagString(args, "tool-chars") ?? 240);
@@ -336,8 +1097,66 @@ export async function cmdShow(argv: string[], ctx: Ctx): Promise<number> {
       pal: ctx.pal,
       toolResultChars: Number.isFinite(toolChars) ? toolChars : 240,
       subsessions: !flagBool(args, "no-sub"),
+      tailEntries,
     }),
   );
+  return EXIT.OK;
+}
+
+/** Compare transcript shape without printing conversation content. */
+export async function cmdCompare(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { booleans: ["json"] });
+  if (args._.length !== 2) throw new CliError("usage: sinter compare <left-id> <right-id> [--json]");
+  const leftRow = resolveRow(ctx, args._[0]!);
+  const rightRow = resolveRow(ctx, args._[1]!);
+  const comparison = compareSessions(await readSession(ctx, leftRow), await readSession(ctx, rightRow));
+
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify(comparison, null, 2));
+    return EXIT.OK;
+  }
+
+  const delta = (value: number) => (value > 0 ? `+${value}` : String(value));
+  const metrics: Array<[string, number, number, number]> = [
+    ["sessions", comparison.left.sessions, comparison.right.sessions, comparison.delta.sessions],
+    ["entries", comparison.left.entries, comparison.right.entries, comparison.delta.entries],
+    ...ENTRY_KINDS.map((kind) => [
+      `entry:${kind}`,
+      comparison.left.entryKinds[kind],
+      comparison.right.entryKinds[kind],
+      comparison.delta.entryKinds[kind],
+    ] as [string, number, number, number]),
+    ...CONTENT_TYPES.map((type) => [
+      `part:${type}`,
+      comparison.left.contentParts[type],
+      comparison.right.contentParts[type],
+      comparison.delta.contentParts[type],
+    ] as [string, number, number, number]),
+    ["entries:raw", comparison.left.entriesWithRaw, comparison.right.entriesWithRaw, comparison.delta.entriesWithRaw],
+    [
+      "sessions:preserve",
+      comparison.left.sessionsWithPreserve,
+      comparison.right.sessionsWithPreserve,
+      comparison.delta.sessionsWithPreserve,
+    ],
+  ];
+  ctx.out(`left:  ${leftRow.harness}:${shortId(leftRow.nativeId)}`);
+  ctx.out(`right: ${rightRow.harness}:${shortId(rightRow.nativeId)}`);
+  ctx.out(
+    renderTable(
+      [
+        { header: "METRIC", flex: true },
+        { header: "LEFT", max: 9, align: "right" },
+        { header: "RIGHT", max: 9, align: "right" },
+        { header: "DELTA", max: 9, align: "right" },
+      ],
+      metrics.map(([name, left, right, difference]) => [name, String(left), String(right), delta(difference)]),
+      { width: ctx.width, pal: ctx.pal },
+    ),
+  );
+  ctx.out(`models left:  ${comparison.left.models.join(", ") || "-"}`);
+  ctx.out(`models right: ${comparison.right.models.join(", ") || "-"}`);
+  ctx.err(ctx.pal.dim("structural inventory only; matching counts do not prove semantic equivalence"));
   return EXIT.OK;
 }
 
@@ -365,6 +1184,7 @@ async function writeInto(
   target: HarnessId,
   session: SifSession,
   args: ParsedArgs,
+  mode?: string,
 ): Promise<number> {
   const adapter = await ctx.registry.get(target);
   if (!adapter.write) throw new CliError(`${target} adapter cannot write sessions yet`);
@@ -374,6 +1194,7 @@ async function writeInto(
   const resolvedCwd = cwd === "." ? process.cwd() : cwd;
   const ref = await adapter.write(session, {
     cwd: resolvedCwd,
+    mode,
     liveTools: flagBool(args, "live-tools"),
     dryRun,
   });
@@ -444,23 +1265,79 @@ export async function cmdImport(argv: string[], ctx: Ctx): Promise<number> {
 export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv, {
     strings: ["to", "cwd", "mode"],
-    booleans: ["live-tools", "dry-run"],
+    booleans: ["live-tools", "dry-run", "preview", "json"],
   });
   const prefix = args._[0];
   if (!prefix) throw new CliError("usage: sinter port <id-prefix> --to <harness>");
+  if (flagBool(args, "json") && !flagBool(args, "preview"))
+    throw new CliError("--json is currently available with --preview");
   const to = flagString(args, "to");
   if (!to) throw new CliError("sinter port needs --to <harness>");
   const target = parseHarness(to);
 
   const row = resolveRow(ctx, prefix);
-  let session = await readSessionForPort(ctx, row);
+  const source = await readSessionForPort(ctx, row);
   const mode = (flagString(args, "mode") ?? "full") as TransferMode;
   if (!TRANSFER_MODES.includes(mode))
     throw new CliError(`unknown --mode: ${mode} (known: ${TRANSFER_MODES.join(", ")})`);
-  session = applyTransfer(session, mode).session;
+  const transfer = applyTransfer(source, mode);
+  const session = transfer.session;
   validateSession(session);
+  if (flagBool(args, "preview")) {
+    if (flagBool(args, "dry-run")) throw new CliError("--preview and --dry-run are separate modes; choose one");
+    const adapter = await ctx.registry.get(target);
+    if (!adapter.write) throw new CliError(`${target} adapter cannot write sessions yet`);
+    let store: "detected" | "absent" | "check failed" = "absent";
+    try {
+      store = (await adapter.detect()) ? "detected" : "absent";
+    } catch {
+      store = "check failed";
+    }
+    const cwdFlag = flagString(args, "cwd");
+    const cwd = cwdFlag === "." ? process.cwd() : cwdFlag ?? session.cwd;
+    const reduction = transfer.stats.bytesBefore
+      ? Math.max(0, Math.round((1 - transfer.stats.bytesAfter / transfer.stats.bytesBefore) * 100))
+      : 0;
+    const preview = {
+      source: { harness: row.harness, nativeId: row.nativeId },
+      target: { harness: target, adapter: "write-capable", store },
+      mode,
+      cwd,
+      entries: { before: source.entries.length, after: session.entries.length },
+      payload: {
+        bytesBefore: transfer.stats.bytesBefore,
+        bytesAfter: transfer.stats.bytesAfter,
+        reductionPercent: reduction,
+      },
+      compact: {
+        toolResultsCollapsed: transfer.stats.resultsCollapsed,
+        thinkingDropped: transfer.stats.thinkingDropped,
+      },
+      historicalTools: flagBool(args, "live-tools") ? "live" : "inert",
+      writes: false,
+    };
+    if (flagBool(args, "json")) {
+      ctx.out(JSON.stringify(preview, null, 2));
+      return EXIT.OK;
+    }
+    const rows = [
+      ["source", `${row.harness}:${row.nativeId}`],
+      ["target", `${target} (${store}, write-capable)`],
+      ["mode", mode],
+      ["working directory", cwd],
+      ["entries", `${preview.entries.before} → ${preview.entries.after}`],
+      ["payload", `${fmtBytes(transfer.stats.bytesBefore)} → ${fmtBytes(transfer.stats.bytesAfter)} (${reduction}% smaller)`],
+      ["tool results collapsed", String(transfer.stats.resultsCollapsed)],
+      ["thinking blocks dropped", String(transfer.stats.thinkingDropped)],
+      ["historical tools", preview.historicalTools],
+      ["writes", "none — preview only"],
+    ];
+    ctx.out("Port preview");
+    ctx.out(renderTable([{ header: "FIELD" }, { header: "VALUE", flex: true }], rows, { width: ctx.width, pal: ctx.pal }));
+    return EXIT.OK;
+  }
   ctx.err(`porting ${row.harness}:${shortId(row.nativeId, 12)} → ${target}`);
-  return writeInto(ctx, target, session, args);
+  return writeInto(ctx, target, session, args, mode);
 }
 
 export async function cmdResume(argv: string[], ctx: Ctx): Promise<number> {
@@ -493,6 +1370,7 @@ export async function cmdResume(argv: string[], ctx: Ctx): Promise<number> {
     ctx.err(`porting ${row.harness}:${shortId(row.nativeId, 12)} → ${target}`);
     const native = await targetAdapter.write(session, {
       cwd: flagString(args, "cwd") === "." ? process.cwd() : flagString(args, "cwd"),
+      mode: "full",
       liveTools: flagBool(args, "live-tools"),
       dryRun: flagBool(args, "dry-run"),
     });
@@ -658,6 +1536,7 @@ export async function cmdPrivacy(argv: string[], ctx: Ctx): Promise<number> {
   ctx.out("");
   ctx.out("Sinter data:");
   ctx.out(`  ledger: ${ctx.ledger().path}`);
+  ctx.out("    on POSIX systems, SQLite files are restricted to the current user (owner read/write only)");
   ctx.out("  carry-forward data: stored beside a target session only when a port needs it");
   ctx.out("  telemetry: disabled unless you explicitly run `sinter telemetry enable`");
   ctx.out("    events contain a random installation id, version, OS/architecture, event name, and time only");
@@ -682,9 +1561,53 @@ export async function cmdPrivacy(argv: string[], ctx: Ctx): Promise<number> {
   return EXIT.OK;
 }
 
+export async function cmdCapabilities(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { strings: ["harness"], booleans: ["json"] });
+  const harness = flagString(args, "harness");
+  const selected = harness ? parseHarness(harness) : undefined;
+  const all = await adapterCapabilities(ctx.registry);
+  const capabilities = selected ? all.filter((capability) => capability.harness === selected) : all;
+
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify({ schema: CAPABILITIES_SCHEMA, capabilities }, null, 2));
+    return EXIT.OK;
+  }
+
+  const yesNo = (value: boolean): string => (value ? ctx.pal.green("yes") : ctx.pal.dim("no"));
+  ctx.out(
+    renderTable(
+      [
+        { header: "HARNESS" },
+        { header: "ADAPTER" },
+        { header: "STORE" },
+        { header: "READ" },
+        { header: "WRITE" },
+        { header: "RESUME" },
+        { header: "LIMITATIONS", flex: true },
+      ],
+      capabilities.map((capability) => [
+        ctx.pal.cyan(capability.harness),
+        capability.adapter === "available" ? ctx.pal.green("yes") : ctx.pal.dim("no"),
+        capability.store,
+        yesNo(capability.read),
+        yesNo(capability.write),
+        capability.resume,
+        capability.limitations.join("; ") || "-",
+      ]),
+      { width: ctx.width, pal: ctx.pal },
+    ),
+  );
+  return EXIT.OK;
+}
+
 export async function cmdDoctor(argv: string[], ctx: Ctx): Promise<number> {
-  parseArgs(argv, {});
-  if (ctx.profile) {
+  const args = parseArgs(argv, { strings: ["output"], booleans: ["report", "json"], alias: { o: "output" } });
+  const reportMode = flagBool(args, "report");
+  const jsonMode = flagBool(args, "json");
+  const reportOutput = flagString(args, "output");
+  if (reportOutput && !reportMode) throw new CliError("--output requires --report");
+  if (reportMode && jsonMode) throw new CliError("choose one output mode: --report or --json");
+  if (ctx.profile && !reportMode && !jsonMode) {
     ctx.out(ctx.pal.dim(`profile: ${ctx.profile.name} (${ctx.profile.configPath})`));
     ctx.out(ctx.pal.dim("note: configured profile roots override defaults; other local profiles are not scanned."));
     ctx.out("");
@@ -700,11 +1623,20 @@ export async function cmdDoctor(argv: string[], ctx: Ctx): Promise<number> {
 
   const rows: string[][] = [];
   const unavailable: string[] = [];
+  const supportRows: SupportHarnessStatus[] = [];
   let anyDetected = false;
+  const ghostCounts = new Map((ledger?.counts() ?? []).map((count) => [count.harness, count.ghosts]));
 
   for (const l of loads) {
     if (!l.adapter) {
       unavailable.push(`${l.id}: ${l.error ?? "not installed"}`);
+      supportRows.push({
+        harness: l.id,
+        adapter: "unavailable",
+        store: "not-checked",
+        ledgerSessions: ledger ? ledger.countFor(l.id) : 0,
+        ghostSessions: ghostCounts.get(l.id) ?? 0,
+      });
       continue;
     }
     let store: Awaited<ReturnType<HarnessAdapter["detect"]>> = null;
@@ -716,6 +1648,14 @@ export async function cmdDoctor(argv: string[], ctx: Ctx): Promise<number> {
     }
     if (store) anyDetected = true;
     const count = ledger ? ledger.countFor(l.id) : 0;
+    supportRows.push({
+      harness: l.id,
+      adapter: "available",
+      store: store ? "ok" : note ? "error" : "absent",
+      version: store?.version,
+      ledgerSessions: count,
+      ghostSessions: ghostCounts.get(l.id) ?? 0,
+    });
     rows.push([
       ctx.pal.cyan(l.id),
       store ? ctx.pal.green("ok") : note ? ctx.pal.red("error") : ctx.pal.dim("absent"),
@@ -723,6 +1663,30 @@ export async function cmdDoctor(argv: string[], ctx: Ctx): Promise<number> {
       String(count),
       note || (store?.paths ?? []).map((p) => shortenPath(p, 46)).join(", ") || (store?.notes ?? "-"),
     ]);
+  }
+
+  const reportData = {
+    generatedAt: new Date(ctx.now).toISOString(),
+    sinterVersion: ctx.version ?? "development",
+    bunVersion: Bun.version,
+    platform: supportPlatform(),
+    profileConfigured: Boolean(ctx.profile),
+    ledgerAvailable: Boolean(ledger),
+    harnesses: supportRows.sort((a, b) => a.harness.localeCompare(b.harness)),
+  };
+  if (jsonMode) {
+    ctx.out(JSON.stringify({ schema: "sinter.doctor.v1", ok: anyDetected, ...reportData }, null, 2));
+    return anyDetected || supportRows.length ? EXIT.OK : EXIT.ERROR;
+  }
+  if (reportMode) {
+    const report = renderSupportReport(reportData);
+    if (reportOutput) {
+      await ctx.writeFile(reportOutput, report);
+      ctx.err(`wrote privacy-safe diagnostic report to ${reportOutput}`);
+    } else {
+      ctx.out(report.trimEnd());
+    }
+    return anyDetected || supportRows.length ? EXIT.OK : EXIT.ERROR;
   }
 
   if (rows.length)
@@ -863,5 +1827,15 @@ export async function cmdGui(argv: string[], ctx: Ctx): Promise<number> {
     process.once("SIGINT", stop);
     process.once("SIGTERM", stop);
   });
+  return EXIT.OK;
+}
+
+export async function cmdCompletion(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {});
+  const shell = args._[0];
+  if (args._.length !== 1 || !["zsh", "bash", "fish"].includes(shell ?? ""))
+    throw new CliError("usage: sinter completion <zsh|bash|fish>");
+  const { completionScript } = await import("./completion");
+  ctx.out(completionScript(shell as "zsh" | "bash" | "fish").trimEnd());
   return EXIT.OK;
 }

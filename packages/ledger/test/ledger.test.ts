@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { chmodSync, statSync } from "node:fs";
 import { Ledger } from "../src/index";
 import { MockAdapter, summary } from "./mock-adapter";
 
@@ -218,6 +219,178 @@ describe("session aliases", () => {
   });
 });
 
+describe("session pins", () => {
+  test("sets, filters, and clears local bookmarks without changing session rows", () => {
+    const l = ledger();
+    l.upsert(summary({ nativeId: "pin-1", title: "source title" }));
+    l.upsert(summary({ nativeId: "plain" }));
+
+    l.setPinned("claude", "pin-1", true, "2026-08-24T01:00:00.000Z");
+    expect(l.get("claude", "pin-1")).toMatchObject({
+      title: "source title",
+      pinnedAt: "2026-08-24T01:00:00.000Z",
+    });
+    expect(l.list({ pinnedOnly: true }).map((row) => row.nativeId)).toEqual(["pin-1"]);
+
+    l.setPinned("claude", "pin-1", false);
+    expect(l.get("claude", "pin-1")!.pinnedAt).toBeUndefined();
+    expect(l.list({ pinnedOnly: true })).toEqual([]);
+    l.close();
+  });
+
+  test("pins are harness-scoped and survive rescans that ghost a session", async () => {
+    const l = ledger();
+    const adapter = new MockAdapter({
+      id: "claude",
+      summaries: [summary({ nativeId: "same" })],
+    });
+    await l.scan([adapter]);
+    l.upsert(summary({ nativeId: "same", harness: "codex" }));
+    l.setPinned("claude", "same", true);
+    expect(l.get("codex", "same")!.pinnedAt).toBeUndefined();
+
+    adapter.summaries = [];
+    await l.scan([adapter]);
+    expect(l.get("claude", "same")).toMatchObject({ ghost: true });
+    expect(l.get("claude", "same")!.pinnedAt).toBeTruthy();
+    expect(l.list({ pinnedOnly: true })[0]).toMatchObject({ harness: "claude", nativeId: "same" });
+    l.close();
+  });
+});
+
+describe("ghost housekeeping", () => {
+  test("prunes only old disposable rows and preserves aliases, pins, and lineage", async () => {
+    const l = ledger();
+    l.upsert(summary({ nativeId: "plain", ghost: true, title: "plain ghost" }));
+    l.upsert(summary({ nativeId: "named", ghost: true, title: "named ghost" }));
+    l.upsert(summary({ nativeId: "pinned", ghost: true, title: "pinned ghost" }));
+    l.upsert(summary({ nativeId: "noted", ghost: true, title: "noted ghost" }));
+    l.upsert(summary({ nativeId: "tagged", ghost: true, title: "tagged ghost" }));
+    l.upsert(summary({ nativeId: "fresh", ghost: true, title: "fresh ghost" }));
+    l.upsert(summary({ nativeId: "live", title: "live session" }));
+    l.setAlias("claude", "named", "keep my name");
+    l.setPinned("claude", "pinned", true, "2026-08-01T00:00:00.000Z");
+    l.setNote("claude", "noted", "keep this note");
+    l.addTags("claude", "tagged", ["keep-tag"]);
+    l.recordLineage({ harness: "claude", nativeId: "plain", threadId: "thread-1", hop: 0 });
+    l.db.run("UPDATE sessions SET scanned_at = '2026-07-01T00:00:00.000Z' WHERE native_id != 'fresh'");
+    l.db.run("UPDATE sessions SET scanned_at = '2026-08-23T00:00:00.000Z' WHERE native_id = 'fresh'");
+
+    const opts = { before: "2026-08-01T00:00:00.000Z" };
+    expect(l.ghosts(opts).map((row) => row.nativeId)).toEqual(["named", "noted", "pinned", "plain", "tagged"]);
+    expect(l.pruneGhosts(opts).map((row) => row.nativeId)).toEqual(["plain"]);
+    expect(l.get("claude", "plain")).toBeUndefined();
+    expect(l.search("plain")).toEqual([]);
+    expect(l.get("claude", "named")?.alias).toBe("keep my name");
+    expect(l.get("claude", "pinned")?.pinnedAt).toBeTruthy();
+    expect(l.get("claude", "noted")?.note).toBe("keep this note");
+    expect(l.get("claude", "tagged")?.tags).toEqual(["keep-tag"]);
+    expect(l.get("claude", "fresh")).toBeDefined();
+    expect(l.get("claude", "live")).toBeDefined();
+    expect(l.lineageFor("thread-1")).toHaveLength(1);
+
+    const adapter = new MockAdapter({ id: "claude", summaries: [summary({ nativeId: "plain" })] });
+    await l.scan([adapter]);
+    expect(l.get("claude", "plain")).toMatchObject({ ghost: false });
+    expect(l.lineageFor("thread-1")).toHaveLength(1);
+    l.close();
+  });
+
+  test("filters ghosts by harness and makes repeated pruning idempotent", () => {
+    const l = ledger();
+    l.upsert(summary({ nativeId: "c", ghost: true }));
+    l.upsert(summary({ nativeId: "p", harness: "pi", ghost: true }));
+    l.db.run("UPDATE sessions SET scanned_at = '2026-07-01T00:00:00.000Z'");
+    const opts = { harness: "pi" as const, before: "2026-08-01T00:00:00.000Z" };
+    expect(l.pruneGhosts(opts).map((row) => row.nativeId)).toEqual(["p"]);
+    expect(l.pruneGhosts(opts)).toEqual([]);
+    expect(l.get("claude", "c")).toBeDefined();
+    l.close();
+  });
+});
+
+describe("session tags and notes", () => {
+  test("stores searchable metadata without changing native fields", () => {
+    const l = ledger();
+    l.upsert(summary({ nativeId: "meta", title: "native title", firstPrompt: "native prompt" }));
+    l.setNote("claude", "meta", "follow up after launch", "2026-08-24T01:00:00.000Z");
+    l.addTags("claude", "meta", ["release", "urgent", "release"]);
+    expect(l.get("claude", "meta")).toMatchObject({
+      title: "native title",
+      firstPrompt: "native prompt",
+      note: "follow up after launch",
+      tags: ["release", "urgent"],
+    });
+    expect(l.search("launch").map((row) => row.nativeId)).toEqual(["meta"]);
+    expect(l.search("urgent").map((row) => row.nativeId)).toEqual(["meta"]);
+    expect(l.tagCounts()).toEqual([{ tag: "release", sessions: 1 }, { tag: "urgent", sessions: 1 }]);
+
+    l.removeTags("claude", "meta", ["urgent"]);
+    expect(l.get("claude", "meta")?.tags).toEqual(["release"]);
+    expect(l.search("urgent")).toEqual([]);
+    l.setNote("claude", "meta");
+    expect(l.get("claude", "meta")?.note).toBeUndefined();
+    expect(l.search("launch")).toEqual([]);
+    l.removeTags("claude", "meta");
+    expect(l.get("claude", "meta")?.tags).toBeUndefined();
+    l.close();
+  });
+
+  test("metadata can precede discovery and survives rescans", async () => {
+    const l = ledger();
+    l.setNote("claude", "future-meta", "discover me later");
+    l.addTags("claude", "future-meta", ["backlog"]);
+    const adapter = new MockAdapter({ id: "claude", summaries: [summary({ nativeId: "future-meta" })] });
+    await l.scan([adapter]);
+    expect(l.get("claude", "future-meta")).toMatchObject({ note: "discover me later", tags: ["backlog"] });
+    expect(l.search("backlog").map((row) => row.nativeId)).toEqual(["future-meta"]);
+    expect((await l.scan([adapter])).harnesses.claude!.unchanged).toBe(1);
+    expect(l.get("claude", "future-meta")?.note).toBe("discover me later");
+    l.close();
+  });
+});
+
+describe("saved views", () => {
+  test("saves, replaces, lists, and deletes local filter definitions", () => {
+    const l = ledger();
+    expect(l.listViews()).toEqual([]);
+    expect(l.saveView({
+      name: "today",
+      harnesses: ["claude", "codex"],
+      cwd: "/Users/test/proj",
+      since: "1d",
+      limit: 12,
+      includeGhost: false,
+      includeSubagents: true,
+    }, "2026-08-24T01:00:00.000Z")).toEqual({
+      name: "today",
+      harnesses: ["claude", "codex"],
+      cwd: "/Users/test/proj",
+      since: "1d",
+      limit: 12,
+      includeGhost: false,
+      includeSubagents: true,
+      updatedAt: "2026-08-24T01:00:00.000Z",
+    });
+    l.saveView({
+      name: "TODAY",
+      harnesses: ["pi"],
+      includeGhost: true,
+      includeSubagents: false,
+    }, "2026-08-24T02:00:00.000Z");
+    expect(l.listViews()).toHaveLength(1);
+    expect(l.getView("today")).toMatchObject({
+      name: "today",
+      harnesses: ["pi"],
+      includeGhost: true,
+      updatedAt: "2026-08-24T02:00:00.000Z",
+    });
+    expect(l.deleteView("Today")).toBe(true);
+    expect(l.deleteView("Today")).toBe(false);
+    l.close();
+  });
+});
+
 describe("list filters", () => {
   const seed = (l: Ledger) => {
     l.upsert(summary({ nativeId: "old", updatedAt: "2026-01-01T00:00:00.000Z" }));
@@ -362,6 +535,22 @@ describe("counts", () => {
 });
 
 describe("persistence", () => {
+  test("hardens an existing ledger and its SQLite sidecars to owner-only", async () => {
+    const dir = `/tmp/sinter-ledger-permissions-${Bun.randomUUIDv7()}`;
+    const path = `${dir}/ledger.db`;
+    const initial = new Ledger(path);
+    initial.close();
+    chmodSync(path, 0o644);
+
+    const reopened = new Ledger(path);
+    reopened.upsert(summary({ nativeId: "private-session", firstPrompt: "private prompt" }));
+    for (const candidate of [path, `${path}-wal`, `${path}-shm`]) {
+      expect(statSync(candidate).mode & 0o777).toBe(0o600);
+    }
+    reopened.close();
+    await Bun.$`rm -rf ${dir}`.quiet();
+  });
+
   test("survives reopen of an on-disk ledger", async () => {
     const dir = `/tmp/sinter-ledger-test-${Bun.randomUUIDv7()}`;
     const path = `${dir}/ledger.db`;

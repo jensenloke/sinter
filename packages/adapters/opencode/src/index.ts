@@ -962,8 +962,7 @@ export async function resolveProvenance(
         target,
         sinterVersion: SINTER_VERSION,
         portedAt: new Date().toISOString(),
-        // WriteOpts has no `mode` field (packages/core/src/adapter.ts), so the
-        // record's optional `mode` is left unset here.
+        mode: opts?.mode,
         inertTools: !opts?.liveTools,
       });
 

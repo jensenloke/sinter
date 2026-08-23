@@ -62,6 +62,24 @@ describe("renderTranscript", () => {
     expect(renderTranscript(s, { pal, width: 80, subsessions: false })).not.toContain("┌─ subsession");
   });
 
+  test("tails root and nested sessions while preserving total counts", () => {
+    const child = session("sub-tail");
+    (child.entries[0] as { content: { type: "text"; text: string }[] }).content = [
+      { type: "text", text: "child first entry" },
+    ];
+    (child.entries[2] as { content: { type: "text"; text: string }[] }).content = [
+      { type: "text", text: "child final entry" },
+    ];
+    const s: SifSession = { ...session("tail"), subsessions: [child] };
+    const out = renderTranscript(s, { pal, width: 80, tailEntries: 1 });
+    expect(out).toContain("3 entries");
+    expect(out).toContain("showing last 1 entry");
+    expect(out).not.toContain("hello world");
+    expect(out).not.toContain("child first entry");
+    expect(out).toContain("child final entry");
+    expect(out).toContain("3 entries, showing last 1 entry");
+  });
+
   test("colour mode wraps output in ANSI but keeps the text", () => {
     const out = renderTranscript(session("s5"), { pal: palette(true), width: 80 });
     expect(out).toContain("\x1b[");

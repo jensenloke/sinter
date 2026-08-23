@@ -114,7 +114,7 @@ const countOf = (haystack: string, needle: string) => haystack.split(needle).len
 describe("write → store → read: provenance round trip", () => {
   test("a ported session comes back with its provenance record intact", async () => {
     const db = freshDb();
-    const { nativeId, provenance } = await port(sourceSession(), db);
+    const { nativeId, provenance } = await port(sourceSession(), db, { mode: "compact" });
     const back = await new OpencodeAdapter(db).read({ harness: "opencode", nativeId });
 
     const recovered = provenanceOf(back);
@@ -127,6 +127,7 @@ describe("write → store → read: provenance round trip", () => {
     ]);
     expect(recovered!.from).toEqual({ harness: "codex", nativeId: "cx-1" });
     expect(recovered!.sinter).toBe("0.1.0");
+    expect(recovered!.mode).toBe("compact");
     expect(recovered!.inertTools).toBe(true);
   });
 

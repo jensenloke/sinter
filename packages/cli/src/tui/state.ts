@@ -121,7 +121,7 @@ function haystack(t: Thread): string {
   return t.hops
     .map(
       (r) =>
-        `${r.nativeId} ${r.harness} ${r.cwd ?? ""} ${r.alias ?? ""} ${r.title ?? ""} ${r.firstPrompt ?? ""} ${
+        `${r.nativeId} ${r.harness} ${r.cwd ?? ""} ${r.alias ?? ""} ${r.title ?? ""} ${r.firstPrompt ?? ""} ${r.note ?? ""} ${r.tags?.join(" ") ?? ""} ${
           r.gitBranch ?? ""
         } ${r.model ?? ""}`,
     )
@@ -418,7 +418,7 @@ export function applyCommand(state: MenuState, cmd: string): Step {
     case "subagents":
       return { state: refiltered({ ...state, showSubagents: !state.showSubagents }) };
     case "search":
-      return { state: refiltered({ ...state, filter: "", message: "search: type an alias, title, prompt, id, path, branch, or model" }) };
+      return { state: refiltered({ ...state, filter: "", message: "search: type an alias, tag, note, title, prompt, id, path, branch, or model" }) };
     default:
       return { state };
   }

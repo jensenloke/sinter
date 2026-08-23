@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir, hostname } from "node:os";
 import type { HarnessAdapter, HarnessId, SessionSummary, SinterProvenance } from "@sinter/core";
@@ -12,6 +12,11 @@ export interface LedgerRow {
   cwd?: string;
   title?: string;
   alias?: string;
+  /** Sinter-local bookmark timestamp; never written into a harness store. */
+  pinnedAt?: string;
+  /** Searchable Sinter-local metadata; never written into a harness store. */
+  note?: string;
+  tags?: string[];
   firstPrompt?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -61,6 +66,26 @@ export interface ListOpts {
   includeGhost?: boolean;
   /** Include subagent/sidechain rows (default true). */
   includeSubagents?: boolean;
+  /** Include only sessions bookmarked in the Sinter-local pin table. */
+  pinnedOnly?: boolean;
+}
+
+export interface GhostOpts {
+  harness?: HarnessId;
+  /** Include ghosts last observed at or before this ISO timestamp. */
+  before?: string;
+}
+
+export interface SavedView {
+  name: string;
+  harnesses?: HarnessId[];
+  cwd?: string;
+  /** Relative window (for example 7d), resolved each time the view runs. */
+  since?: string;
+  limit?: number;
+  includeGhost: boolean;
+  includeSubagents: boolean;
+  updatedAt: string;
 }
 
 export interface ScanHarnessStat {
@@ -81,10 +106,16 @@ export interface ResolveResult {
   candidates: LedgerRow[];
 }
 
-const SESSION_SELECT = `SELECT s.*, a.alias AS alias
+const SESSION_SELECT = `SELECT s.*, a.alias AS alias, p.pinned_at AS pinned_at, n.note AS note,
+  (SELECT group_concat(t.tag, char(31)) FROM session_tags AS t
+   WHERE t.harness = s.harness AND t.native_id = s.native_id) AS tags
 FROM sessions AS s
 LEFT JOIN session_aliases AS a
-  ON a.harness = s.harness AND a.native_id = s.native_id`;
+  ON a.harness = s.harness AND a.native_id = s.native_id
+LEFT JOIN session_pins AS p
+  ON p.harness = s.harness AND p.native_id = s.native_id
+LEFT JOIN session_notes AS n
+  ON n.harness = s.harness AND n.native_id = s.native_id`;
 
 const COLUMNS = [
   "harness",
@@ -120,6 +151,7 @@ function num(v: unknown): number | undefined {
 }
 
 function rowFromDb(r: Record<string, unknown>): LedgerRow {
+  const tags = typeof r.tags === "string" ? r.tags.split("\x1f").filter(Boolean).sort() : [];
   return {
     harness: r.harness as HarnessId,
     nativeId: String(r.native_id),
@@ -127,6 +159,9 @@ function rowFromDb(r: Record<string, unknown>): LedgerRow {
     cwd: (r.cwd as string) ?? undefined,
     title: (r.title as string) ?? undefined,
     alias: (r.alias as string) ?? undefined,
+    pinnedAt: (r.pinned_at as string) ?? undefined,
+    note: (r.note as string) ?? undefined,
+    ...(tags.length ? { tags } : {}),
     firstPrompt: (r.first_prompt as string) ?? undefined,
     createdAt: (r.created_at as string) ?? undefined,
     updatedAt: (r.updated_at as string) ?? undefined,
@@ -157,6 +192,24 @@ function lineageFromDb(r: Record<string, unknown>): LineageRow {
     parentNativeId: (r.parent_native_id as string) ?? undefined,
     portedAt: (r.ported_at as string) ?? undefined,
     mode: (r.mode as string) ?? undefined,
+  };
+}
+
+const HARNESS_IDS = new Set<HarnessId>(["claude", "codex", "devin", "opencode", "zcode", "omp", "pi"]);
+
+function viewFromDb(r: Record<string, unknown>): SavedView {
+  const harnesses = typeof r.harnesses === "string"
+    ? r.harnesses.split(",").filter((id): id is HarnessId => HARNESS_IDS.has(id as HarnessId))
+    : [];
+  return {
+    name: String(r.name),
+    ...(harnesses.length ? { harnesses } : {}),
+    ...((r.cwd as string | null) ? { cwd: String(r.cwd) } : {}),
+    ...((r.since_window as string | null) ? { since: String(r.since_window) } : {}),
+    ...(num(r.row_limit) ? { limit: num(r.row_limit) } : {}),
+    includeGhost: !!r.include_ghost,
+    includeSubagents: !!r.include_subagents,
+    updatedAt: String(r.updated_at),
   };
 }
 
@@ -208,6 +261,21 @@ function bindValues(s: SessionSummary, host: string, scannedAt: string): unknown
   ];
 }
 
+/** The ledger contains session titles, prompts, and paths. Keep every SQLite
+ * file owner-only even when an older install created it under a permissive
+ * umask. Windows does not implement POSIX permission bits, so chmod failures
+ * there are not actionable. */
+function secureLedgerFiles(path: string): void {
+  for (const candidate of [path, `${path}-wal`, `${path}-shm`]) {
+    if (!existsSync(candidate)) continue;
+    try {
+      chmodSync(candidate, 0o600);
+    } catch (error) {
+      if (process.platform !== "win32") throw error;
+    }
+  }
+}
+
 export class Ledger {
   readonly db: Database;
   readonly path: string;
@@ -215,13 +283,18 @@ export class Ledger {
 
   constructor(path: string = defaultLedgerPath()) {
     this.path = path;
-    if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
+    if (path !== ":memory:") {
+      mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+      closeSync(openSync(path, "a", 0o600));
+      secureLedgerFiles(path);
+    }
     this.db = new Database(path, { create: true });
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec(SCHEMA_SQL);
     this.db.run("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)", [
       String(SCHEMA_VERSION),
     ]);
+    if (path !== ":memory:") secureLedgerFiles(path);
     this.host = process.env.SINTER_HOST ?? hostname();
   }
 
@@ -270,15 +343,23 @@ export class Ledger {
   }
 
   private reindexFts(harness: string, nativeId: string, title?: string, firstPrompt?: string): void {
-    const alias = this.db
-      .query("SELECT alias FROM session_aliases WHERE harness = ? AND native_id = ?")
-      .get(harness, nativeId) as { alias: string } | null;
-    const indexedTitle = alias ? `${alias.alias}\n${title ?? ""}` : (title ?? "");
+    const metadata = this.db
+      .query(`SELECT
+        (SELECT alias FROM session_aliases WHERE harness = ? AND native_id = ?) AS alias,
+        (SELECT note FROM session_notes WHERE harness = ? AND native_id = ?) AS note,
+        (SELECT group_concat(tag, ' ') FROM session_tags WHERE harness = ? AND native_id = ?) AS tags`)
+      .get(harness, nativeId, harness, nativeId, harness, nativeId) as {
+        alias: string | null;
+        note: string | null;
+        tags: string | null;
+      } | null;
+    const indexedTitle = [metadata?.alias, title, metadata?.tags].filter(Boolean).join("\n");
+    const indexedPrompt = [firstPrompt, metadata?.note].filter(Boolean).join("\n");
 
     this.db.run("DELETE FROM sessions_fts WHERE harness = ? AND native_id = ?", [harness, nativeId]);
     this.db.run(
       "INSERT INTO sessions_fts (harness, native_id, title, first_prompt) VALUES (?, ?, ?, ?)",
-      [harness, nativeId, indexedTitle, firstPrompt ?? ""],
+      [harness, nativeId, indexedTitle, indexedPrompt],
     );
   }
 
@@ -304,6 +385,111 @@ export class Ledger {
         this.db.run("DELETE FROM sessions_fts WHERE harness = ? AND native_id = ?", [harness, nativeId]);
       }
     })();
+  }
+
+  /** Set or clear a Sinter-local bookmark without modifying the native session. */
+  setPinned(harness: HarnessId, nativeId: string, pinned: boolean, pinnedAt = new Date().toISOString()): void {
+    if (!pinned) {
+      this.db.run("DELETE FROM session_pins WHERE harness = ? AND native_id = ?", [harness, nativeId]);
+      return;
+    }
+    this.db.run(
+      `INSERT INTO session_pins (harness, native_id, pinned_at) VALUES (?, ?, ?)
+       ON CONFLICT(harness, native_id) DO UPDATE SET pinned_at = excluded.pinned_at`,
+      [harness, nativeId, pinnedAt],
+    );
+  }
+
+  /** Set or clear a Sinter-local note and refresh the search index. */
+  setNote(harness: HarnessId, nativeId: string, note?: string, updatedAt = new Date().toISOString()): void {
+    this.db.transaction(() => {
+      if (note === undefined) {
+        this.db.run("DELETE FROM session_notes WHERE harness = ? AND native_id = ?", [harness, nativeId]);
+      } else {
+        this.db.run(
+          `INSERT INTO session_notes (harness, native_id, note, updated_at) VALUES (?, ?, ?, ?)
+           ON CONFLICT(harness, native_id) DO UPDATE SET note = excluded.note, updated_at = excluded.updated_at`,
+          [harness, nativeId, note, updatedAt],
+        );
+      }
+      const session = this.db.query("SELECT title, first_prompt FROM sessions WHERE harness = ? AND native_id = ?")
+        .get(harness, nativeId) as { title: string | null; first_prompt: string | null } | null;
+      if (session) this.reindexFts(harness, nativeId, session.title ?? undefined, session.first_prompt ?? undefined);
+    })();
+  }
+
+  /** Add normalized, Sinter-local tags and refresh the search index. */
+  addTags(harness: HarnessId, nativeId: string, tags: string[]): void {
+    this.db.transaction(() => {
+      const insert = this.db.prepare("INSERT OR IGNORE INTO session_tags (harness, native_id, tag) VALUES (?, ?, ?)");
+      for (const tag of tags) insert.run(harness, nativeId, tag);
+      const session = this.db.query("SELECT title, first_prompt FROM sessions WHERE harness = ? AND native_id = ?")
+        .get(harness, nativeId) as { title: string | null; first_prompt: string | null } | null;
+      if (session) this.reindexFts(harness, nativeId, session.title ?? undefined, session.first_prompt ?? undefined);
+    })();
+  }
+
+  /** Remove selected tags, or every tag when `tags` is omitted. */
+  removeTags(harness: HarnessId, nativeId: string, tags?: string[]): void {
+    this.db.transaction(() => {
+      if (tags?.length) {
+        const drop = this.db.prepare("DELETE FROM session_tags WHERE harness = ? AND native_id = ? AND tag = ?");
+        for (const tag of tags) drop.run(harness, nativeId, tag);
+      } else {
+        this.db.run("DELETE FROM session_tags WHERE harness = ? AND native_id = ?", [harness, nativeId]);
+      }
+      const session = this.db.query("SELECT title, first_prompt FROM sessions WHERE harness = ? AND native_id = ?")
+        .get(harness, nativeId) as { title: string | null; first_prompt: string | null } | null;
+      if (session) this.reindexFts(harness, nativeId, session.title ?? undefined, session.first_prompt ?? undefined);
+    })();
+  }
+
+  tagCounts(): { tag: string; sessions: number }[] {
+    return this.db.query(
+      "SELECT tag, count(*) AS sessions FROM session_tags GROUP BY tag COLLATE NOCASE ORDER BY tag COLLATE NOCASE",
+    ).all() as { tag: string; sessions: number }[];
+  }
+
+  /** Save or replace a named, Sinter-local list filter. */
+  saveView(view: Omit<SavedView, "updatedAt">, updatedAt = new Date().toISOString()): SavedView {
+    this.db.run(
+      `INSERT INTO saved_views (
+        name, harnesses, cwd, since_window, row_limit, include_ghost, include_subagents, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(name) DO UPDATE SET
+        harnesses = excluded.harnesses,
+        cwd = excluded.cwd,
+        since_window = excluded.since_window,
+        row_limit = excluded.row_limit,
+        include_ghost = excluded.include_ghost,
+        include_subagents = excluded.include_subagents,
+        updated_at = excluded.updated_at`,
+      [
+        view.name,
+        view.harnesses?.join(",") ?? null,
+        view.cwd ?? null,
+        view.since ?? null,
+        view.limit ?? null,
+        view.includeGhost ? 1 : 0,
+        view.includeSubagents ? 1 : 0,
+        updatedAt,
+      ],
+    );
+    return this.getView(view.name)!;
+  }
+
+  getView(name: string): SavedView | undefined {
+    const row = this.db.query("SELECT * FROM saved_views WHERE name = ?").get(name) as Record<string, unknown> | null;
+    return row ? viewFromDb(row) : undefined;
+  }
+
+  listViews(): SavedView[] {
+    return (this.db.query("SELECT * FROM saved_views ORDER BY name COLLATE NOCASE").all() as Record<string, unknown>[])
+      .map(viewFromDb);
+  }
+
+  deleteView(name: string): boolean {
+    return this.db.run("DELETE FROM saved_views WHERE name = ?", [name]).changes > 0;
   }
 
   /**
@@ -361,6 +547,45 @@ export class Ledger {
     return flipped;
   }
 
+  /** Ghost rows eligible for housekeeping, oldest observation first. */
+  ghosts(opts: GhostOpts = {}): LedgerRow[] {
+    const where = ["s.ghost = 1"];
+    const params: unknown[] = [];
+    if (opts.harness) {
+      where.push("s.harness = ?");
+      params.push(opts.harness);
+    }
+    if (opts.before) {
+      where.push("COALESCE(s.scanned_at, s.updated_at, s.created_at, '') <= ?");
+      params.push(opts.before);
+    }
+    const sql = `${SESSION_SELECT} WHERE ${where.join(" AND ")}
+      ORDER BY COALESCE(s.scanned_at, s.updated_at, s.created_at, '') ASC, s.harness, s.native_id`;
+    return (this.db.query(sql).all(...(params as never[])) as Record<string, unknown>[]).map(rowFromDb);
+  }
+
+  /**
+   * Remove only disposable ghost session + FTS rows. Rows carrying local
+   * metadata are protected; every metadata record and lineage link remains
+   * untouched.
+   */
+  pruneGhosts(opts: GhostOpts): LedgerRow[] {
+    return this.db.transaction(() => {
+      const candidates = this.ghosts(opts).filter(
+        (row) => !row.alias && !row.pinnedAt && !row.note && !row.tags?.length,
+      );
+      const dropFts = this.db.prepare("DELETE FROM sessions_fts WHERE harness = ? AND native_id = ?");
+      const dropSession = this.db.prepare("DELETE FROM sessions WHERE harness = ? AND native_id = ? AND ghost = 1");
+      const removed: LedgerRow[] = [];
+      for (const row of candidates) {
+        dropFts.run(row.harness, row.nativeId);
+        const result = dropSession.run(row.harness, row.nativeId);
+        if (result.changes) removed.push(row);
+      }
+      return removed;
+    })();
+  }
+
   // ------------------------------------------------------------- read path
 
   get(harness: HarnessId, nativeId: string): LedgerRow | undefined {
@@ -391,6 +616,7 @@ export class Ledger {
     }
     if (opts.includeGhost === false) where.push("s.ghost = 0");
     if (opts.includeSubagents === false) where.push("s.is_subagent = 0");
+    if (opts.pinnedOnly) where.push("p.pinned_at IS NOT NULL");
 
     const sql =
       SESSION_SELECT +
@@ -429,6 +655,7 @@ export class Ledger {
       if (opts.since && (row.updatedAt ?? row.createdAt ?? "") < opts.since) continue;
       if (opts.includeGhost === false && row.ghost) continue;
       if (opts.includeSubagents === false && row.isSubagent) continue;
+      if (opts.pinnedOnly && !row.pinnedAt) continue;
       out.push(row);
       if (opts.limit && out.length >= opts.limit) break;
     }

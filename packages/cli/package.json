@@ -1,6 +1,6 @@
 {
   "name": "@jensenloke/sinter",
-  "version": "0.1.10",
+  "version": "0.2.0",
   "description": "Port and resume coding-agent sessions across harnesses.",
   "license": "Apache-2.0",
   "repository": {

@@ -21,6 +21,8 @@ export interface SessionRef {
 export interface WriteOpts {
   /** Target cwd for the synthesized session; defaults to the SIF session cwd. */
   cwd?: string;
+  /** Transfer mode stamped into port provenance for later lineage inspection. */
+  mode?: string;
   /**
    * When false (the default), historical tool calls/results are flattened into
    * inert text so the target harness can never re-execute them. `true` is only

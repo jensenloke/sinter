@@ -11,6 +11,7 @@ import type { HarnessAdapter, HarnessId, NativeRef, SessionRef, SifSession } fro
 import { validateSession } from "@sinter/core";
 import type { LedgerRow } from "@sinter/ledger";
 import { EXIT } from "../args";
+import { adapterCapabilities } from "../capabilities";
 import type { Ctx } from "../commands";
 import { shortenPath, termHeight, termWidth } from "../format";
 import { renderTranscript } from "../render";
@@ -32,42 +33,22 @@ import {
 import { buildThreads, type Thread } from "./threads";
 import { pageSizeFor, renderFrame } from "./view";
 
-const HARNESSES: HarnessId[] = ["claude", "codex", "devin", "opencode", "zcode", "omp", "pi"];
-
 /** Rows pulled into the menu. Beyond this the filter box is the wrong tool. */
 const ROW_LIMIT = 10000;
 
 // ------------------------------------------------------------- capabilities
 
-/** The binary a harness is resumed with, taken from its own resumeCommand(). */
-function resumeBinary(adapter: HarnessAdapter): string | undefined {
-  try {
-    return adapter.resumeCommand({ harness: adapter.id, nativeId: "probe" })[0];
-  } catch {
-    return undefined;
-  }
-}
-
 export async function resolveCaps(ctx: Ctx): Promise<HarnessCaps[]> {
   const loads = await ctx.registry.load();
-  const caps: HarnessCaps[] = [];
-  for (const id of HARNESSES) {
-    const load = loads.find((l) => l.id === id);
-    if (!load?.adapter) {
-      caps.push({ id, available: false, canWrite: false, onPath: false, error: load?.error });
-      continue;
-    }
-    const bin = resumeBinary(load.adapter);
-    caps.push({
-      id,
-      available: true,
-      canWrite: typeof load.adapter.write === "function",
-      onPath: !!bin && !!Bun.which(bin),
-      // zcode ships no CLI; its resumeCommand() is documented as a guess.
-      experimental: id === "zcode",
-    });
-  }
-  return caps;
+  const capabilities = await adapterCapabilities(ctx.registry, { detectStores: false });
+  return capabilities.map((capability) => ({
+    id: capability.harness,
+    available: capability.adapter === "available",
+    canWrite: capability.write,
+    onPath: capability.resume === "available",
+    experimental: capability.resume === "unverified",
+    error: loads.find((load) => load.id === capability.harness)?.error,
+  }));
 }
 
 function loadThreads(ctx: Ctx): Thread[] {

@@ -106,9 +106,16 @@ describe("CLI conventions", () => {
     expect(h.out()).not.toContain("one ledger for every coding-agent session");
   });
 
+  test("groups top-level help by user job", async () => {
+    expect(await run(["--help"], h.ctx)).toBe(0);
+    for (const heading of ["interactive", "find and inspect", "organize locally", "move and continue", "setup and maintenance", "support and interfaces"])
+      expect(h.out()).toContain(`\n${heading}\n`);
+  });
+
   test("explains local-only storage and unsupported desktop surfaces", async () => {
     expect(await run(["privacy"], h.ctx)).toBe(0);
     expect(h.out()).toContain("does not upload transcripts");
+    expect(h.out()).toContain("owner read/write only");
     expect(h.out()).toContain("zcode: read-only");
     expect(h.out()).toContain("ChatGPT.app / Codex desktop: future work");
   });
@@ -123,6 +130,332 @@ describe("CLI conventions", () => {
         configPath: config,
         stores: { claude: "/tmp/claude-work/projects", codex: "/tmp/codex-work" },
       });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("capabilities", () => {
+  test("renders the canonical support matrix without touching the ledger", async () => {
+    expect(await run(["capabilities"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("HARNESS");
+    expect(h.out()).toContain("claude");
+    expect(h.out()).toContain("zcode");
+    expect(h.out()).toContain("adapter package unavailable");
+    expect(h.ledger.list()).toHaveLength(0);
+  });
+
+  test("filters versioned JSON without leaking adapter errors", async () => {
+    expect(await run(["capabilities", "--harness", "zcode", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result).toMatchObject({
+      schema: "sinter.capabilities.v1",
+      capabilities: [
+        {
+          harness: "zcode",
+          adapter: "unavailable",
+          store: "not-checked",
+          read: false,
+          write: false,
+          resume: "unavailable",
+        },
+      ],
+    });
+    expect(h.out()).not.toContain("cannot find module");
+  });
+});
+
+describe("ghost housekeeping", () => {
+  function seedGhosts() {
+    h.ledger.upsert(summary({ nativeId: "ghost-plain", ghost: true, title: "disposable" }));
+    h.ledger.upsert(summary({ nativeId: "ghost-named", ghost: true, title: "named" }));
+    h.ledger.upsert(summary({ nativeId: "ghost-pinned", ghost: true, title: "pinned" }));
+    h.ledger.upsert(summary({ nativeId: "ghost-noted", ghost: true, title: "noted" }));
+    h.ledger.upsert(summary({ nativeId: "ghost-tagged", ghost: true, title: "tagged" }));
+    h.ledger.setAlias("claude", "ghost-named", "keep this alias");
+    h.ledger.setPinned("claude", "ghost-pinned", true, "2026-07-01T00:00:00.000Z");
+    h.ledger.setNote("claude", "ghost-noted", "keep this note");
+    h.ledger.addTags("claude", "ghost-tagged", ["keep-tag"]);
+    h.ledger.recordLineage({ harness: "claude", nativeId: "ghost-plain", threadId: "ghost-thread", hop: 0 });
+    h.ledger.db.run("UPDATE sessions SET scanned_at = '2026-07-01T00:00:00.000Z' WHERE native_id LIKE 'ghost-%'");
+  }
+
+  test("previews eligible and protected ghosts without changing the ledger", async () => {
+    seedGhosts();
+    expect(await run(["ghosts", "--json"], h.ctx)).toBe(0);
+    expect(JSON.parse(h.out())).toMatchObject({
+      schema: "sinter.ghosts.v1",
+      action: "preview",
+      olderThan: "30d",
+      eligible: 1,
+      protected: 4,
+      removed: 0,
+    });
+    expect(h.ledger.get("claude", "ghost-plain")).toBeDefined();
+  });
+
+  test("requires explicit confirmation and preserves local metadata and lineage", async () => {
+    seedGhosts();
+    expect(await run(["ghosts", "prune"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("without --yes");
+    expect(h.ledger.get("claude", "ghost-plain")).toBeDefined();
+
+    h.stdout.length = 0;
+    h.stderr.length = 0;
+    expect(await run(["ghosts", "prune", "--yes", "--json"], h.ctx)).toBe(0);
+    expect(JSON.parse(h.out())).toMatchObject({ action: "prune", eligible: 1, protected: 4, removed: 1 });
+    expect(h.ledger.get("claude", "ghost-plain")).toBeUndefined();
+    expect(h.ledger.get("claude", "ghost-named")?.alias).toBe("keep this alias");
+    expect(h.ledger.get("claude", "ghost-pinned")?.pinnedAt).toBeTruthy();
+    expect(h.ledger.get("claude", "ghost-noted")?.note).toBe("keep this note");
+    expect(h.ledger.get("claude", "ghost-tagged")?.tags).toEqual(["keep-tag"]);
+    expect(h.ledger.lineageFor("ghost-thread")).toHaveLength(1);
+  });
+
+  test("validates action, age, and harness filters", async () => {
+    expect(await run(["ghosts", "destroy"], h.ctx)).toBe(1);
+    expect(await run(["ghosts", "--older-than", "someday"], h.ctx)).toBe(1);
+    expect(await run(["ghosts", "--harness", "cursor"], h.ctx)).toBe(1);
+  });
+});
+
+describe("local tags and notes", () => {
+  test("adds searchable metadata that survives rescans without changing native stores", async () => {
+    await scan();
+    expect(await run(["tag", "aaa11111", "#Release", "urgent"], h.ctx)).toBe(0);
+    expect(await run(["note", "aaa11111", "follow up after launch"], h.ctx)).toBe(0);
+    expect(h.ledger.get("claude", "aaa11111-1111")).toMatchObject({
+      tags: ["release", "urgent"],
+      note: "follow up after launch",
+      title: "porting sessions between harnesses",
+    });
+    expect(h.ledger.search("urgent")[0]?.nativeId).toBe("aaa11111-1111");
+    expect(h.ledger.search("launch")[0]?.nativeId).toBe("aaa11111-1111");
+    expect(h.claude.written).toHaveLength(0);
+
+    await scan();
+    expect(h.ledger.get("claude", "aaa11111-1111")).toMatchObject({ tags: ["release", "urgent"], note: "follow up after launch" });
+    h.stdout.length = 0;
+    expect(await run(["search", "urgent"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("#release #urgent");
+    expect(h.out()).toContain("✎");
+  });
+
+  test("lists counts and removes selected or all metadata", async () => {
+    await scan();
+    await run(["tag", "aaa11111", "work", "urgent"], h.ctx);
+    await run(["tag", "aaa22222", "work"], h.ctx);
+    h.stdout.length = 0;
+    expect(await run(["tags", "--json"], h.ctx)).toBe(0);
+    expect(JSON.parse(h.out())).toEqual({
+      schema: "sinter.tags.v1",
+      tags: [{ tag: "urgent", sessions: 1 }, { tag: "work", sessions: 2 }],
+    });
+
+    expect(await run(["untag", "aaa11111", "urgent"], h.ctx)).toBe(0);
+    expect(h.ledger.get("claude", "aaa11111-1111")?.tags).toEqual(["work"]);
+    expect(await run(["untag", "aaa11111", "--all"], h.ctx)).toBe(0);
+    expect(h.ledger.get("claude", "aaa11111-1111")?.tags).toBeUndefined();
+    await run(["note", "aaa11111", "temporary"], h.ctx);
+    expect(await run(["note", "aaa11111", "--clear"], h.ctx)).toBe(0);
+    expect(h.ledger.get("claude", "aaa11111-1111")?.note).toBeUndefined();
+  });
+
+  test("keeps metadata local to the source when porting", async () => {
+    await scan();
+    await run(["tag", "aaa11111", "private-context"], h.ctx);
+    await run(["note", "aaa11111", "do not copy this note"], h.ctx);
+    expect(await run(["port", "aaa11111", "--to", "omp"], h.ctx)).toBe(0);
+    expect(h.ledger.get("omp", "new-omp-1")?.tags).toBeUndefined();
+    expect(h.ledger.get("omp", "new-omp-1")?.note).toBeUndefined();
+    expect(h.ledger.get("claude", "aaa11111-1111")).toMatchObject({
+      tags: ["private-context"],
+      note: "do not copy this note",
+    });
+  });
+
+  test("validates tag names, note size, and mutually exclusive forms", async () => {
+    await scan();
+    expect(await run(["tag", "aaa11111", "bad tag"], h.ctx)).toBe(1);
+    expect(await run(["untag", "aaa11111"], h.ctx)).toBe(1);
+    expect(await run(["untag", "aaa11111", "work", "--all"], h.ctx)).toBe(1);
+    expect(await run(["note", "aaa11111"], h.ctx)).toBe(1);
+    expect(await run(["note", "aaa11111", "text", "--clear"], h.ctx)).toBe(1);
+    expect(await run(["note", "aaa11111", "x".repeat(4001)], h.ctx)).toBe(1);
+  });
+});
+
+describe("watch mode", () => {
+  test("streams versioned snapshots and rescans before every cycle", async () => {
+    let slept = 0;
+    h.ctx.sleep = async (ms) => {
+      expect(ms).toBe(250);
+      slept++;
+      h.claude.summaries = h.claude.summaries.map((row) =>
+        row.nativeId === "aaa11111-1111"
+          ? { ...row, title: "changed while watching", updatedAt: "2026-08-13T11:30:00.000Z" }
+          : row,
+      );
+    };
+    expect(await run(["watch", "recent", "--count", "2", "--interval", "250ms", "--json"], h.ctx)).toBe(0);
+    const snapshots = h.stdout.map((line) => JSON.parse(line));
+    expect(slept).toBe(1);
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots[0]).toMatchObject({ schema: "sinter.watch.v1", sequence: 1, view: "recent", changed: true });
+    expect(snapshots[1]).toMatchObject({ schema: "sinter.watch.v1", sequence: 2, view: "recent", changed: true });
+    expect(snapshots[1].sessions[0].title).toBe("changed while watching");
+    expect(snapshots[1].scan.harnesses.claude.updated).toBe(1);
+  });
+
+  test("defaults pipes to one project snapshot and can watch the cache only", async () => {
+    await scan();
+    h.stdout.length = 0;
+    h.claude.summaries = [];
+    expect(await run(["watch", "projects", "--json", "--no-scan"], h.ctx)).toBe(0);
+    const snapshot = JSON.parse(h.out());
+    expect(snapshot).toMatchObject({
+      schema: "sinter.watch.v1",
+      sequence: 1,
+      view: "projects",
+      changed: true,
+      scan: { skipped: true },
+    });
+    expect(snapshot.projects.some((project: { cwd: string }) => project.cwd === "/Users/test/proj")).toBe(true);
+  });
+
+  test("does not treat scan bookkeeping as a visible change", async () => {
+    h.ctx.sleep = async () => {};
+    expect(await run(["watch", "recent", "--count", "2", "--interval", "250ms", "--json"], h.ctx)).toBe(0);
+    const snapshots = h.stdout.map((line) => JSON.parse(line));
+    expect(snapshots.map((snapshot) => snapshot.changed)).toEqual([true, false]);
+  });
+
+  test("redraws interactive terminals unless --no-clear is set", async () => {
+    h.ctx.interactive = true;
+    h.ctx.sleep = async () => {};
+    expect(await run(["watch", "recent", "--count", "2", "--interval", "250ms"], h.ctx)).toBe(0);
+    expect(h.stdout[1]).toStartWith("\x1b[2J\x1b[H");
+
+    h.stdout.length = 0;
+    expect(await run(["watch", "recent", "--count", "2", "--interval", "250ms", "--no-clear"], h.ctx)).toBe(0);
+    expect(h.stdout.join("\n")).not.toContain("\x1b[2J");
+  });
+
+  test("validates view, interval, count, and harness", async () => {
+    expect(await run(["watch", "threads"], h.ctx)).toBe(1);
+    expect(await run(["watch", "--interval", "10ms"], h.ctx)).toBe(1);
+    expect(await run(["watch", "--count", "0"], h.ctx)).toBe(1);
+    expect(await run(["watch", "--harness", "cursor"], h.ctx)).toBe(1);
+  });
+});
+
+describe("saved views", () => {
+  test("saves, lists, shows, and runs a reusable local filter", async () => {
+    await scan();
+    h.ledger.upsert(summary({ nativeId: "ghost-view", ghost: true, updatedAt: "2026-08-10T00:00:00.000Z" }));
+    h.ledger.upsert(summary({ nativeId: "sub-view", isSubagent: true, updatedAt: "2026-08-10T00:00:00.000Z" }));
+
+    expect(await run(["view", "save", "work", "--harness", "claude", "--cwd", "/Users/test/proj", "--since", "30d", "--limit", "2"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("saved view work");
+
+    h.stdout.length = 0;
+    expect(await run(["view", "--json"], h.ctx)).toBe(0);
+    expect(JSON.parse(h.out())).toMatchObject({
+      schema: "sinter.views.v1",
+      views: [{ name: "work", harnesses: ["claude"], since: "30d", limit: 2 }],
+    });
+
+    h.stdout.length = 0;
+    expect(await run(["view", "show", "work"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("harnesses: claude");
+
+    h.stdout.length = 0;
+    expect(await run(["view", "run", "work", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result.schema).toBe("sinter.view.v1");
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0].nativeId).toBe("aaa11111-1111");
+    expect(result.sessions.map((row: { nativeId: string }) => row.nativeId)).not.toContain("ghost-view");
+    expect(result.sessions.map((row: { nativeId: string }) => row.nativeId)).not.toContain("sub-view");
+
+    h.stdout.length = 0;
+    expect(await run(["view", "run", "work", "--all-harnesses", "--all-cwd", "--all-time", "--limit", "100", "--json"], h.ctx)).toBe(0);
+    const unscoped = JSON.parse(h.out());
+    expect(unscoped.effective.harness).toBeUndefined();
+    expect(unscoped.effective.cwd).toBeUndefined();
+    expect(unscoped.effective.since).toBeUndefined();
+    expect(unscoped.sessions).toHaveLength(4);
+  });
+
+  test("explicit run flags override saved filters", async () => {
+    await scan();
+    await run(["view", "save", "recent", "--harness", "claude", "--limit", "1"], h.ctx);
+    h.stdout.length = 0;
+    expect(await run(["view", "run", "recent", "--harness", "omp", "--limit", "5", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result.effective).toMatchObject({ harness: ["omp"], limit: 5 });
+    expect(result.sessions.map((row: { nativeId: string }) => row.nativeId)).toEqual(["omp-1"]);
+  });
+
+  test("protects names from accidental replacement and deletes explicitly", async () => {
+    expect(await run(["view", "save", "daily"], h.ctx)).toBe(0);
+    expect(await run(["view", "save", "DAILY"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("use --force");
+    h.stderr.length = 0;
+    expect(await run(["view", "save", "DAILY", "--harness", "pi", "--force"], h.ctx)).toBe(0);
+    expect(h.ledger.getView("daily")?.harnesses).toEqual(["pi"]);
+    expect(await run(["view", "delete", "daily"], h.ctx)).toBe(0);
+    expect(h.ledger.getView("daily")).toBeUndefined();
+    expect(await run(["view", "delete", "daily"], h.ctx)).toBe(1);
+  });
+
+  test("validates names, filters, and conflicting overrides", async () => {
+    expect(await run(["view", "save", "bad name"], h.ctx)).toBe(1);
+    expect(await run(["view", "save", "bad-age", "--since", "later"], h.ctx)).toBe(1);
+    expect(await run(["view", "save", "bad-limit", "--limit", "0"], h.ctx)).toBe(1);
+    await run(["view", "save", "valid"], h.ctx);
+    expect(await run(["view", "run", "valid", "--ghosts", "--no-ghosts"], h.ctx)).toBe(1);
+    expect(await run(["view", "run", "valid", "--harness", "pi", "--all-harnesses"], h.ctx)).toBe(1);
+    expect(await run(["view", "unknown"], h.ctx)).toBe(1);
+  });
+});
+
+describe("config", () => {
+  test("shows and validates every profile without touching the ledger", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sinter-config-"));
+    const config = join(dir, "config.toml");
+    writeFileSync(
+      config,
+      `[profiles.personal.stores]\nclaude = "/tmp/claude"\n\n[profiles.work.stores]\ncodex = "/tmp/codex"\ndevin = "/tmp/devin.db"\n`,
+    );
+    try {
+      expect(await run(["config", "show", "--config", config], h.ctx)).toBe(0);
+      expect(h.out()).toContain("PROFILE");
+      expect(h.out()).toContain("personal");
+      expect(h.out()).toContain("/tmp/codex");
+      expect(h.ledger.list()).toHaveLength(0);
+
+      h.stdout.length = 0;
+      expect(await run(["config", "validate", "--config", config, "--json"], h.ctx)).toBe(0);
+      expect(JSON.parse(h.out())).toMatchObject({ valid: true, profiles: 2, stores: 3 });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("prints the resolved path even before a config file exists", async () => {
+    expect(await run(["config", "path", "--config", "/tmp/not-created-sinter.toml"], h.ctx)).toBe(0);
+    expect(h.out()).toBe("/tmp/not-created-sinter.toml");
+  });
+
+  test("validation catches an unknown harness", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sinter-config-bad-"));
+    const config = join(dir, "config.toml");
+    writeFileSync(config, `[profiles.work.stores]\ncursor = "/tmp/cursor"\n`);
+    try {
+      expect(await run(["config", "validate", "--config", config], h.ctx)).toBe(1);
+      expect(h.err()).toContain("unknown harness: cursor");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -156,6 +489,15 @@ describe("scan", () => {
   test("names unavailable adapters on stderr without failing", async () => {
     expect(await scan()).toBe(0);
     expect(h.err()).toContain("adapter not available: zcode");
+  });
+
+  test("--json emits a versioned scan result without human table output", async () => {
+    expect(await run(["scan", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result).toMatchObject({ schema: "sinter.scan.v1", ok: true });
+    expect(result.harnesses.claude).toMatchObject({ seen: 3, inserted: 3 });
+    expect(result.unavailable).toEqual([{ harness: "zcode" }]);
+    expect(h.err()).toBe("");
   });
 
   test("a throwing adapter is an error exit but the others still scan", async () => {
@@ -216,6 +558,136 @@ describe("ls", () => {
     expect(await run(["ls", "--bogus"], h.ctx)).toBe(1);
     expect(await run(["ls", "--limit", "0"], h.ctx)).toBe(1);
     expect(await run(["ls", "--harness", "cursor"], h.ctx)).toBe(1);
+  });
+});
+
+describe("recent", () => {
+  test("lists resumable parent sessions with a compact default limit", async () => {
+    await scan();
+    h.claude.summaries = h.claude.summaries.filter((s) => s.nativeId !== "bbb33333-3333");
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["recent"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("porting sessions between harnesses");
+    expect(h.out()).not.toContain("old thing");
+  });
+
+  test("keeps the useful ls filters and JSON output", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["recent", "--cwd", "/Users/test/other", "--json"], h.ctx)).toBe(0);
+    const rows = JSON.parse(h.out());
+    expect(rows.map((row: { nativeId: string }) => row.nativeId)).toEqual(["aaa22222-2222"]);
+  });
+});
+
+describe("session pins", () => {
+  test("pins, lists, and unpins a session without modifying the adapter", async () => {
+    await scan();
+    const before = structuredClone(h.claude.summaries);
+    expect(await run(["pin", "aaa11111"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("pinned claude:aaa11111");
+    expect(h.ledger.get("claude", "aaa11111-1111")!.pinnedAt).toBeTruthy();
+    expect(h.claude.summaries).toEqual(before);
+
+    h.stdout.length = 0;
+    expect(await run(["pinned"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("★");
+    expect(h.out()).toContain("porting sessions between harnesses");
+    expect(h.out()).not.toContain("unrelated work");
+
+    h.stdout.length = 0;
+    expect(await run(["unpin", "aaa11111"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("unpinned claude:aaa11111");
+    expect(h.ledger.get("claude", "aaa11111-1111")!.pinnedAt).toBeUndefined();
+  });
+
+  test("offers filtered, versioned JSON and survives rescans", async () => {
+    await scan();
+    await run(["pin", "aaa11111"], h.ctx);
+    await run(["pin", "omp:omp-1"], h.ctx);
+    await scan();
+    h.stdout.length = 0;
+    h.stderr.length = 0;
+    expect(await run(["pinned", "--harness", "omp", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result.schema).toBe("sinter.pinned.v1");
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0]).toMatchObject({ harness: "omp", nativeId: "omp-1" });
+    expect(result.sessions[0].pinnedAt).toBeTruthy();
+    expect(h.err()).toBe("");
+  });
+
+  test("is idempotent and reports usage and resolution errors", async () => {
+    await scan();
+    expect(await run(["pin", "aaa11111"], h.ctx)).toBe(0);
+    expect(await run(["pin", "aaa11111"], h.ctx)).toBe(0);
+    expect(h.ledger.list({ pinnedOnly: true })).toHaveLength(1);
+    h.stderr.length = 0;
+    expect(await run(["pin"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("usage: sinter pin");
+    h.stderr.length = 0;
+    expect(await run(["unpin", "missing"], h.ctx)).toBe(2);
+    expect(h.err()).toContain("no session matches");
+  });
+});
+
+describe("projects", () => {
+  test("groups resumable sessions by cwd with a versioned JSON contract", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["projects", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result.schema).toBe("sinter.projects.v1");
+    expect(result.projects).toContainEqual({
+      cwd: "/Users/test/proj",
+      sessionCount: 3,
+      messageCount: 12,
+      messageCountSessions: 3,
+      harnesses: ["claude", "omp"],
+      latestAt: "2026-08-01T01:00:00.000Z",
+    });
+  });
+
+  test("filters before grouping and renders a compact project table", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["projects", "--harness", "omp", "--limit", "1"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("PROJECT");
+    expect(h.out()).toContain("/Users/test/proj");
+    expect(h.out()).toContain("omp");
+    expect(h.out()).not.toContain("/Users/test/other");
+  });
+
+  test("rejects an invalid project limit", async () => {
+    expect(await run(["projects", "--limit", "0"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("bad --limit");
+  });
+});
+
+describe("last", () => {
+  test("prints the native resume command for the newest matching session", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["last", "--cwd", "/Users/test/other"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("claude --resume aaa22222-2222");
+  });
+
+  test("supports script-safe ids and explicit execution", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["last", "--cwd", "/Users/test/other", "--id"], h.ctx)).toBe(0);
+    expect(h.out()).toBe("claude:aaa22222-2222");
+
+    h.stdout.length = 0;
+    expect(await run(["last", "--cwd", "/Users/test/other", "--exec"], h.ctx)).toBe(0);
+    expect(h.execed).toEqual([["claude", "--resume", "aaa22222-2222"]]);
+  });
+
+  test("fails clearly when filters match nothing", async () => {
+    await scan();
+    expect(await run(["last", "--cwd", "/nowhere"], h.ctx)).toBe(2);
+    expect(h.err()).toContain("no recent sessions matched");
   });
 });
 
@@ -292,11 +764,114 @@ describe("show", () => {
     expect(s.entries).toHaveLength(3);
   });
 
+  test("--ndjson streams versioned metadata followed by ordered entries", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["show", "aaa11111", "--ndjson"], h.ctx)).toBe(0);
+    const records = h.stdout.map((line) => JSON.parse(line));
+    expect(records).toHaveLength(4);
+    expect(records[0]).toMatchObject({
+      schema: "sinter.transcript.ndjson.v1",
+      type: "session",
+      session: { id: "sif-aaa11111-1111" },
+    });
+    expect(records[0].session).not.toHaveProperty("entries");
+    expect(records.slice(1).map((record) => [record.type, record.index])).toEqual([
+      ["entry", 0],
+      ["entry", 1],
+      ["entry", 2],
+    ]);
+  });
+
+  test("--ndjson uses versioned errors and cannot be combined with --json", async () => {
+    await scan();
+    h.stderr.length = 0;
+    expect(await run(["show", "zzzz", "--ndjson"], h.ctx)).toBe(2);
+    expect(JSON.parse(h.err())).toMatchObject({
+      schema: "sinter.error.v1",
+      ok: false,
+      error: { code: 2, kind: "resolution" },
+    });
+
+    h.stderr.length = 0;
+    expect(await run(["show", "aaa11111", "--json", "--ndjson"], h.ctx)).toBe(1);
+    expect(JSON.parse(h.err())).toMatchObject({
+      schema: "sinter.error.v1",
+      error: { code: 1, kind: "usage", message: "choose one output mode: --json or --ndjson" },
+    });
+  });
+
+  test("--tail renders only the latest entries and keeps the full count visible", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["show", "aaa11111", "--tail", "1"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("3 entries");
+    expect(h.out()).toContain("showing last 1 entry");
+    expect(h.out()).toContain("line1");
+    expect(h.out()).not.toContain("hello world");
+    expect(h.out()).not.toContain("● assistant");
+  });
+
+  test("--tail validates its count and refuses incomplete machine output", async () => {
+    await scan();
+    for (const value of ["0", "1.5", "many"]) {
+      h.stderr.length = 0;
+      expect(await run(["show", "aaa11111", "--tail", value], h.ctx)).toBe(1);
+      expect(h.err()).toContain(`bad --tail: ${value}`);
+    }
+    for (const mode of ["--json", "--ndjson"]) {
+      h.stderr.length = 0;
+      expect(await run(["show", "aaa11111", "--tail", "1", mode], h.ctx)).toBe(1);
+      expect(JSON.parse(h.err())).toMatchObject({
+        schema: "sinter.error.v1",
+        error: {
+          kind: "usage",
+          message: "--tail is for rendered output and cannot be combined with --json or --ndjson",
+        },
+      });
+    }
+  });
+
   test("an unavailable adapter is reported, not crashed", async () => {
     await scan();
     h.ledger.upsert(summary({ nativeId: "zc-1", harness: "zcode" }));
     expect(await run(["show", "zc-1"], h.ctx)).toBe(1);
     expect(h.err()).toContain("adapter not available: zcode");
+  });
+});
+
+describe("compare", () => {
+  test("emits a versioned structural comparison without transcript content", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["compare", "aaa11111", "omp:omp-1", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result).toMatchObject({
+      schema: "sinter.compare.v1",
+      left: { origin: { harness: "claude", nativeId: "aaa11111-1111" }, entries: 3 },
+      right: { origin: { harness: "omp", nativeId: "omp-1" }, entries: 3 },
+      delta: { entries: 0 },
+    });
+    expect(h.out()).not.toContain("hello world");
+    expect(h.out()).not.toContain("hi there");
+  });
+
+  test("renders right-minus-left deltas with an explicit interpretation warning", async () => {
+    await scan();
+    h.omp.sessions["omp-1"]!.entries.pop();
+    h.stdout.length = 0;
+    expect(await run(["compare", "aaa11111", "omp:omp-1"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("entry:toolResult");
+    expect(h.out()).toContain("-1");
+    expect(h.err()).toContain("matching counts do not prove semantic equivalence");
+  });
+
+  test("requires exactly two resolvable session ids", async () => {
+    expect(await run(["compare", "aaa11111"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("usage: sinter compare");
+    h.stderr.length = 0;
+    expect(await run(["compare", "missing", "omp:omp-1", "--json"], h.ctx)).toBe(2);
+    expect(JSON.parse(h.err())).toMatchObject({ schema: "sinter.error.v1", error: { kind: "resolution" } });
   });
 });
 
@@ -399,6 +974,36 @@ describe("port", () => {
     expect(await run(["port", "aaa11111", "--to", "omp", "--mode", "mystery"], h.ctx)).toBe(1);
     expect(h.err()).toContain("unknown --mode");
   });
+
+  test("previews transfer impact without invoking the target writer", async () => {
+    await scan();
+    h.stdout.length = 0;
+    h.stderr.length = 0;
+    const beforeRows = h.ledger.list().length;
+    expect(await run(["port", "aaa11111", "--to", "omp", "--mode", "compact", "--preview"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("Port preview");
+    expect(h.out()).toContain("none — preview only");
+    expect(h.out()).toContain("compact");
+    expect(h.omp.written).toHaveLength(0);
+    expect(h.ledger.list()).toHaveLength(beforeRows);
+    expect(h.err()).toBe("");
+  });
+
+  test("offers stable JSON preview output", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["port", "aaa11111", "--to", "omp", "--mode", "slim", "--preview", "--json"], h.ctx)).toBe(0);
+    const preview = JSON.parse(h.out());
+    expect(preview).toMatchObject({
+      source: { harness: "claude", nativeId: "aaa11111-1111" },
+      target: { harness: "omp", adapter: "write-capable", store: "detected" },
+      mode: "slim",
+      historicalTools: "inert",
+      writes: false,
+    });
+    expect(preview.payload.bytesAfter).toBeLessThan(preview.payload.bytesBefore);
+    expect(h.omp.written).toHaveLength(0);
+  });
 });
 
 describe("feedback", () => {
@@ -479,6 +1084,48 @@ describe("doctor", () => {
     expect(await run(["doctor"], h.ctx)).toBe(0);
     expect(h.out()).toContain("detect failed: store corrupt");
   });
+
+  test("--json emits versioned, privacy-safe health data", async () => {
+    await scan();
+    h.stdout.length = 0;
+    h.stderr.length = 0;
+    expect(await run(["doctor", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result).toMatchObject({ schema: "sinter.doctor.v1", ok: true, ledgerAvailable: true });
+    expect(result.harnesses).toContainEqual(expect.objectContaining({ harness: "claude", store: "ok", ledgerSessions: 3 }));
+    expect(h.out()).not.toContain("/tmp/mock");
+    expect(h.out()).not.toContain("aaa11111");
+  });
+
+  test("--report emits reviewable diagnostics without private session data", async () => {
+    await scan();
+    h.stdout.length = 0;
+    h.stderr.length = 0;
+    h.ctx.version = "0.1.10-test";
+    expect(await run(["doctor", "--report"], h.ctx)).toBe(0);
+    const report = h.out();
+    expect(report).toContain("# Sinter diagnostic report");
+    expect(report).toContain("Sinter: 0.1.10-test");
+    expect(report).toContain("| claude | available | ok | 0.0.0-mock | 3 | 0 |");
+    expect(report).toContain("excludes paths, session IDs, prompts, titles, transcripts");
+    expect(report).not.toContain("/Users/test");
+    expect(report).not.toContain("aaa11111");
+    expect(report).not.toContain("porting sessions between harnesses");
+    expect(report).not.toContain("/tmp/mock");
+  });
+
+  test("writes the safe report to a chosen file and redacts adapter errors", async () => {
+    const broken = new MockAdapter({ id: "pi" });
+    broken.detect = async () => {
+      throw new Error("private failure at /Users/test/secret");
+    };
+    h.ctx.registry = new StaticAdapterRegistry([broken]);
+    expect(await run(["doctor", "--report", "-o", "diagnostics.md"], h.ctx)).toBe(0);
+    expect(h.written["diagnostics.md"]).toContain("| pi | available | error |");
+    expect(h.written["diagnostics.md"]).not.toContain("private failure");
+    expect(h.written["diagnostics.md"]).not.toContain("/Users/test");
+    expect(h.err()).toContain("wrote privacy-safe diagnostic report");
+  });
 });
 
 describe("dispatch", () => {
@@ -500,9 +1147,27 @@ describe("dispatch", () => {
     expect(h.err()).toContain("unknown command: frobnicate");
   });
 
+  test("--json returns versioned error envelopes", async () => {
+    expect(await run(["search", "--json"], h.ctx)).toBe(1);
+    expect(JSON.parse(h.err())).toEqual({
+      schema: "sinter.error.v1",
+      ok: false,
+      error: { code: 1, kind: "usage", message: "usage: sinter search <query>" },
+    });
+  });
+
   test("`list` is an alias for ls", async () => {
     await scan();
     expect(await run(["list", "--limit", "1"], h.ctx)).toBe(0);
+  });
+
+  test("prints shell completions without touching the ledger", async () => {
+    expect(await run(["completion", "zsh"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("#compdef sinter");
+    expect(h.ledger.list()).toHaveLength(0);
+    h.stdout.length = 0;
+    expect(await run(["completion", "powershell"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("zsh|bash|fish");
   });
 });
 
@@ -563,6 +1228,22 @@ describe("auto-scan (always-fresh ledger)", () => {
     expect(h.out()).toContain("porting sessions between harnesses");
   });
 
+  test("keeps stderr clean for JSON output while still refreshing", async () => {
+    h.ctx.autoScan = true;
+    expect(await run(["ls", "--json", "--limit", "1"], h.ctx)).toBe(0);
+    expect(JSON.parse(h.out())).toHaveLength(1);
+    expect(h.ledger.list()).toHaveLength(4);
+    expect(h.err()).toBe("");
+  });
+
+  test("keeps stderr clean for NDJSON output while still refreshing", async () => {
+    h.ctx.autoScan = true;
+    expect(await run(["show", "aaa11111", "--ndjson"], h.ctx)).toBe(0);
+    expect(h.stdout.map((line) => JSON.parse(line))).toHaveLength(4);
+    expect(h.ledger.list()).toHaveLength(4);
+    expect(h.err()).toBe("");
+  });
+
   test("is disabled when autoScan is not set (hand-built test ctx)", async () => {
     expect(await run(["ls"], h.ctx)).toBe(0);
     expect(h.ledger.list()).toHaveLength(0);
@@ -587,7 +1268,7 @@ describe("auto-scan (always-fresh ledger)", () => {
     }
   });
 
-  test("scan and privacy are not auto-scanned a second time", async () => {
+  test("scan and metadata-only commands do not trigger an automatic ledger scan", async () => {
     h.ctx.autoScan = true;
     let lists = 0;
     const original = h.claude.list.bind(h.claude);
@@ -601,7 +1282,26 @@ describe("auto-scan (always-fresh ledger)", () => {
     h.stdout.length = 0;
     await run(["privacy"], h.ctx);
     expect(lists).toBe(afterScan); // privacy does not trigger a scan
+    h.stdout.length = 0;
+    await run(["capabilities"], h.ctx);
+    expect(lists).toBe(afterScan); // capability checks detect stores but never enumerate sessions
+    h.stdout.length = 0;
+    await run(["ghosts"], h.ctx);
+    expect(lists).toBe(afterScan); // housekeeping acts only on the current ledger snapshot
+    h.stdout.length = 0;
+    await run(["view", "save", "quiet"], h.ctx);
+    await run(["view", "list"], h.ctx);
+    expect(lists).toBe(afterScan); // defining and inspecting views is metadata-only
     expect(h.ledger.list()).toHaveLength(4);
+  });
+
+  test("running a saved view refreshes the session ledger", async () => {
+    h.ctx.autoScan = true;
+    await run(["view", "save", "fresh", "--harness", "claude"], h.ctx);
+    expect(h.ledger.list()).toHaveLength(0);
+    expect(await run(["view", "run", "fresh"], h.ctx)).toBe(0);
+    expect(h.ledger.list()).toHaveLength(4);
+    expect(h.out()).toContain("porting sessions between harnesses");
   });
 
   test("an auto-scan error never fails the command", async () => {

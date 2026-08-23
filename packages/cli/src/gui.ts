@@ -38,6 +38,8 @@ function publicRow(row: LedgerRow) {
     messageCount: row.messageCount,
     ghost: row.ghost,
     isSubagent: row.isSubagent,
+    tags: row.tags,
+    note: row.note,
   };
 }
 
