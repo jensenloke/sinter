@@ -53,7 +53,7 @@ Prioritized candidates after the current draft stack, not release commitments:
 2. **Thread inspection — ready in draft PR #17.** Expose a ported session's
    ordered lineage, transfer modes, and resumable tip without requiring the
    interactive TUI.
-3. **Capability matrix — implemented on `feat/adapter-capabilities`.** Report
+3. **Capability matrix — ready in draft PR #18.** Report
    adapter loading, store detection, read/write support, native resume
    readiness, and known limitations in human and versioned JSON forms. The TUI
    consumes the same resolver so its action availability cannot drift.
