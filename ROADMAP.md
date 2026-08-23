@@ -59,7 +59,7 @@ Prioritized candidates after the current draft stack, not release commitments:
    consumes the same resolver so its action availability cannot drift.
 4. **Saved views.** Name reusable combinations of project, harness, recency, and
    ghost/subagent filters without weakening the explicit command flags.
-5. **Safe ghost housekeeping — implemented on `feat/ghost-housekeeping`.**
+5. **Safe ghost housekeeping — ready in draft PR #19.**
    Preview old ghost rows by default; pruning requires an explicit action and
    confirmation, protects aliased or pinned rows, and never touches native
    harness stores or lineage.
