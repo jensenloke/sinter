@@ -15,6 +15,8 @@ import { loadProfile, type SinterProfile } from "./config";
 import {
   cmdDoctor,
   cmdExport,
+  cmdFeedback,
+  cmdGui,
   cmdImport,
   cmdLs,
   cmdMenu,
@@ -27,16 +29,18 @@ import {
   cmdSetup,
   cmdSearch,
   cmdShow,
+  cmdTelemetry,
   type Ctx,
 } from "./commands";
 import { colorEnabled, palette, termWidth } from "./format";
 import { canRunMenu } from "./tui/menu";
 import { maybePromptForUpdate } from "./update";
+import { trackTelemetry, type TelemetryEvent } from "./telemetry";
 
 export const VERSION = "0.1.9";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
-const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "privacy"]);
+const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "privacy", "feedback", "telemetry"]);
 
 /**
  * Keep the ledger fresh on every invocation: commands that resolve or list
@@ -80,6 +84,9 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   resume: cmdResume,
   doctor: cmdDoctor,
   privacy: cmdPrivacy,
+  feedback: cmdFeedback,
+  telemetry: cmdTelemetry,
+  gui: cmdGui,
   relink: cmdRelink,
   menu: cmdMenu,
   ui: cmdMenu,
@@ -107,6 +114,9 @@ usage: sinter [command] [args]
                                          print (or run) the native resume command
   doctor                                 detect stores, versions, ledger counts
   privacy                                explain local storage and support limits
+  feedback [--title text] [--no-open]    open a safe, prefilled GitHub issue
+  telemetry [status|enable|disable]      control anonymous active-use measurement
+  gui [--port n] [--no-open]             open the local session workspace
   relink [--harness x] [--limit n]       rebuild thread lineage from target stores
 
 global flags:
@@ -135,11 +145,14 @@ const COMMAND_HELP: Record<string, string> = {
   show: "usage: sinter show <id-prefix> [--json] [--tool-chars n] [--no-sub]",
   export: "usage: sinter export <id-prefix> [-o file] [--slim]\n\nWithout -o, writes SIF JSON to stdout.",
   import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",
-  port: "usage: sinter port <id-prefix> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; historical tool calls are inert unless --live-tools is explicit.",
+  port: "usage: sinter port <id-prefix> --to <harness> [--mode full|slim|compact] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; historical tool calls are inert unless --live-tools is explicit.",
   resume: "usage: sinter resume <id-prefix> [--in <harness>] [--exec]\n\n--exec hands this terminal to the target harness.",
   doctor: "usage: sinter doctor\n\nReports resolved local store paths and ledger counts.",
   setup: "usage: sinter setup [--yes] [--no-menu]\n\nShows detected local stores. Interactive setup asks before scanning and opening the menu; --yes scans without opening it.",
   privacy: "usage: sinter privacy\n\nExplains local storage, profile limits, and harness support.",
+  feedback: "usage: sinter feedback [--title text] [--no-open]\n\nOpens a prefilled GitHub issue with safe diagnostics only.",
+  telemetry: "usage: sinter telemetry [status|enable|disable] [--endpoint https://…]\n\nOpt-in anonymous active-use measurement. CI and non-interactive commands never emit events.",
+  gui: "usage: sinter gui [--port n] [--no-open]\n\nRuns a token-protected workspace on 127.0.0.1; transcripts never leave this machine.",
   relink: "usage: sinter relink [--harness x] [--limit n] [--quiet]\n\nRebuilds the disposable lineage cache from target stores.",
   menu: "usage: sinter menu [--all] [--mode full|slim|compact]\n\nRequires an interactive terminal.",
 };
@@ -174,6 +187,7 @@ export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile
       }),
     profile: overrides.profile,
     autoScan: overrides.autoScan ?? true,
+    version: overrides.version ?? VERSION,
   };
 }
 
@@ -211,7 +225,17 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
   if (!AUTO_SCAN_SKIP.has(cmd)) await autoScanLedger(ctx, argv);
 
   try {
-    return await fn(rest, ctx);
+    const code = await fn(rest, ctx);
+    if (code === EXIT.OK) {
+      const event: Partial<Record<string, TelemetryEvent>> = {
+        scan: "scan",
+        port: "port_success",
+        resume: "resume",
+        gui: "gui_open",
+      };
+      if (event[cmd]) await trackTelemetry(event[cmd]!, VERSION);
+    }
+    return code;
   } catch (err) {
     if (err instanceof CliError) {
       ctx.err(ctx.pal.red(err.message));

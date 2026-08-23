@@ -34,7 +34,7 @@ import {
   type Palette,
 } from "./format";
 import { renderTranscript, slimSession } from "./render";
-import { TRANSFER_MODES, type TransferMode } from "./transfer";
+import { applyTransfer, TRANSFER_MODES, type TransferMode } from "./transfer";
 
 export interface Ctx {
   registry: AdapterRegistry;
@@ -59,6 +59,8 @@ export interface Ctx {
    * override this off for any run.
    */
   autoScan?: boolean;
+  /** Runtime CLI version, injected by main so helpers do not import it circularly. */
+  version?: string;
 }
 
 // ------------------------------------------------------------------ helpers
@@ -441,7 +443,7 @@ export async function cmdImport(argv: string[], ctx: Ctx): Promise<number> {
 
 export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv, {
-    strings: ["to", "cwd"],
+    strings: ["to", "cwd", "mode"],
     booleans: ["live-tools", "dry-run"],
   });
   const prefix = args._[0];
@@ -451,7 +453,11 @@ export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
   const target = parseHarness(to);
 
   const row = resolveRow(ctx, prefix);
-  const session = await readSessionForPort(ctx, row);
+  let session = await readSessionForPort(ctx, row);
+  const mode = (flagString(args, "mode") ?? "full") as TransferMode;
+  if (!TRANSFER_MODES.includes(mode))
+    throw new CliError(`unknown --mode: ${mode} (known: ${TRANSFER_MODES.join(", ")})`);
+  session = applyTransfer(session, mode).session;
   validateSession(session);
   ctx.err(`porting ${row.harness}:${shortId(row.nativeId, 12)} → ${target}`);
   return writeInto(ctx, target, session, args);
@@ -653,6 +659,9 @@ export async function cmdPrivacy(argv: string[], ctx: Ctx): Promise<number> {
   ctx.out("Sinter data:");
   ctx.out(`  ledger: ${ctx.ledger().path}`);
   ctx.out("  carry-forward data: stored beside a target session only when a port needs it");
+  ctx.out("  telemetry: disabled unless you explicitly run `sinter telemetry enable`");
+  ctx.out("    events contain a random installation id, version, OS/architecture, event name, and time only");
+  ctx.out("    CI and non-interactive commands never emit telemetry; disable with `sinter telemetry disable`");
   if (ctx.profile) {
     ctx.out(`  profile: ${ctx.profile.name} (${ctx.profile.configPath})`);
     for (const [harness, path] of Object.entries(ctx.profile.stores)) ctx.out(`  ${harness}: ${path}`);
@@ -743,4 +752,116 @@ export async function cmdDoctor(argv: string[], ctx: Ctx): Promise<number> {
       ctx.out(ctx.pal.dim(`  ${c.harness}: ${c.total}${c.ghosts ? ` (${c.ghosts} ghost)` : ""}`));
   }
   return anyDetected || rows.length ? EXIT.OK : EXIT.ERROR;
+}
+
+export async function cmdFeedback(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { strings: ["title"], booleans: ["no-open"] });
+  const { browserCommand, feedbackDiagnostics, feedbackUrl } = await import("./feedback");
+  const detected: string[] = [];
+  for (const load of await ctx.registry.load()) {
+    if (!load.adapter) continue;
+    try {
+      if (await load.adapter.detect()) detected.push(load.id);
+    } catch {
+      // Diagnostics are best-effort and never include paths or error details.
+    }
+  }
+  const url = feedbackUrl(feedbackDiagnostics(ctx.version ?? "development", detected), flagString(args, "title"));
+  if (!flagBool(args, "no-open") && ctx.exec) {
+    try {
+      if ((await ctx.exec(browserCommand(url))) === 0) {
+        ctx.out("Opened a prefilled GitHub issue. Review it before submitting.");
+        return EXIT.OK;
+      }
+    } catch {
+      // Fall through to the copyable URL.
+    }
+  }
+  ctx.out("Open this URL to send feedback:");
+  ctx.out(url);
+  return EXIT.OK;
+}
+
+export async function cmdTelemetry(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { strings: ["endpoint"] });
+  const action = args._[0] ?? "status";
+  if (args._.length > 1 || !["status", "enable", "disable"].includes(action))
+    throw new CliError("usage: sinter telemetry [status|enable|disable] [--endpoint https://…]");
+  const { disableTelemetry, enableTelemetry, readTelemetryConfig, telemetryConfigPath, trackTelemetry } =
+    await import("./telemetry");
+  if (action === "enable") {
+    const endpoint = flagString(args, "endpoint");
+    if (endpoint) {
+      let url: URL;
+      try {
+        url = new URL(endpoint);
+      } catch {
+        throw new CliError("--endpoint must be an absolute http(s) URL");
+      }
+      if (!["http:", "https:"].includes(url.protocol))
+        throw new CliError("--endpoint must be an absolute http(s) URL");
+    }
+    const config = enableTelemetry(endpoint);
+    ctx.out(`Anonymous telemetry enabled (${telemetryConfigPath()}).`);
+    if (!config.endpoint && !process.env.SINTER_TELEMETRY_ENDPOINT)
+      ctx.out("No collector endpoint is configured yet, so no events will be sent.");
+    ctx.out("Run `sinter telemetry disable` at any time.");
+    await trackTelemetry("first_run", ctx.version ?? "development");
+    return EXIT.OK;
+  }
+  if (action === "disable") {
+    disableTelemetry();
+    ctx.out("Anonymous telemetry disabled.");
+    return EXIT.OK;
+  }
+  const config = readTelemetryConfig();
+  ctx.out(`telemetry: ${config.enabled ? "enabled" : "disabled"}`);
+  ctx.out(`collector: ${process.env.SINTER_TELEMETRY_ENDPOINT ?? config.endpoint ?? "not configured"}`);
+  ctx.out(`config: ${telemetryConfigPath()}`);
+  return EXIT.OK;
+}
+
+export async function cmdGui(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { strings: ["port"], booleans: ["no-open"] });
+  const rawPort = flagString(args, "port");
+  const port = rawPort === undefined ? 0 : Number(rawPort);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) throw new CliError(`bad --port: ${rawPort}`);
+  const { browserCommand } = await import("./feedback");
+  const { startGuiServer } = await import("./gui");
+  const launched = startGuiServer(ctx, {
+    port,
+    onAction: async (action) => {
+      const out: string[] = [];
+      const err: string[] = [];
+      const actionCtx: Ctx = { ...ctx, out: (line) => out.push(line), err: (line) => err.push(line) };
+      const id = `${action.harness}:${action.nativeId}`;
+      try {
+        const code =
+          action.action === "port"
+            ? await cmdPort([id, "--to", String(action.target), "--mode", action.mode ?? "full"], actionCtx)
+            : await cmdResume([id], actionCtx);
+        return { code, out: out.join("\n"), err: err.join("\n") };
+      } catch (error) {
+        return { code: EXIT.ERROR, out: out.join("\n"), err: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  });
+  ctx.out(`Sinter GUI: ${launched.url}`);
+  ctx.out("Local-only server; press Ctrl-C to stop.");
+  if (!flagBool(args, "no-open") && ctx.exec) {
+    try {
+      await ctx.exec(browserCommand(launched.url));
+    } catch {
+      ctx.err("Could not open a browser automatically; use the URL above.");
+    }
+  }
+  await new Promise<void>((resolve) => {
+    const stop = () => {
+      launched.server.stop(true);
+      resolve();
+    };
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+  });
+  return EXIT.OK;
 }

@@ -391,6 +391,27 @@ describe("port", () => {
     await scan();
     expect(await run(["port", "aaa", "--to", "omp"], h.ctx)).toBe(2);
   });
+
+  test("supports the same transfer modes as the interactive menu", async () => {
+    await scan();
+    expect(await run(["port", "aaa11111", "--to", "omp", "--mode", "slim"], h.ctx)).toBe(0);
+    expect(h.omp.written[0]!.session.entries.every((entry) => entry.raw === undefined)).toBe(true);
+    expect(await run(["port", "aaa11111", "--to", "omp", "--mode", "mystery"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("unknown --mode");
+  });
+});
+
+describe("feedback", () => {
+  test("prints a safe prefilled issue URL when browser opening is disabled", async () => {
+    h.ctx.version = "0.1.9";
+    expect(await run(["feedback", "--title", "Something broke", "--no-open"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("https://github.com/jensenloke/sinter/issues/new?");
+    const encoded = h.out().split("\n").at(-1)!;
+    const body = new URL(encoded).searchParams.get("body")!;
+    expect(body).toContain("Sinter: 0.1.9");
+    expect(body).not.toContain("/Users/test");
+    expect(body).not.toContain("aaa11111");
+  });
 });
 
 describe("resume", () => {
