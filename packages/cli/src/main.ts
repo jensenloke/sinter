@@ -37,7 +37,7 @@ import { canRunMenu } from "./tui/menu";
 import { maybePromptForUpdate } from "./update";
 import { trackTelemetry, type TelemetryEvent } from "./telemetry";
 
-export const VERSION = "0.1.9";
+export const VERSION = "0.1.10";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
 const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "privacy", "feedback", "telemetry"]);
