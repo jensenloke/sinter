@@ -148,7 +148,7 @@ const COMMAND_HELP: Record<string, string> = {
   show: "usage: sinter show <id-prefix> [--json] [--tool-chars n] [--no-sub]",
   export: "usage: sinter export <id-prefix> [-o file] [--slim]\n\nWithout -o, writes SIF JSON to stdout.",
   import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",
-  port: "usage: sinter port <id-prefix> --to <harness> [--mode full|slim|compact] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; historical tool calls are inert unless --live-tools is explicit.",
+  port: "usage: sinter port <id-prefix> --to <harness> [--mode full|slim|compact] [--preview [--json]] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.\n--preview reports target readiness and transfer impact without invoking the target writer.\n--dry-run asks the target writer to validate and describe its planned native output.\nHistorical tool calls are inert unless --live-tools is explicit.",
   resume: "usage: sinter resume <id-prefix> [--in <harness>] [--exec]\n\n--exec hands this terminal to the target harness.",
   doctor: "usage: sinter doctor\n\nReports resolved local store paths and ledger counts.",
   setup: "usage: sinter setup [--yes] [--no-menu]\n\nShows detected local stores. Interactive setup asks before scanning and opening the menu; --yes scans without opening it.",

@@ -399,6 +399,36 @@ describe("port", () => {
     expect(await run(["port", "aaa11111", "--to", "omp", "--mode", "mystery"], h.ctx)).toBe(1);
     expect(h.err()).toContain("unknown --mode");
   });
+
+  test("previews transfer impact without invoking the target writer", async () => {
+    await scan();
+    h.stdout.length = 0;
+    h.stderr.length = 0;
+    const beforeRows = h.ledger.list().length;
+    expect(await run(["port", "aaa11111", "--to", "omp", "--mode", "compact", "--preview"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("Port preview");
+    expect(h.out()).toContain("none — preview only");
+    expect(h.out()).toContain("compact");
+    expect(h.omp.written).toHaveLength(0);
+    expect(h.ledger.list()).toHaveLength(beforeRows);
+    expect(h.err()).toBe("");
+  });
+
+  test("offers stable JSON preview output", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["port", "aaa11111", "--to", "omp", "--mode", "slim", "--preview", "--json"], h.ctx)).toBe(0);
+    const preview = JSON.parse(h.out());
+    expect(preview).toMatchObject({
+      source: { harness: "claude", nativeId: "aaa11111-1111" },
+      target: { harness: "omp", adapter: "write-capable", store: "detected" },
+      mode: "slim",
+      historicalTools: "inert",
+      writes: false,
+    });
+    expect(preview.payload.bytesAfter).toBeLessThan(preview.payload.bytesBefore);
+    expect(h.omp.written).toHaveLength(0);
+  });
 });
 
 describe("feedback", () => {

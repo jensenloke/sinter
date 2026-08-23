@@ -33,6 +33,7 @@ sinter ls --since 7d
 sinter search "session alias or topic"
 sinter rename <id-prefix> "My important session"
 sinter show <id-prefix>
+sinter port <id-prefix> --to codex --mode compact --preview
 sinter port <id-prefix> --to omp
 sinter resume <id-prefix> --in omp --exec
 sinter feedback
