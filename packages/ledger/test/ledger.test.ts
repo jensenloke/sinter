@@ -263,21 +263,27 @@ describe("ghost housekeeping", () => {
     l.upsert(summary({ nativeId: "plain", ghost: true, title: "plain ghost" }));
     l.upsert(summary({ nativeId: "named", ghost: true, title: "named ghost" }));
     l.upsert(summary({ nativeId: "pinned", ghost: true, title: "pinned ghost" }));
+    l.upsert(summary({ nativeId: "noted", ghost: true, title: "noted ghost" }));
+    l.upsert(summary({ nativeId: "tagged", ghost: true, title: "tagged ghost" }));
     l.upsert(summary({ nativeId: "fresh", ghost: true, title: "fresh ghost" }));
     l.upsert(summary({ nativeId: "live", title: "live session" }));
     l.setAlias("claude", "named", "keep my name");
     l.setPinned("claude", "pinned", true, "2026-08-01T00:00:00.000Z");
+    l.setNote("claude", "noted", "keep this note");
+    l.addTags("claude", "tagged", ["keep-tag"]);
     l.recordLineage({ harness: "claude", nativeId: "plain", threadId: "thread-1", hop: 0 });
     l.db.run("UPDATE sessions SET scanned_at = '2026-07-01T00:00:00.000Z' WHERE native_id != 'fresh'");
     l.db.run("UPDATE sessions SET scanned_at = '2026-08-23T00:00:00.000Z' WHERE native_id = 'fresh'");
 
     const opts = { before: "2026-08-01T00:00:00.000Z" };
-    expect(l.ghosts(opts).map((row) => row.nativeId)).toEqual(["named", "pinned", "plain"]);
+    expect(l.ghosts(opts).map((row) => row.nativeId)).toEqual(["named", "noted", "pinned", "plain", "tagged"]);
     expect(l.pruneGhosts(opts).map((row) => row.nativeId)).toEqual(["plain"]);
     expect(l.get("claude", "plain")).toBeUndefined();
     expect(l.search("plain")).toEqual([]);
     expect(l.get("claude", "named")?.alias).toBe("keep my name");
     expect(l.get("claude", "pinned")?.pinnedAt).toBeTruthy();
+    expect(l.get("claude", "noted")?.note).toBe("keep this note");
+    expect(l.get("claude", "tagged")?.tags).toEqual(["keep-tag"]);
     expect(l.get("claude", "fresh")).toBeDefined();
     expect(l.get("claude", "live")).toBeDefined();
     expect(l.lineageFor("thread-1")).toHaveLength(1);
@@ -298,6 +304,47 @@ describe("ghost housekeeping", () => {
     expect(l.pruneGhosts(opts).map((row) => row.nativeId)).toEqual(["p"]);
     expect(l.pruneGhosts(opts)).toEqual([]);
     expect(l.get("claude", "c")).toBeDefined();
+    l.close();
+  });
+});
+
+describe("session tags and notes", () => {
+  test("stores searchable metadata without changing native fields", () => {
+    const l = ledger();
+    l.upsert(summary({ nativeId: "meta", title: "native title", firstPrompt: "native prompt" }));
+    l.setNote("claude", "meta", "follow up after launch", "2026-08-24T01:00:00.000Z");
+    l.addTags("claude", "meta", ["release", "urgent", "release"]);
+    expect(l.get("claude", "meta")).toMatchObject({
+      title: "native title",
+      firstPrompt: "native prompt",
+      note: "follow up after launch",
+      tags: ["release", "urgent"],
+    });
+    expect(l.search("launch").map((row) => row.nativeId)).toEqual(["meta"]);
+    expect(l.search("urgent").map((row) => row.nativeId)).toEqual(["meta"]);
+    expect(l.tagCounts()).toEqual([{ tag: "release", sessions: 1 }, { tag: "urgent", sessions: 1 }]);
+
+    l.removeTags("claude", "meta", ["urgent"]);
+    expect(l.get("claude", "meta")?.tags).toEqual(["release"]);
+    expect(l.search("urgent")).toEqual([]);
+    l.setNote("claude", "meta");
+    expect(l.get("claude", "meta")?.note).toBeUndefined();
+    expect(l.search("launch")).toEqual([]);
+    l.removeTags("claude", "meta");
+    expect(l.get("claude", "meta")?.tags).toBeUndefined();
+    l.close();
+  });
+
+  test("metadata can precede discovery and survives rescans", async () => {
+    const l = ledger();
+    l.setNote("claude", "future-meta", "discover me later");
+    l.addTags("claude", "future-meta", ["backlog"]);
+    const adapter = new MockAdapter({ id: "claude", summaries: [summary({ nativeId: "future-meta" })] });
+    await l.scan([adapter]);
+    expect(l.get("claude", "future-meta")).toMatchObject({ note: "discover me later", tags: ["backlog"] });
+    expect(l.search("backlog").map((row) => row.nativeId)).toEqual(["future-meta"]);
+    expect((await l.scan([adapter])).harnesses.claude!.unchanged).toBe(1);
+    expect(l.get("claude", "future-meta")?.note).toBe("discover me later");
     l.close();
   });
 });

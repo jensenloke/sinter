@@ -11,8 +11,8 @@
  * additive: existing rows are never dropped, rewritten or re-created. Opening a
  * v1 ledger under v2 gains the `lineage` table; v2 under v3 gains the
  * `session_aliases` table; v3 under v4 gains the `session_pins` table; v4 under
- * v5 gains `saved_views`. All keep every session row. New versions must keep
- * that property; a change that needs
+ * v5 gains `saved_views`; v5 under v6 gains `session_notes` and `session_tags`.
+ * All keep every session row. New versions must keep that property; a change that needs
  * to rewrite data has to be a separate, explicit, versioned step — never a
  * silent re-`exec` here.
  *
@@ -20,7 +20,7 @@
  * a trigger: nothing keys off its value, so bumping it cannot wipe anything.
  */
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -105,4 +105,21 @@ CREATE TABLE IF NOT EXISTS saved_views (
   include_subagents INTEGER NOT NULL DEFAULT 0,
   updated_at        TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS session_notes (
+  harness    TEXT NOT NULL,
+  native_id  TEXT NOT NULL,
+  note       TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (harness, native_id)
+);
+
+CREATE TABLE IF NOT EXISTS session_tags (
+  harness   TEXT NOT NULL,
+  native_id TEXT NOT NULL,
+  tag       TEXT NOT NULL COLLATE NOCASE,
+  PRIMARY KEY (harness, native_id, tag)
+);
+
+CREATE INDEX IF NOT EXISTS session_tags_tag_idx ON session_tags(tag COLLATE NOCASE);
 `;

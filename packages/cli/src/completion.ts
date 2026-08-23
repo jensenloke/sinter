@@ -8,6 +8,10 @@ const COMMANDS = [
   ["pin", "bookmark a session locally"],
   ["unpin", "remove a local bookmark"],
   ["pinned", "list bookmarked sessions"],
+  ["tag", "add searchable local session tags"],
+  ["untag", "remove local session tags"],
+  ["tags", "list local session tags"],
+  ["note", "set a searchable local session note"],
   ["ghosts", "preview or prune disposable ghost rows"],
   ["view", "manage reusable local session filters"],
   ["thread", "inspect session port lineage"],
@@ -72,6 +76,10 @@ ${commands}
     pin) _arguments $global_args '1:session id' ;;
     unpin) _arguments $global_args '1:session id' ;;
     pinned) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
+    tag) _arguments $global_args '1:session id' '*:tag' ;;
+    untag) _arguments $global_args '1:session id' '*:tag' '--all' ;;
+    tags) _arguments $global_args '--json' ;;
+    note) _arguments $global_args '1:session id' '*:note text' '--clear' ;;
     ghosts) _arguments $global_args '1:action:(preview prune)' '--older-than=[minimum ghost age]:duration' '--harness=[filter by harness]:harness:($harnesses)' '--json' '--yes' ;;
     view) _arguments $global_args '1:action:(save list show run delete)' '2:view name' '--harness=[filter by harness]:harnesses' '--all-harnesses' '--cwd=[filter by directory]:directory:_directories' '--all-cwd' '--since=[time window]:duration' '--all-time' '--limit=[maximum rows]:count' '--ghosts' '--no-ghosts' '--subagents' '--no-subagents' '--force' '--json' ;;
     thread) _arguments $global_args '1:session id' '--json' ;;
@@ -128,7 +136,7 @@ function bash(): string {
     COMPREPLY=( $(compgen -W 'show path validate --json' -- "$current") )
     return
   fi
-  COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --all-harnesses --cwd --all-cwd --since --all-time --older-than --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open --yes --ghosts --no-ghosts --subagents --no-subagents --force' -- "$current") )
+  COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --all-harnesses --cwd --all-cwd --since --all-time --older-than --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open --yes --ghosts --no-ghosts --subagents --no-subagents --force --all --clear' -- "$current") )
 }
 complete -F _sinter_completion sinter
 `;
@@ -155,6 +163,9 @@ function fish(): string {
     "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l no-ghost -d 'Hide missing native sessions'",
     "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l no-sub -d 'Hide subagent sessions'",
+    "complete -c sinter -n '__fish_seen_subcommand_from untag' -l all -d 'Remove all tags'",
+    "complete -c sinter -n '__fish_seen_subcommand_from tags' -l json -d 'Emit versioned JSON'",
+    "complete -c sinter -n '__fish_seen_subcommand_from note' -l clear -d 'Clear the note'",
     "complete -c sinter -n '__fish_seen_subcommand_from ghosts' -a 'preview prune' -d 'Action'",
     `complete -c sinter -n '__fish_seen_subcommand_from ghosts' -l harness -xa '${HARNESSES.join(" ")}' -d 'Filter by harness'`,
     "complete -c sinter -n '__fish_seen_subcommand_from ghosts' -l older-than -r -d 'Minimum ghost age'",

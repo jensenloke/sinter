@@ -19,6 +19,8 @@ function guiHarness(): Ctx {
     sessions: { "gui-1": session("gui-1") },
   });
   ledger.upsert(adapter.summaries[0]!);
+  ledger.addTags("claude", "gui-1", ["design"]);
+  ledger.setNote("claude", "gui-1", "review tomorrow");
   return {
     registry: new StaticAdapterRegistry([adapter]),
     ledger: () => ledger,
@@ -43,8 +45,10 @@ describe("local GUI server", () => {
     expect((await fetch(`${base}/api/sessions`)).status).toBe(401);
     const response = await fetch(`${base}/api/sessions?token=test-token`);
     expect(response.status).toBe(200);
-    const body = await response.json() as { threads: { tip: { title: string } }[] };
+    const body = await response.json() as { threads: { tip: { title: string; tags: string[]; note: string } }[] };
     expect(body.threads[0]!.tip.title).toBe("GUI design session");
+    expect(body.threads[0]!.tip.tags).toEqual(["design"]);
+    expect(body.threads[0]!.tip.note).toBe("review tomorrow");
   });
 
   test("renders transcript data without exposing adapter raw records", async () => {

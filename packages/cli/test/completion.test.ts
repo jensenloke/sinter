@@ -17,6 +17,9 @@ describe("shell completions", () => {
     expect(script).toContain("capabilities");
     expect(script).toContain("ghosts");
     expect(script).toContain("view");
+    expect(script).toContain("untag");
+    expect(script).toContain("tags");
+    expect(script).toContain("note");
     expect(script).toContain("unpin");
     expect(script).toContain("last");
     expect(script).toContain("config");

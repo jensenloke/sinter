@@ -115,6 +115,7 @@ function threadLine(t: Thread, c: Cols, pal: Palette, now: number): string {
   const label = tip.alias
     ? `◆ ${tip.alias}${nativeLabel && nativeLabel !== tip.alias ? ` · ${nativeLabel}` : ""}`
     : nativeLabel || pal.dim("(untitled)");
+  const tags = tip.tags?.map((tag) => `#${tag}`).join(" ") ?? "";
   const cells = [
     fit(tip.ghost ? pal.dim(displayId(tip.nativeId)) : pal.bold(displayId(tip.nativeId)), c.id),
     fit(pal.cyan(harnessCell(t, pal)), c.harness),
@@ -124,7 +125,7 @@ function threadLine(t: Thread, c: Cols, pal: Palette, now: number): string {
   cells.push(fitRight(tip.messageCount === undefined ? "-" : String(tip.messageCount), c.msg));
   cells.push(
     fit(
-      (tip.isSubagent ? pal.blue("↳") : "") + (tip.ghost ? pal.dim("†") : "") + truncate(label, c.title),
+      (tip.isSubagent ? pal.blue("↳") : "") + (tip.ghost ? pal.dim("†") : "") + truncate(`${label}${tags ? `  ${tags}` : ""}${tip.note ? "  ✎" : ""}`, c.title),
       c.title,
     ),
   );
@@ -161,7 +162,7 @@ function filterBar(state: MenuState, o: ViewOpts): string {
   const cursor = "\x1b[7m \x1b[27m";
   return state.filter
     ? ` ${p.bold("search")} ${state.filter}${o.pal.enabled ? cursor : "_"}`
-    : ` ${p.bold("search")} ${p.dim("type now, or ^f · alias, title, prompt, id, path, branch, model…")}`;
+    : ` ${p.bold("search")} ${p.dim("type now, or ^f · alias, tag, note, title, prompt, id, path, branch, model…")}`;
 }
 
 function keyHints(state: MenuState, o: ViewOpts): string {

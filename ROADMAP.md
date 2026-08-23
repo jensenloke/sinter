@@ -62,10 +62,11 @@ Prioritized candidates after the current draft stack, not release commitments:
    explicit flags on `view run` override the saved definition.
 5. **Safe ghost housekeeping — ready in draft PR #19.**
    Preview old ghost rows by default; pruning requires an explicit action and
-   confirmation, protects aliased or pinned rows, and never touches native
+   confirmation, protects rows carrying local metadata, and never touches native
    harness stores or lineage.
-6. **Local tags and notes.** Add searchable user metadata without modifying
-   native sessions or uploading it anywhere.
+6. **Local tags and notes — implemented on `feat/session-metadata`.** Add
+   searchable, rescan-safe user metadata across CLI/TUI/GUI search without
+   modifying native sessions or carrying the metadata into ports.
 7. **Watch mode.** Refresh a project or recent-session view as local harness
    stores change, with predictable terminal and non-interactive behavior.
 

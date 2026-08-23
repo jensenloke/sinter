@@ -164,8 +164,12 @@ describe("ghost housekeeping", () => {
     h.ledger.upsert(summary({ nativeId: "ghost-plain", ghost: true, title: "disposable" }));
     h.ledger.upsert(summary({ nativeId: "ghost-named", ghost: true, title: "named" }));
     h.ledger.upsert(summary({ nativeId: "ghost-pinned", ghost: true, title: "pinned" }));
+    h.ledger.upsert(summary({ nativeId: "ghost-noted", ghost: true, title: "noted" }));
+    h.ledger.upsert(summary({ nativeId: "ghost-tagged", ghost: true, title: "tagged" }));
     h.ledger.setAlias("claude", "ghost-named", "keep this alias");
     h.ledger.setPinned("claude", "ghost-pinned", true, "2026-07-01T00:00:00.000Z");
+    h.ledger.setNote("claude", "ghost-noted", "keep this note");
+    h.ledger.addTags("claude", "ghost-tagged", ["keep-tag"]);
     h.ledger.recordLineage({ harness: "claude", nativeId: "ghost-plain", threadId: "ghost-thread", hop: 0 });
     h.ledger.db.run("UPDATE sessions SET scanned_at = '2026-07-01T00:00:00.000Z' WHERE native_id LIKE 'ghost-%'");
   }
@@ -178,7 +182,7 @@ describe("ghost housekeeping", () => {
       action: "preview",
       olderThan: "30d",
       eligible: 1,
-      protected: 2,
+      protected: 4,
       removed: 0,
     });
     expect(h.ledger.get("claude", "ghost-plain")).toBeDefined();
@@ -193,10 +197,12 @@ describe("ghost housekeeping", () => {
     h.stdout.length = 0;
     h.stderr.length = 0;
     expect(await run(["ghosts", "prune", "--yes", "--json"], h.ctx)).toBe(0);
-    expect(JSON.parse(h.out())).toMatchObject({ action: "prune", eligible: 1, protected: 2, removed: 1 });
+    expect(JSON.parse(h.out())).toMatchObject({ action: "prune", eligible: 1, protected: 4, removed: 1 });
     expect(h.ledger.get("claude", "ghost-plain")).toBeUndefined();
     expect(h.ledger.get("claude", "ghost-named")?.alias).toBe("keep this alias");
     expect(h.ledger.get("claude", "ghost-pinned")?.pinnedAt).toBeTruthy();
+    expect(h.ledger.get("claude", "ghost-noted")?.note).toBe("keep this note");
+    expect(h.ledger.get("claude", "ghost-tagged")?.tags).toEqual(["keep-tag"]);
     expect(h.ledger.lineageFor("ghost-thread")).toHaveLength(1);
   });
 
@@ -204,6 +210,72 @@ describe("ghost housekeeping", () => {
     expect(await run(["ghosts", "destroy"], h.ctx)).toBe(1);
     expect(await run(["ghosts", "--older-than", "someday"], h.ctx)).toBe(1);
     expect(await run(["ghosts", "--harness", "cursor"], h.ctx)).toBe(1);
+  });
+});
+
+describe("local tags and notes", () => {
+  test("adds searchable metadata that survives rescans without changing native stores", async () => {
+    await scan();
+    expect(await run(["tag", "aaa11111", "#Release", "urgent"], h.ctx)).toBe(0);
+    expect(await run(["note", "aaa11111", "follow up after launch"], h.ctx)).toBe(0);
+    expect(h.ledger.get("claude", "aaa11111-1111")).toMatchObject({
+      tags: ["release", "urgent"],
+      note: "follow up after launch",
+      title: "porting sessions between harnesses",
+    });
+    expect(h.ledger.search("urgent")[0]?.nativeId).toBe("aaa11111-1111");
+    expect(h.ledger.search("launch")[0]?.nativeId).toBe("aaa11111-1111");
+    expect(h.claude.written).toHaveLength(0);
+
+    await scan();
+    expect(h.ledger.get("claude", "aaa11111-1111")).toMatchObject({ tags: ["release", "urgent"], note: "follow up after launch" });
+    h.stdout.length = 0;
+    expect(await run(["search", "urgent"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("#release #urgent");
+    expect(h.out()).toContain("✎");
+  });
+
+  test("lists counts and removes selected or all metadata", async () => {
+    await scan();
+    await run(["tag", "aaa11111", "work", "urgent"], h.ctx);
+    await run(["tag", "aaa22222", "work"], h.ctx);
+    h.stdout.length = 0;
+    expect(await run(["tags", "--json"], h.ctx)).toBe(0);
+    expect(JSON.parse(h.out())).toEqual({
+      schema: "sinter.tags.v1",
+      tags: [{ tag: "urgent", sessions: 1 }, { tag: "work", sessions: 2 }],
+    });
+
+    expect(await run(["untag", "aaa11111", "urgent"], h.ctx)).toBe(0);
+    expect(h.ledger.get("claude", "aaa11111-1111")?.tags).toEqual(["work"]);
+    expect(await run(["untag", "aaa11111", "--all"], h.ctx)).toBe(0);
+    expect(h.ledger.get("claude", "aaa11111-1111")?.tags).toBeUndefined();
+    await run(["note", "aaa11111", "temporary"], h.ctx);
+    expect(await run(["note", "aaa11111", "--clear"], h.ctx)).toBe(0);
+    expect(h.ledger.get("claude", "aaa11111-1111")?.note).toBeUndefined();
+  });
+
+  test("keeps metadata local to the source when porting", async () => {
+    await scan();
+    await run(["tag", "aaa11111", "private-context"], h.ctx);
+    await run(["note", "aaa11111", "do not copy this note"], h.ctx);
+    expect(await run(["port", "aaa11111", "--to", "omp"], h.ctx)).toBe(0);
+    expect(h.ledger.get("omp", "new-omp-1")?.tags).toBeUndefined();
+    expect(h.ledger.get("omp", "new-omp-1")?.note).toBeUndefined();
+    expect(h.ledger.get("claude", "aaa11111-1111")).toMatchObject({
+      tags: ["private-context"],
+      note: "do not copy this note",
+    });
+  });
+
+  test("validates tag names, note size, and mutually exclusive forms", async () => {
+    await scan();
+    expect(await run(["tag", "aaa11111", "bad tag"], h.ctx)).toBe(1);
+    expect(await run(["untag", "aaa11111"], h.ctx)).toBe(1);
+    expect(await run(["untag", "aaa11111", "work", "--all"], h.ctx)).toBe(1);
+    expect(await run(["note", "aaa11111"], h.ctx)).toBe(1);
+    expect(await run(["note", "aaa11111", "text", "--clear"], h.ctx)).toBe(1);
+    expect(await run(["note", "aaa11111", "x".repeat(4001)], h.ctx)).toBe(1);
   });
 });
 

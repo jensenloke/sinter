@@ -188,6 +188,8 @@ describe("filtering", () => {
     expect(visibleThreads({ ...s, filter: "other" }).length).toBe(1); // matches cwd
     expect(visibleThreads({ ...s, filter: "0199" }).length).toBe(1); // matches id
     expect(visibleThreads({ ...s, filter: "login cleanup" }).length).toBe(1); // matches alias
+    const metadata = state([row({ nativeId: "meta", harness: "claude", tags: ["release"], note: "follow up tomorrow" })], { scope: "all" });
+    expect(visibleThreads({ ...metadata, filter: "release tomorrow" }).length).toBe(1);
   });
 
   test("a harness filter matches any hop, not just the tip", () => {

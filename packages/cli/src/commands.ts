@@ -97,6 +97,7 @@ export function rowsTable(rows: LedgerRow[], ctx: Ctx): string {
   const body = rows.map((r) => {
     const nativeLabel = r.title || r.firstPrompt || "";
     const label = r.alias ? `${r.alias}${nativeLabel && nativeLabel !== r.alias ? ` · ${nativeLabel}` : ""}` : nativeLabel;
+    const metadata = [r.tags?.map((tag) => `#${tag}`).join(" "), r.note ? "✎" : ""].filter(Boolean).join(" ");
     return [
       r.ghost ? p.dim(displayId(r.nativeId)) : p.bold(displayId(r.nativeId)),
       p.cyan(r.harness),
@@ -106,7 +107,7 @@ export function rowsTable(rows: LedgerRow[], ctx: Ctx): string {
       (r.pinnedAt ? p.yellow("★ ") : "") +
         (r.isSubagent ? p.blue("↳ ") : "") +
         (r.ghost ? p.dim("†") : "") +
-        truncate(label, 400),
+        truncate(`${label}${metadata ? `  ${metadata}` : ""}`, 400),
     ];
   });
   return renderTable(
@@ -390,6 +391,69 @@ export async function cmdUnpin(argv: string[], ctx: Ctx): Promise<number> {
   return EXIT.OK;
 }
 
+const TAG_NAME = /^[a-z0-9][a-z0-9._/-]{0,31}$/;
+
+function normalizedTags(values: string[]): string[] {
+  const tags = [...new Set(values.map((value) => value.trim().replace(/^#/, "").toLowerCase()).filter(Boolean))];
+  if (!tags.length) throw new CliError("at least one non-empty tag is required");
+  const invalid = tags.find((tag) => !TAG_NAME.test(tag));
+  if (invalid)
+    throw new CliError(`bad tag: ${invalid} (use 1-32 letters, numbers, dots, dashes, underscores, or slashes)`);
+  return tags;
+}
+
+export async function cmdTag(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv);
+  if (args._.length < 2) throw new CliError("usage: sinter tag <id-prefix> <tag...>");
+  const row = resolveRow(ctx, args._[0]!);
+  const tags = normalizedTags(args._.slice(1));
+  ctx.ledger().addTags(row.harness, row.nativeId, tags);
+  ctx.out(`tagged ${row.harness}:${displayId(row.nativeId)} ${tags.map((tag) => `#${tag}`).join(" ")}`);
+  return EXIT.OK;
+}
+
+export async function cmdUntag(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { booleans: ["all"] });
+  if (!args._[0] || (!flagBool(args, "all") && args._.length < 2) || (flagBool(args, "all") && args._.length !== 1))
+    throw new CliError("usage: sinter untag <id-prefix> <tag...>|--all");
+  const row = resolveRow(ctx, args._[0]);
+  const tags = flagBool(args, "all") ? undefined : normalizedTags(args._.slice(1));
+  ctx.ledger().removeTags(row.harness, row.nativeId, tags);
+  ctx.out(tags ? `removed ${tags.map((tag) => `#${tag}`).join(" ")} from ${row.harness}:${displayId(row.nativeId)}` : `cleared tags for ${row.harness}:${displayId(row.nativeId)}`);
+  return EXIT.OK;
+}
+
+export async function cmdNote(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { booleans: ["clear"] });
+  if (!args._[0]) throw new CliError("usage: sinter note <id-prefix> <text>|--clear");
+  const text = args._.slice(1).join(" ").trim();
+  if (flagBool(args, "clear") && text) throw new CliError("--clear cannot be combined with note text");
+  if (!flagBool(args, "clear") && !text) throw new CliError("sinter note needs text (or --clear)");
+  if (text.length > 4000) throw new CliError("note is too long (maximum 4000 characters)");
+  const row = resolveRow(ctx, args._[0]);
+  ctx.ledger().setNote(row.harness, row.nativeId, text || undefined, new Date(ctx.now).toISOString());
+  ctx.out(text ? `noted ${row.harness}:${displayId(row.nativeId)}` : `cleared note for ${row.harness}:${displayId(row.nativeId)}`);
+  return EXIT.OK;
+}
+
+export async function cmdTags(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { booleans: ["json"] });
+  if (args._.length) throw new CliError("usage: sinter tags [--json]");
+  const tags = ctx.ledger().tagCounts();
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify({ schema: "sinter.tags.v1", tags }, null, 2));
+  } else if (!tags.length) {
+    ctx.out("no local session tags");
+  } else {
+    ctx.out(renderTable(
+      [{ header: "TAG", flex: true }, { header: "SESSIONS", align: "right" }],
+      tags.map((tag) => [`#${tag.tag}`, String(tag.sessions)]),
+      { width: ctx.width, pal: ctx.pal },
+    ));
+  }
+  return EXIT.OK;
+}
+
 /** List Sinter-local bookmarks; pins survive rescans and native-session GC. */
 export async function cmdPinned(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv, {
@@ -437,7 +501,12 @@ export async function cmdGhosts(argv: string[], ctx: Ctx): Promise<number> {
   const opts = { ...(harness ? { harness } : {}), before: cutoff };
   const rows = ctx.ledger().ghosts(opts);
   const record = (row: LedgerRow) => {
-    const protectedBy = [row.alias ? "alias" : undefined, row.pinnedAt ? "pin" : undefined].filter(
+    const protectedBy = [
+      row.alias ? "alias" : undefined,
+      row.pinnedAt ? "pin" : undefined,
+      row.note ? "note" : undefined,
+      row.tags?.length ? "tag" : undefined,
+    ].filter(
       (value): value is string => !!value,
     );
     return {
@@ -501,12 +570,12 @@ export async function cmdGhosts(argv: string[], ctx: Ctx): Promise<number> {
 
   if (action === "prune") {
     ctx.out(`removed ${removed} disposable ghost row${removed === 1 ? "" : "s"}; ${protectedCount} protected`);
-    ctx.out(ctx.pal.dim("native stores, aliases, pins, and lineage were not modified"));
+    ctx.out(ctx.pal.dim("native stores, local metadata, and lineage were not modified"));
   } else if (!records.length) {
     ctx.out(`no ghost rows older than ${olderThan}`);
   } else {
     ctx.out("");
-    ctx.out(`${eligible} prunable; ${protectedCount} protected by a local alias or pin`);
+    ctx.out(`${eligible} prunable; ${protectedCount} protected by local metadata`);
     ctx.out(ctx.pal.dim(`preview only — apply with: sinter ghosts prune --older-than ${olderThan}${harness ? ` --harness ${harness}` : ""} --yes`));
   }
   return EXIT.OK;

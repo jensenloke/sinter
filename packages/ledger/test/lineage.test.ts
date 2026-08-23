@@ -315,7 +315,7 @@ describe("additive schema migration", () => {
     expect(l.get("codex", "old-249")!.title).toBe("precious 249");
     expect(l.search("precious")).toHaveLength(250);
 
-    // and the additive lineage, alias, pin, and saved-view tables exist and work
+    // and every additive local-metadata table exists and works
     expect(l.lineageCount()).toBe(0);
     l.recordProvenance(prov({ threadId: "post", chain: [hop("claude", "old-0"), hop("codex", "old-1")] }));
     expect(shape(l.lineageFor("post"))).toEqual(["claude:old-0@0", "codex:old-1@1<-claude:old-0"]);
@@ -326,13 +326,16 @@ describe("additive schema migration", () => {
     expect(l.get("claude", "old-0")!.pinnedAt).toBe("2026-08-24T01:00:00.000Z");
     l.saveView({ name: "migration", includeGhost: false, includeSubagents: false });
     expect(l.getView("migration")?.name).toBe("migration");
+    l.setNote("claude", "old-0", "migration note");
+    l.addTags("claude", "old-0", ["migration-tag"]);
+    expect(l.get("claude", "old-0")).toMatchObject({ note: "migration note", tags: ["migration-tag"] });
 
     // version was recorded, not acted on
     const v = l.db.query("SELECT value FROM meta WHERE key = 'schema_version'").get() as {
       value: string;
     };
     expect(v.value).toBe(String(SCHEMA_VERSION));
-    expect(SCHEMA_VERSION).toBe(5);
+    expect(SCHEMA_VERSION).toBe(6);
 
     // reopening again is still non-destructive
     l.close();
@@ -342,6 +345,7 @@ describe("additive schema migration", () => {
     expect(l2.get("claude", "old-0")!.pinnedAt).toBe("2026-08-24T01:00:00.000Z");
     expect(l2.lineageCount()).toBe(2);
     expect(l2.getView("migration")?.name).toBe("migration");
+    expect(l2.get("claude", "old-0")).toMatchObject({ note: "migration note", tags: ["migration-tag"] });
     l2.close();
 
     await Bun.$`rm -rf ${dir}`.quiet();

@@ -26,6 +26,7 @@ import {
   cmdLast,
   cmdLs,
   cmdMenu,
+  cmdNote,
   cmdPin,
   cmdPinned,
   cmdPort,
@@ -40,8 +41,11 @@ import {
   cmdSearch,
   cmdShow,
   cmdTelemetry,
+  cmdTag,
+  cmdTags,
   cmdThread,
   cmdUnpin,
+  cmdUntag,
   cmdView,
   type Ctx,
 } from "./commands";
@@ -53,7 +57,7 @@ import { trackTelemetry, type TelemetryEvent } from "./telemetry";
 export const VERSION = "0.1.10";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
-const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "capabilities", "ghosts", "privacy", "feedback", "telemetry", "completion", "config"]);
+const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "capabilities", "ghosts", "tags", "privacy", "feedback", "telemetry", "completion", "config"]);
 
 function skipsAutoScan(command: string, argv: string[]): boolean {
   if (AUTO_SCAN_SKIP.has(command)) return true;
@@ -100,6 +104,10 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   recent: cmdRecent,
   pin: cmdPin,
   pinned: cmdPinned,
+  tag: cmdTag,
+  untag: cmdUntag,
+  tags: cmdTags,
+  note: cmdNote,
   ghosts: cmdGhosts,
   view: cmdView,
   thread: cmdThread,
@@ -142,12 +150,15 @@ usage: sinter [command] [args]
   pin <id-prefix>                        bookmark a session in the local ledger
   unpin <id-prefix>                      remove a local session bookmark
   pinned [--harness x] [--cwd .]        list bookmarked sessions
+  tag|untag <id-prefix> <tag...>        manage searchable local tags
+  note <id-prefix> <text>|--clear       manage a searchable local note
+  tags [--json]                         list tags and session counts
   ghosts [preview|prune] [...]          preview or prune disposable ghost rows
   view <save|list|show|run|delete> ...  manage reusable local session filters
   thread <id-prefix> [--json]           inspect port lineage and resumable tip
   projects [--harness x] [--since 7d]   group resumable sessions by project
   last [--harness x] [--cwd .] [--exec]  print or run the newest resume command
-  search <query>                         full-text match over aliases, titles + prompts
+  search <query>                         match aliases, tags, notes, titles + prompts
   rename <id-prefix> <alias>             set a local alias that survives rescans
   show <id-prefix> [--tail n|--json|--ndjson]
                                          render or stream a transcript from any harness
@@ -192,7 +203,11 @@ const COMMAND_HELP: Record<string, string> = {
   pin: "usage: sinter pin <id-prefix>\n\nBookmarks a session in Sinter's local ledger without modifying its harness store.",
   unpin: "usage: sinter unpin <id-prefix>\n\nRemoves a Sinter-local bookmark without modifying the session.",
   pinned: "usage: sinter pinned [--harness x] [--cwd .] [--since 7d] [--limit n] [--json] [--no-ghost] [--no-sub]\n\nLists local bookmarks. Pins survive rescans and native-session garbage collection.",
-  ghosts: "usage: sinter ghosts [preview|prune] [--older-than 30d] [--harness x] [--json] [--yes]\n\nPreviews old ghost rows by default. Pruning requires the explicit `prune` action and --yes, removes only disposable ledger/FTS rows, and never modifies native stores, aliases, pins, or lineage.",
+  tag: "usage: sinter tag <id-prefix> <tag...>\n\nAdds normalized, searchable Sinter-local tags without modifying the native session.",
+  untag: "usage: sinter untag <id-prefix> <tag...>|--all\n\nRemoves selected or all Sinter-local tags.",
+  tags: "usage: sinter tags [--json]\n\nLists local tags and the number of sessions carrying each tag.",
+  note: "usage: sinter note <id-prefix> <text>|--clear\n\nSets or clears one searchable Sinter-local note (maximum 4,000 characters).",
+  ghosts: "usage: sinter ghosts [preview|prune] [--older-than 30d] [--harness x] [--json] [--yes]\n\nPreviews old ghost rows by default. Pruning requires the explicit `prune` action and --yes, removes only disposable ledger/FTS rows, and never modifies native stores, local metadata, or lineage.",
   view: "usage: sinter view <save|list|show|run|delete> ...\n\nSaves reusable local filters for harness, cwd, recency, result limit, ghosts, and subagents. Explicit flags on `view run` override the saved definition.",
   thread: "usage: sinter thread <id-prefix> [--json]\n\nShows cached port lineage, transfer modes, missing hops, and the newest resumable session without reading transcripts.",
   projects: "usage: sinter projects [--harness x] [--since 7d] [--limit n] [--json]\n\nGroups resumable parent sessions by working directory without reading transcript bodies.",

@@ -38,6 +38,8 @@ sinter thread <id-prefix>      # inspect port lineage and the resumable tip
 sinter capabilities           # check read, write, store, and resume support
 sinter ghosts                 # preview disposable ghost rows older than 30 days
 sinter view run work          # run a reusable local session filter
+sinter tag <id-prefix> release urgent
+sinter note <id-prefix> "follow up after launch"
 sinter projects                 # group resumable sessions by working directory
 sinter last --cwd .             # print the newest native resume command
 sinter last --cwd . --exec      # resume it in this terminal
@@ -73,17 +75,18 @@ adapter, a detected session store, and a native resume binary are reported as
 separate facts so an installed integration is not mistaken for a runnable one.
 
 Old ledger rows whose native transcript has disappeared are retained as
-ghosts. Housekeeping is deliberately two-step and protects anything with a
-local alias or pin:
+ghosts. Housekeeping is deliberately two-step and protects anything with local
+metadata:
 
 ```sh
 sinter ghosts --older-than 30d
 sinter ghosts prune --older-than 30d --yes
 ```
 
-Pruning removes only eligible session and search-index rows. It never changes
-native harness stores, aliases, pins, or cached thread lineage; a later scan can
-rediscover a native session if it returns.
+Pruning removes only eligible session and search-index rows. Rows carrying an
+alias, pin, tag, or note are protected. Pruning never changes native harness
+stores or cached thread lineage; a later scan can rediscover a native session
+if it returns.
 
 Save frequently used filters in the local ledger, then run them by name:
 
@@ -99,6 +102,20 @@ Views hide ghosts and subagents unless saved with `--ghosts` or `--subagents`.
 Use `view show` to inspect a definition, `view save --force` to replace it, and
 `view delete` to remove it. Definitions remain local and contain filters only,
 never transcript content.
+
+Add searchable local context without changing the native session:
+
+```sh
+sinter tag <id-prefix> release urgent
+sinter untag <id-prefix> urgent
+sinter tags
+sinter note <id-prefix> "Follow up after the release"
+sinter note <id-prefix> --clear
+```
+
+Tags and notes survive rescans, participate in CLI/TUI/GUI search, and protect a
+ghost row from housekeeping. Tags are normalized to lowercase. Notes are
+limited to 4,000 characters; neither is copied into a ported transcript.
 
 Inspect profile configuration without starting a scan:
 
