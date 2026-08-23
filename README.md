@@ -73,6 +73,25 @@ timestamp. CI and non-interactive invocations never emit events. Set
 collector endpoint is intentionally operator-configured until Sinter has a
 published first-party privacy policy and endpoint.
 
+## Shell completions
+
+Generate native completions for commands, flags, harness names, and transfer
+modes. Sinter prints the script and never edits shell configuration itself.
+
+```sh
+# zsh — current shell
+source <(sinter completion zsh)
+
+# bash — current shell
+source <(sinter completion bash)
+
+# fish — current shell
+sinter completion fish | source
+```
+
+To make completions permanent, write the generated script into the completion
+directory managed by your shell or dotfiles.
+
 ## Privacy and safety
 
 - Sinter reads local session stores only; it does not upload transcripts.
@@ -92,6 +111,12 @@ published first-party privacy policy and endpoint.
 | ZCode | yes | experimental | unverified |
 | Oh My Pi | yes | yes | yes |
 | pi | yes | yes | yes |
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for planned CLI improvements, encrypted
+cross-device session transfer, Sinter Cloud, team handoffs, and the longer-term
+cloud-execution research path.
 
 ## Development
 

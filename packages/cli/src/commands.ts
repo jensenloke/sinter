@@ -865,3 +865,13 @@ export async function cmdGui(argv: string[], ctx: Ctx): Promise<number> {
   });
   return EXIT.OK;
 }
+
+export async function cmdCompletion(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {});
+  const shell = args._[0];
+  if (args._.length !== 1 || !["zsh", "bash", "fish"].includes(shell ?? ""))
+    throw new CliError("usage: sinter completion <zsh|bash|fish>");
+  const { completionScript } = await import("./completion");
+  ctx.out(completionScript(shell as "zsh" | "bash" | "fish").trimEnd());
+  return EXIT.OK;
+}
