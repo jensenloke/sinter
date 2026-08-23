@@ -504,6 +504,15 @@ describe("dispatch", () => {
     await scan();
     expect(await run(["list", "--limit", "1"], h.ctx)).toBe(0);
   });
+
+  test("prints shell completions without touching the ledger", async () => {
+    expect(await run(["completion", "zsh"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("#compdef sinter");
+    expect(h.ledger.list()).toHaveLength(0);
+    h.stdout.length = 0;
+    expect(await run(["completion", "powershell"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("zsh|bash|fish");
+  });
 });
 
 describe("immediate resolvability after write (issue #1)", () => {

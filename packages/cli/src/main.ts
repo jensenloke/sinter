@@ -13,6 +13,7 @@ import { CliError, EXIT } from "./args";
 import { DynamicAdapterRegistry } from "./adapters";
 import { loadProfile, type SinterProfile } from "./config";
 import {
+  cmdCompletion,
   cmdDoctor,
   cmdExport,
   cmdFeedback,
@@ -40,7 +41,7 @@ import { trackTelemetry, type TelemetryEvent } from "./telemetry";
 export const VERSION = "0.1.10";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
-const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "privacy", "feedback", "telemetry"]);
+const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "privacy", "feedback", "telemetry", "completion"]);
 
 /**
  * Keep the ledger fresh on every invocation: commands that resolve or list
@@ -70,6 +71,7 @@ async function autoScanLedger(ctx: Ctx, argv: string[]): Promise<void> {
 }
 
 const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = {
+  completion: cmdCompletion,
   scan: cmdScan,
   ls: cmdLs,
   list: cmdLs,
@@ -117,6 +119,7 @@ usage: sinter [command] [args]
   feedback [--title text] [--no-open]    open a safe, prefilled GitHub issue
   telemetry [status|enable|disable]      control anonymous active-use measurement
   gui [--port n] [--no-open]             open the local session workspace
+  completion <zsh|bash|fish>              generate native shell completions
   relink [--harness x] [--limit n]       rebuild thread lineage from target stores
 
 global flags:
@@ -153,6 +156,7 @@ const COMMAND_HELP: Record<string, string> = {
   feedback: "usage: sinter feedback [--title text] [--no-open]\n\nOpens a prefilled GitHub issue with safe diagnostics only.",
   telemetry: "usage: sinter telemetry [status|enable|disable] [--endpoint https://…]\n\nOpt-in anonymous active-use measurement. CI and non-interactive commands never emit events.",
   gui: "usage: sinter gui [--port n] [--no-open]\n\nRuns a token-protected workspace on 127.0.0.1; transcripts never leave this machine.",
+  completion: "usage: sinter completion <zsh|bash|fish>\n\nPrints a native completion script to stdout; does not modify shell configuration.",
   relink: "usage: sinter relink [--harness x] [--limit n] [--quiet]\n\nRebuilds the disposable lineage cache from target stores.",
   menu: "usage: sinter menu [--all] [--mode full|slim|compact]\n\nRequires an interactive terminal.",
 };
