@@ -27,8 +27,10 @@ the next one through real usage and privacy review.
    --report` produce a reviewable support report containing versions and store
    health while excluding paths, prompts, titles, session IDs, transcripts,
    and raw adapter errors by default.
-6. **Configuration UX.** Add `sinter config show|set|path` and guided validation
-   for profiles, defaults, update checks, and telemetry settings.
+6. **Configuration UX — inspection ready in draft PR #8.** Add `sinter config
+   show|path|validate` for local profiles. Guided writes for defaults, update
+   checks, and telemetry remain a later checkpoint because they require a
+   stable, migration-safe config schema.
 
 ## Phase 1: portable session capsules
 
