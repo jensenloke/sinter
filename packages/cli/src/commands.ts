@@ -276,7 +276,7 @@ export async function cmdConfig(argv: string[], ctx: Ctx): Promise<number> {
 }
 
 export async function cmdScan(argv: string[], ctx: Ctx): Promise<number> {
-  const args = parseArgs(argv, { strings: ["harness"] });
+  const args = parseArgs(argv, { strings: ["harness"], booleans: ["json"] });
   const only = flagString(args, "harness")
     ?.split(",")
     .map((h) => parseHarness(h));
@@ -288,6 +288,7 @@ export async function cmdScan(argv: string[], ctx: Ctx): Promise<number> {
   const unavailable = loads.filter((l) => !l.adapter && (!only || only.includes(l.id as never)));
 
   if (!adapters.length) {
+    if (flagBool(args, "json")) throw new CliError("no adapters available — nothing to scan");
     ctx.err("no adapters available — nothing to scan");
     for (const u of unavailable) ctx.err(`  adapter not available: ${u.id} (${u.error})`);
     return EXIT.ERROR;
@@ -295,6 +296,23 @@ export async function cmdScan(argv: string[], ctx: Ctx): Promise<number> {
 
   const ledger = ctx.ledger();
   const result = await ledger.scan(adapters);
+
+  if (flagBool(args, "json")) {
+    ctx.out(
+      JSON.stringify(
+        {
+          schema: "sinter.scan.v1",
+          ok: result.errors.length === 0,
+          harnesses: result.harnesses,
+          unavailable: unavailable.map((adapter) => ({ harness: adapter.id })),
+          errors: result.errors.map((error) => ({ harness: error.harness, message: error.error })),
+        },
+        null,
+        2,
+      ),
+    );
+    return result.errors.length ? EXIT.ERROR : EXIT.OK;
+  }
 
   const rows = Object.entries(result.harnesses).map(([h, s]) => [
     ctx.pal.cyan(h),
@@ -832,11 +850,13 @@ export async function cmdPrivacy(argv: string[], ctx: Ctx): Promise<number> {
 }
 
 export async function cmdDoctor(argv: string[], ctx: Ctx): Promise<number> {
-  const args = parseArgs(argv, { strings: ["output"], booleans: ["report"], alias: { o: "output" } });
+  const args = parseArgs(argv, { strings: ["output"], booleans: ["report", "json"], alias: { o: "output" } });
   const reportMode = flagBool(args, "report");
+  const jsonMode = flagBool(args, "json");
   const reportOutput = flagString(args, "output");
   if (reportOutput && !reportMode) throw new CliError("--output requires --report");
-  if (ctx.profile && !reportMode) {
+  if (reportMode && jsonMode) throw new CliError("choose one output mode: --report or --json");
+  if (ctx.profile && !reportMode && !jsonMode) {
     ctx.out(ctx.pal.dim(`profile: ${ctx.profile.name} (${ctx.profile.configPath})`));
     ctx.out(ctx.pal.dim("note: configured profile roots override defaults; other local profiles are not scanned."));
     ctx.out("");
@@ -894,16 +914,21 @@ export async function cmdDoctor(argv: string[], ctx: Ctx): Promise<number> {
     ]);
   }
 
+  const reportData = {
+    generatedAt: new Date(ctx.now).toISOString(),
+    sinterVersion: ctx.version ?? "development",
+    bunVersion: Bun.version,
+    platform: supportPlatform(),
+    profileConfigured: Boolean(ctx.profile),
+    ledgerAvailable: Boolean(ledger),
+    harnesses: supportRows.sort((a, b) => a.harness.localeCompare(b.harness)),
+  };
+  if (jsonMode) {
+    ctx.out(JSON.stringify({ schema: "sinter.doctor.v1", ok: anyDetected, ...reportData }, null, 2));
+    return anyDetected || supportRows.length ? EXIT.OK : EXIT.ERROR;
+  }
   if (reportMode) {
-    const report = renderSupportReport({
-      generatedAt: new Date(ctx.now).toISOString(),
-      sinterVersion: ctx.version ?? "development",
-      bunVersion: Bun.version,
-      platform: supportPlatform(),
-      profileConfigured: Boolean(ctx.profile),
-      ledgerAvailable: Boolean(ledger),
-      harnesses: supportRows.sort((a, b) => a.harness.localeCompare(b.harness)),
-    });
+    const report = renderSupportReport(reportData);
     if (reportOutput) {
       await ctx.writeFile(reportOutput, report);
       ctx.err(`wrote privacy-safe diagnostic report to ${reportOutput}`);

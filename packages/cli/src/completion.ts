@@ -56,7 +56,7 @@ ${commands}
   fi
 
   case $words[2] in
-    scan) _arguments $global_args '--harness=[comma-separated harnesses]:harnesses' ;;
+    scan) _arguments $global_args '--harness=[comma-separated harnesses]:harnesses' '--json' ;;
     config) _arguments $global_args '1:action:(show path validate)' '--json' ;;
     ls) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
     recent) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' ;;
@@ -69,7 +69,7 @@ ${commands}
     port) _arguments $global_args '1:session id' '--to=[target harness]:harness:($harnesses)' '--mode=[transfer mode]:mode:($modes)' '--cwd=[target directory]:directory:_directories' '--preview' '--json' '--dry-run' '--live-tools' ;;
     resume) _arguments $global_args '1:session id' '--in=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--exec' '--dry-run' '--live-tools' ;;
     setup) _arguments $global_args '--yes' '--no-menu' ;;
-    doctor) _arguments $global_args '--report' '(-o --output)'{-o,--output}'=[diagnostic report file]:file:_files' ;;
+    doctor) _arguments $global_args '--json' '--report' '(-o --output)'{-o,--output}'=[diagnostic report file]:file:_files' ;;
     feedback) _arguments $global_args '--title=[issue title]:title' '--no-open' ;;
     telemetry) _arguments $global_args '1:action:(status enable disable)' '--endpoint=[collector URL]:url' ;;
     gui) _arguments $global_args '--port=[local port]:port' '--no-open' ;;

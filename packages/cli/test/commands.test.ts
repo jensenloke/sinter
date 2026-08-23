@@ -199,6 +199,15 @@ describe("scan", () => {
     expect(h.err()).toContain("adapter not available: zcode");
   });
 
+  test("--json emits a versioned scan result without human table output", async () => {
+    expect(await run(["scan", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result).toMatchObject({ schema: "sinter.scan.v1", ok: true });
+    expect(result.harnesses.claude).toMatchObject({ seen: 3, inserted: 3 });
+    expect(result.unavailable).toEqual([{ harness: "zcode" }]);
+    expect(h.err()).toBe("");
+  });
+
   test("a throwing adapter is an error exit but the others still scan", async () => {
     h.omp.throwOnList = "*";
     expect(await scan()).toBe(1);
@@ -597,6 +606,18 @@ describe("doctor", () => {
     expect(h.out()).toContain("detect failed: store corrupt");
   });
 
+  test("--json emits versioned, privacy-safe health data", async () => {
+    await scan();
+    h.stdout.length = 0;
+    h.stderr.length = 0;
+    expect(await run(["doctor", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result).toMatchObject({ schema: "sinter.doctor.v1", ok: true, ledgerAvailable: true });
+    expect(result.harnesses).toContainEqual(expect.objectContaining({ harness: "claude", store: "ok", ledgerSessions: 3 }));
+    expect(h.out()).not.toContain("/tmp/mock");
+    expect(h.out()).not.toContain("aaa11111");
+  });
+
   test("--report emits reviewable diagnostics without private session data", async () => {
     await scan();
     h.stdout.length = 0;
@@ -645,6 +666,15 @@ describe("dispatch", () => {
   test("unknown commands exit 1", async () => {
     expect(await run(["frobnicate"], h.ctx)).toBe(1);
     expect(h.err()).toContain("unknown command: frobnicate");
+  });
+
+  test("--json returns versioned error envelopes", async () => {
+    expect(await run(["search", "--json"], h.ctx)).toBe(1);
+    expect(JSON.parse(h.err())).toEqual({
+      schema: "sinter.error.v1",
+      ok: false,
+      error: { code: 1, kind: "usage", message: "usage: sinter search <query>" },
+    });
   });
 
   test("`list` is an alias for ls", async () => {
@@ -717,6 +747,14 @@ describe("auto-scan (always-fresh ledger)", () => {
     expect(await run(["ls"], h.ctx)).toBe(0);
     expect(h.ledger.list()).toHaveLength(4);
     expect(h.out()).toContain("porting sessions between harnesses");
+  });
+
+  test("keeps stderr clean for JSON output while still refreshing", async () => {
+    h.ctx.autoScan = true;
+    expect(await run(["ls", "--json", "--limit", "1"], h.ctx)).toBe(0);
+    expect(JSON.parse(h.out())).toHaveLength(1);
+    expect(h.ledger.list()).toHaveLength(4);
+    expect(h.err()).toBe("");
   });
 
   test("is disabled when autoScan is not set (hand-built test ctx)", async () => {

@@ -29,6 +29,7 @@ See the [v0.1.10 release notes](docs/releases/v0.1.10.md) for the latest changes
 
 ```sh
 sinter scan
+sinter scan --json
 sinter ls --since 7d
 sinter recent --cwd .
 sinter last --cwd .             # print the newest native resume command
@@ -42,6 +43,9 @@ sinter resume <id-prefix> --in omp --exec
 sinter feedback
 sinter gui
 ```
+
+Commands with `--json` keep stdout machine-readable and return errors on stderr
+using the versioned `sinter.error.v1` envelope.
 
 Inspect profile configuration without starting a scan:
 

@@ -20,9 +20,10 @@ the next one through real usage and privacy review.
 3. **Recent-session shortcuts — ready in draft PR #6.** Make `sinter recent`,
    `sinter last`, and project-scoped history reduce the need to copy session ID
    prefixes.
-4. **Consistent machine-readable output.** Extend `--json`/NDJSON and stable
-   error codes across commands so scripts and editor integrations do not parse
-   human tables.
+4. **Consistent machine-readable output — first contract ready in draft PR
+   #9.** Versioned JSON is available for scan and doctor health, port previews,
+   config inspection, recent-session queries, and error envelopes. NDJSON for
+   large transcript streams remains future work.
 5. **Safe diagnostic bundles — ready in draft PR #7.** Let `sinter doctor
    --report` produce a reviewable support report containing versions and store
    health while excluding paths, prompts, titles, session IDs, transcripts,

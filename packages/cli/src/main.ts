@@ -59,6 +59,7 @@ const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "privacy", "feedback"
  */
 async function autoScanLedger(ctx: Ctx, argv: string[]): Promise<void> {
   if (!ctx.autoScan || argv.includes("--no-scan") || process.env.SINTER_NO_SCAN === "1") return;
+  const quiet = argv.includes("--json") || argv.includes("--json=true");
   try {
     const loads = await ctx.registry.load();
     const adapters = loads.filter((l) => l.adapter).map((l) => l.adapter!);
@@ -66,10 +67,10 @@ async function autoScanLedger(ctx: Ctx, argv: string[]): Promise<void> {
     const result = await ctx.ledger().scan(adapters);
     const inserted = Object.values(result.harnesses).reduce((n, s) => n + s.inserted, 0);
     const updated = Object.values(result.harnesses).reduce((n, s) => n + s.updated, 0);
-    if (inserted || updated) ctx.err(ctx.pal.dim(`(ledger: ${inserted} new, ${updated} updated)`));
-    for (const e of result.errors) ctx.err(ctx.pal.dim(`(scan warning [${e.harness}]: ${e.error})`));
+    if (!quiet && (inserted || updated)) ctx.err(ctx.pal.dim(`(ledger: ${inserted} new, ${updated} updated)`));
+    if (!quiet) for (const e of result.errors) ctx.err(ctx.pal.dim(`(scan warning [${e.harness}]: ${e.error})`));
   } catch (err) {
-    ctx.err(ctx.pal.dim(`(auto-scan skipped: ${err instanceof Error ? err.message : String(err)})`));
+    if (!quiet) ctx.err(ctx.pal.dim(`(auto-scan skipped: ${err instanceof Error ? err.message : String(err)})`));
   }
 }
 
@@ -108,7 +109,7 @@ usage: sinter [command] [args]
                                          a harness, launch it right here
   menu [--all] [--mode full|slim|compact]
                                          the same menu, explicitly
-  scan                                   refresh the ledger from every available harness
+  scan [--json]                          refresh the ledger from every available harness
   config [show|path|validate]            inspect and validate local profile configuration
   ls [--harness x] [--cwd .] [--since 7d] [--limit n]
                                          list sessions, newest first
@@ -124,7 +125,7 @@ usage: sinter [command] [args]
   port <id-prefix> --to <harness> [...]  create a new target-native session
   resume <id-prefix> [--in <harness>] [--exec]
                                          print (or run) the native resume command
-  doctor [--report [-o file]]            detect stores or create a privacy-safe report
+  doctor [--json|--report [-o file]]     detect stores or create a privacy-safe report
   privacy                                explain local storage and support limits
   feedback [--title text] [--no-open]    open a safe, prefilled GitHub issue
   telemetry [status|enable|disable]      control anonymous active-use measurement
@@ -151,7 +152,7 @@ ids: any unambiguous native-id prefix, optionally harness-scoped (codex:0199ab).
 
 const COMMAND_HELP: Record<string, string> = {
   config: "usage: sinter config [show|path|validate] [--config file] [--json]\n\nShows profile store roots, prints the resolved config path, or validates every profile.",
-  scan: "usage: sinter scan [--harness claude,codex]\n\nRefreshes the local ledger. Reads local stores only.",
+  scan: "usage: sinter scan [--harness claude,codex] [--json]\n\nRefreshes the local ledger. Reads local stores only.",
   ls: "usage: sinter ls [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]",
   recent: "usage: sinter recent [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]\n\nLists the newest non-ghost parent sessions; defaults to 10.",
   last: "usage: sinter last [--harness x] [--cwd .] [--since 7d] [--id|--json|--exec]\n\nSelects the newest non-ghost parent session. By default, prints its native resume command.",
@@ -163,7 +164,7 @@ const COMMAND_HELP: Record<string, string> = {
   import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",
   port: "usage: sinter port <id-prefix> --to <harness> [--mode full|slim|compact] [--preview [--json]] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.\n--preview reports target readiness and transfer impact without invoking the target writer.\n--dry-run asks the target writer to validate and describe its planned native output.\nHistorical tool calls are inert unless --live-tools is explicit.",
   resume: "usage: sinter resume <id-prefix> [--in <harness>] [--exec]\n\n--exec hands this terminal to the target harness.",
-  doctor: "usage: sinter doctor [--report [-o file]]\n\nNormal output shows resolved local store paths. --report emits a reviewable support report that excludes paths, prompts, titles, session IDs, transcripts, and raw errors.",
+  doctor: "usage: sinter doctor [--json|--report [-o file]]\n\nNormal output shows resolved local store paths. --json emits safe structured health. --report emits a reviewable support report that excludes paths, prompts, titles, session IDs, transcripts, and raw errors.",
   setup: "usage: sinter setup [--yes] [--no-menu]\n\nShows detected local stores. Interactive setup asks before scanning and opening the menu; --yes scans without opening it.",
   privacy: "usage: sinter privacy\n\nExplains local storage, profile limits, and harness support.",
   feedback: "usage: sinter feedback [--title text] [--no-open]\n\nOpens a prefilled GitHub issue with safe diagnostics only.",
@@ -211,6 +212,7 @@ export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   const cmd = argv[0];
   const rest = argv.slice(1);
+  const jsonRequested = rest.includes("--json") || rest.includes("--json=true");
 
   if (!cmd) {
     if (canRunMenu()) {
@@ -231,7 +233,11 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
 
   const fn = COMMANDS[cmd];
   if (!fn) {
-    ctx.err(`unknown command: ${cmd}\ntry: sinter help`);
+    if (jsonRequested) {
+      ctx.err(JSON.stringify({ schema: "sinter.error.v1", ok: false, error: { code: EXIT.ERROR, kind: "usage", message: `unknown command: ${cmd}` } }));
+    } else {
+      ctx.err(`unknown command: ${cmd}\ntry: sinter help`);
+    }
     return EXIT.ERROR;
   }
   if (rest.includes("--help") || rest.includes("-h")) {
@@ -255,11 +261,26 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     return code;
   } catch (err) {
     if (err instanceof CliError) {
-      ctx.err(ctx.pal.red(err.message));
+      if (jsonRequested) {
+        ctx.err(
+          JSON.stringify({
+            schema: "sinter.error.v1",
+            ok: false,
+            error: { code: err.code, kind: err.code === EXIT.AMBIGUOUS ? "resolution" : "usage", message: err.message },
+          }),
+        );
+      } else {
+        ctx.err(ctx.pal.red(err.message));
+      }
       return err.code;
     }
-    ctx.err(ctx.pal.red(err instanceof Error ? err.message : String(err)));
-    if (process.env.SINTER_DEBUG && err instanceof Error && err.stack) ctx.err(ctx.pal.dim(err.stack));
+    const message = err instanceof Error ? err.message : String(err);
+    if (jsonRequested) {
+      ctx.err(JSON.stringify({ schema: "sinter.error.v1", ok: false, error: { code: EXIT.ERROR, kind: "internal", message } }));
+    } else {
+      ctx.err(ctx.pal.red(message));
+      if (process.env.SINTER_DEBUG && err instanceof Error && err.stack) ctx.err(ctx.pal.dim(err.stack));
+    }
     return EXIT.ERROR;
   }
 }
