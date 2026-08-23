@@ -289,6 +289,39 @@ describe("recent", () => {
   });
 });
 
+describe("projects", () => {
+  test("groups resumable sessions by cwd with a versioned JSON contract", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["projects", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result.schema).toBe("sinter.projects.v1");
+    expect(result.projects).toContainEqual({
+      cwd: "/Users/test/proj",
+      sessionCount: 3,
+      messageCount: 12,
+      messageCountSessions: 3,
+      harnesses: ["claude", "omp"],
+      latestAt: "2026-08-01T01:00:00.000Z",
+    });
+  });
+
+  test("filters before grouping and renders a compact project table", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["projects", "--harness", "omp", "--limit", "1"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("PROJECT");
+    expect(h.out()).toContain("/Users/test/proj");
+    expect(h.out()).toContain("omp");
+    expect(h.out()).not.toContain("/Users/test/other");
+  });
+
+  test("rejects an invalid project limit", async () => {
+    expect(await run(["projects", "--limit", "0"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("bad --limit");
+  });
+});
+
 describe("last", () => {
   test("prints the native resume command for the newest matching session", async () => {
     await scan();

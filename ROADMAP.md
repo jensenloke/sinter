@@ -32,6 +32,9 @@ the next one through real usage and privacy review.
    show|path|validate` for local profiles. Guided writes for defaults, update
    checks, and telemetry remain a later checkpoint because they require a
    stable, migration-safe config schema.
+7. **Project overview — ready in draft PR #12.** Group resumable parent sessions
+   by working directory so large multi-harness ledgers stay navigable without
+   parsing transcript bodies.
 
 ## Phase 1: portable session capsules
 

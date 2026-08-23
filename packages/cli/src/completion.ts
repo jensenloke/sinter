@@ -5,6 +5,7 @@ const COMMANDS = [
   ["config", "inspect and validate profile configuration"],
   ["ls", "list sessions"],
   ["recent", "list recent resumable sessions"],
+  ["projects", "group sessions by working directory"],
   ["last", "resume the newest matching session"],
   ["search", "search sessions"],
   ["rename", "set a local session alias"],
@@ -60,6 +61,7 @@ ${commands}
     config) _arguments $global_args '1:action:(show path validate)' '--json' ;;
     ls) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
     recent) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' ;;
+    projects) _arguments $global_args '--harness=[filter by harness]:harnesses' '--since=[time window]:duration' '--limit=[maximum projects]:count' '--json' ;;
     last) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--id' '--json' '--exec' ;;
     search) _arguments $global_args '1:query' '--harness=[filter by harness]:harnesses' '--json' ;;
     rename) _arguments $global_args '1:session id' '2:alias' '--clear' ;;

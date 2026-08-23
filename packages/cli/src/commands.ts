@@ -35,6 +35,7 @@ import {
 } from "./format";
 import { renderTranscript, slimSession } from "./render";
 import { transcriptRecords } from "./ndjson";
+import { PROJECTS_SCHEMA, projectSummaries } from "./projects";
 import { renderSupportReport, supportPlatform, type SupportHarnessStatus } from "./support-report";
 import { applyTransfer, fmtBytes, TRANSFER_MODES, type TransferMode } from "./transfer";
 
@@ -364,6 +365,50 @@ export async function cmdRecent(argv: string[], ctx: Ctx): Promise<number> {
   opts.includeSubagents = false;
   opts.limit ??= 10;
   return printRows(ctx.ledger().list(opts), ctx, args);
+}
+
+/** Summarize resumable work by directory without parsing any transcripts. */
+export async function cmdProjects(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["harness", "since", "limit"],
+    booleans: ["json"],
+    alias: { n: "limit" },
+  });
+  const opts = filterOpts(args, ctx.now);
+  const limit = opts.limit ?? 30;
+  delete opts.limit;
+  opts.includeGhost = false;
+  opts.includeSubagents = false;
+  const projects = projectSummaries(ctx.ledger().list(opts)).slice(0, limit);
+
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify({ schema: PROJECTS_SCHEMA, projects }, null, 2));
+    return EXIT.OK;
+  }
+  if (!projects.length) {
+    ctx.err("no projects matched (run `sinter scan` first?)");
+    return EXIT.OK;
+  }
+  ctx.out(
+    renderTable(
+      [
+        { header: "AGE", max: 5, align: "right" },
+        { header: "SESS", max: 5, align: "right" },
+        { header: "MSG", max: 7, align: "right" },
+        { header: "HARNESSES", max: 24 },
+        { header: "PROJECT", flex: true },
+      ],
+      projects.map((project) => [
+        ctx.pal.dim(humanAge(project.latestAt, ctx.now)),
+        String(project.sessionCount),
+        project.messageCountSessions ? String(project.messageCount) : "-",
+        project.harnesses.join(","),
+        shortenPath(project.cwd, 400),
+      ]),
+      { width: ctx.width, pal: ctx.pal },
+    ),
+  );
+  return EXIT.OK;
 }
 
 /** Print or execute the native resume command for the newest matching session. */
