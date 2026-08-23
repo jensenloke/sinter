@@ -112,7 +112,7 @@ usage: sinter [command] [args]
   port <id-prefix> --to <harness> [...]  create a new target-native session
   resume <id-prefix> [--in <harness>] [--exec]
                                          print (or run) the native resume command
-  doctor                                 detect stores, versions, ledger counts
+  doctor [--report [-o file]]            detect stores or create a privacy-safe report
   privacy                                explain local storage and support limits
   feedback [--title text] [--no-open]    open a safe, prefilled GitHub issue
   telemetry [status|enable|disable]      control anonymous active-use measurement
@@ -147,7 +147,7 @@ const COMMAND_HELP: Record<string, string> = {
   import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",
   port: "usage: sinter port <id-prefix> --to <harness> [--mode full|slim|compact] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; historical tool calls are inert unless --live-tools is explicit.",
   resume: "usage: sinter resume <id-prefix> [--in <harness>] [--exec]\n\n--exec hands this terminal to the target harness.",
-  doctor: "usage: sinter doctor\n\nReports resolved local store paths and ledger counts.",
+  doctor: "usage: sinter doctor [--report [-o file]]\n\nNormal output shows resolved local store paths. --report emits a reviewable support report that excludes paths, prompts, titles, session IDs, transcripts, and raw errors.",
   setup: "usage: sinter setup [--yes] [--no-menu]\n\nShows detected local stores. Interactive setup asks before scanning and opening the menu; --yes scans without opening it.",
   privacy: "usage: sinter privacy\n\nExplains local storage, profile limits, and harness support.",
   feedback: "usage: sinter feedback [--title text] [--no-open]\n\nOpens a prefilled GitHub issue with safe diagnostics only.",

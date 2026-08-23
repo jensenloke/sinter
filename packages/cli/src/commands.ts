@@ -34,6 +34,7 @@ import {
   type Palette,
 } from "./format";
 import { renderTranscript, slimSession } from "./render";
+import { renderSupportReport, supportPlatform, type SupportHarnessStatus } from "./support-report";
 import { applyTransfer, TRANSFER_MODES, type TransferMode } from "./transfer";
 
 export interface Ctx {
@@ -683,8 +684,11 @@ export async function cmdPrivacy(argv: string[], ctx: Ctx): Promise<number> {
 }
 
 export async function cmdDoctor(argv: string[], ctx: Ctx): Promise<number> {
-  parseArgs(argv, {});
-  if (ctx.profile) {
+  const args = parseArgs(argv, { strings: ["output"], booleans: ["report"], alias: { o: "output" } });
+  const reportMode = flagBool(args, "report");
+  const reportOutput = flagString(args, "output");
+  if (reportOutput && !reportMode) throw new CliError("--output requires --report");
+  if (ctx.profile && !reportMode) {
     ctx.out(ctx.pal.dim(`profile: ${ctx.profile.name} (${ctx.profile.configPath})`));
     ctx.out(ctx.pal.dim("note: configured profile roots override defaults; other local profiles are not scanned."));
     ctx.out("");
@@ -700,11 +704,20 @@ export async function cmdDoctor(argv: string[], ctx: Ctx): Promise<number> {
 
   const rows: string[][] = [];
   const unavailable: string[] = [];
+  const supportRows: SupportHarnessStatus[] = [];
   let anyDetected = false;
+  const ghostCounts = new Map((ledger?.counts() ?? []).map((count) => [count.harness, count.ghosts]));
 
   for (const l of loads) {
     if (!l.adapter) {
       unavailable.push(`${l.id}: ${l.error ?? "not installed"}`);
+      supportRows.push({
+        harness: l.id,
+        adapter: "unavailable",
+        store: "not-checked",
+        ledgerSessions: ledger ? ledger.countFor(l.id) : 0,
+        ghostSessions: ghostCounts.get(l.id) ?? 0,
+      });
       continue;
     }
     let store: Awaited<ReturnType<HarnessAdapter["detect"]>> = null;
@@ -716,6 +729,14 @@ export async function cmdDoctor(argv: string[], ctx: Ctx): Promise<number> {
     }
     if (store) anyDetected = true;
     const count = ledger ? ledger.countFor(l.id) : 0;
+    supportRows.push({
+      harness: l.id,
+      adapter: "available",
+      store: store ? "ok" : note ? "error" : "absent",
+      version: store?.version,
+      ledgerSessions: count,
+      ghostSessions: ghostCounts.get(l.id) ?? 0,
+    });
     rows.push([
       ctx.pal.cyan(l.id),
       store ? ctx.pal.green("ok") : note ? ctx.pal.red("error") : ctx.pal.dim("absent"),
@@ -723,6 +744,25 @@ export async function cmdDoctor(argv: string[], ctx: Ctx): Promise<number> {
       String(count),
       note || (store?.paths ?? []).map((p) => shortenPath(p, 46)).join(", ") || (store?.notes ?? "-"),
     ]);
+  }
+
+  if (reportMode) {
+    const report = renderSupportReport({
+      generatedAt: new Date(ctx.now).toISOString(),
+      sinterVersion: ctx.version ?? "development",
+      bunVersion: Bun.version,
+      platform: supportPlatform(),
+      profileConfigured: Boolean(ctx.profile),
+      ledgerAvailable: Boolean(ledger),
+      harnesses: supportRows.sort((a, b) => a.harness.localeCompare(b.harness)),
+    });
+    if (reportOutput) {
+      await ctx.writeFile(reportOutput, report);
+      ctx.err(`wrote privacy-safe diagnostic report to ${reportOutput}`);
+    } else {
+      ctx.out(report.trimEnd());
+    }
+    return anyDetected || supportRows.length ? EXIT.OK : EXIT.ERROR;
   }
 
   if (rows.length)

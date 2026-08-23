@@ -479,6 +479,36 @@ describe("doctor", () => {
     expect(await run(["doctor"], h.ctx)).toBe(0);
     expect(h.out()).toContain("detect failed: store corrupt");
   });
+
+  test("--report emits reviewable diagnostics without private session data", async () => {
+    await scan();
+    h.stdout.length = 0;
+    h.stderr.length = 0;
+    h.ctx.version = "0.1.10-test";
+    expect(await run(["doctor", "--report"], h.ctx)).toBe(0);
+    const report = h.out();
+    expect(report).toContain("# Sinter diagnostic report");
+    expect(report).toContain("Sinter: 0.1.10-test");
+    expect(report).toContain("| claude | available | ok | 0.0.0-mock | 3 | 0 |");
+    expect(report).toContain("excludes paths, session IDs, prompts, titles, transcripts");
+    expect(report).not.toContain("/Users/test");
+    expect(report).not.toContain("aaa11111");
+    expect(report).not.toContain("porting sessions between harnesses");
+    expect(report).not.toContain("/tmp/mock");
+  });
+
+  test("writes the safe report to a chosen file and redacts adapter errors", async () => {
+    const broken = new MockAdapter({ id: "pi" });
+    broken.detect = async () => {
+      throw new Error("private failure at /Users/test/secret");
+    };
+    h.ctx.registry = new StaticAdapterRegistry([broken]);
+    expect(await run(["doctor", "--report", "-o", "diagnostics.md"], h.ctx)).toBe(0);
+    expect(h.written["diagnostics.md"]).toContain("| pi | available | error |");
+    expect(h.written["diagnostics.md"]).not.toContain("private failure");
+    expect(h.written["diagnostics.md"]).not.toContain("/Users/test");
+    expect(h.err()).toContain("wrote privacy-safe diagnostic report");
+  });
 });
 
 describe("dispatch", () => {
