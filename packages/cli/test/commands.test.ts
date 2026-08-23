@@ -388,6 +388,43 @@ describe("show", () => {
     expect(s.entries).toHaveLength(3);
   });
 
+  test("--ndjson streams versioned metadata followed by ordered entries", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["show", "aaa11111", "--ndjson"], h.ctx)).toBe(0);
+    const records = h.stdout.map((line) => JSON.parse(line));
+    expect(records).toHaveLength(4);
+    expect(records[0]).toMatchObject({
+      schema: "sinter.transcript.ndjson.v1",
+      type: "session",
+      session: { id: "sif-aaa11111-1111" },
+    });
+    expect(records[0].session).not.toHaveProperty("entries");
+    expect(records.slice(1).map((record) => [record.type, record.index])).toEqual([
+      ["entry", 0],
+      ["entry", 1],
+      ["entry", 2],
+    ]);
+  });
+
+  test("--ndjson uses versioned errors and cannot be combined with --json", async () => {
+    await scan();
+    h.stderr.length = 0;
+    expect(await run(["show", "zzzz", "--ndjson"], h.ctx)).toBe(2);
+    expect(JSON.parse(h.err())).toMatchObject({
+      schema: "sinter.error.v1",
+      ok: false,
+      error: { code: 2, kind: "resolution" },
+    });
+
+    h.stderr.length = 0;
+    expect(await run(["show", "aaa11111", "--json", "--ndjson"], h.ctx)).toBe(1);
+    expect(JSON.parse(h.err())).toMatchObject({
+      schema: "sinter.error.v1",
+      error: { code: 1, kind: "usage", message: "choose one output mode: --json or --ndjson" },
+    });
+  });
+
   test("an unavailable adapter is reported, not crashed", async () => {
     await scan();
     h.ledger.upsert(summary({ nativeId: "zc-1", harness: "zcode" }));
@@ -753,6 +790,14 @@ describe("auto-scan (always-fresh ledger)", () => {
     h.ctx.autoScan = true;
     expect(await run(["ls", "--json", "--limit", "1"], h.ctx)).toBe(0);
     expect(JSON.parse(h.out())).toHaveLength(1);
+    expect(h.ledger.list()).toHaveLength(4);
+    expect(h.err()).toBe("");
+  });
+
+  test("keeps stderr clean for NDJSON output while still refreshing", async () => {
+    h.ctx.autoScan = true;
+    expect(await run(["show", "aaa11111", "--ndjson"], h.ctx)).toBe(0);
+    expect(h.stdout.map((line) => JSON.parse(line))).toHaveLength(4);
     expect(h.ledger.list()).toHaveLength(4);
     expect(h.err()).toBe("");
   });

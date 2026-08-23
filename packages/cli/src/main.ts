@@ -59,7 +59,7 @@ const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "privacy", "feedback"
  */
 async function autoScanLedger(ctx: Ctx, argv: string[]): Promise<void> {
   if (!ctx.autoScan || argv.includes("--no-scan") || process.env.SINTER_NO_SCAN === "1") return;
-  const quiet = argv.includes("--json") || argv.includes("--json=true");
+  const quiet = argv.includes("--json") || argv.includes("--json=true") || argv.includes("--ndjson") || argv.includes("--ndjson=true");
   try {
     const loads = await ctx.registry.load();
     const adapters = loads.filter((l) => l.adapter).map((l) => l.adapter!);
@@ -118,7 +118,7 @@ usage: sinter [command] [args]
   last [--harness x] [--cwd .] [--exec]  print or run the newest resume command
   search <query>                         full-text match over aliases, titles + prompts
   rename <id-prefix> <alias>             set a local alias that survives rescans
-  show <id-prefix> [--json]              render a transcript from any harness
+  show <id-prefix> [--json|--ndjson]     render or stream a transcript from any harness
   export <id-prefix> [-o file] [--slim]  write the session as SIF JSON
   import <file> --to <harness> [...]     synthesize a new native session from SIF
   setup [--yes] [--no-menu]              detect stores, build the ledger, then open the menu
@@ -159,7 +159,7 @@ const COMMAND_HELP: Record<string, string> = {
   search: "usage: sinter search <query> [--harness x] [--json]",
   rename: "usage: sinter rename <id-prefix> <alias> [--clear]\n\nStores a local alias in Sinter without modifying the native harness session.",
   alias: "usage: sinter rename <id-prefix> <alias> [--clear]",
-  show: "usage: sinter show <id-prefix> [--json] [--tool-chars n] [--no-sub]",
+  show: "usage: sinter show <id-prefix> [--json|--ndjson] [--tool-chars n] [--no-sub]\n\n--ndjson emits a versioned session record followed by one record per entry, then nested sessions.",
   export: "usage: sinter export <id-prefix> [-o file] [--slim]\n\nWithout -o, writes SIF JSON to stdout.",
   import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",
   port: "usage: sinter port <id-prefix> --to <harness> [--mode full|slim|compact] [--preview [--json]] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.\n--preview reports target readiness and transfer impact without invoking the target writer.\n--dry-run asks the target writer to validate and describe its planned native output.\nHistorical tool calls are inert unless --live-tools is explicit.",
@@ -212,7 +212,7 @@ export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   const cmd = argv[0];
   const rest = argv.slice(1);
-  const jsonRequested = rest.includes("--json") || rest.includes("--json=true");
+  const jsonRequested = rest.includes("--json") || rest.includes("--json=true") || rest.includes("--ndjson") || rest.includes("--ndjson=true");
 
   if (!cmd) {
     if (canRunMenu()) {
