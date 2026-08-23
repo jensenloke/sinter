@@ -67,7 +67,7 @@ Prioritized candidates after the current draft stack, not release commitments:
 6. **Local tags and notes — ready in draft PR #21.** Add
    searchable, rescan-safe user metadata across CLI/TUI/GUI search without
    modifying native sessions or carrying the metadata into ports.
-7. **Watch mode — implemented on `feat/watch-mode`.** Refresh a project or
+7. **Watch mode — ready in draft PR #22.** Refresh a project or
    recent-session view as local harness stores change. Interactive terminals
    redraw until Ctrl+C; pipes default to one snapshot and explicit `--count`
    plus NDJSON make automation bounded and predictable.
