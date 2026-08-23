@@ -291,6 +291,57 @@ export async function cmdLs(argv: string[], ctx: Ctx): Promise<number> {
   return printRows(ctx.ledger().list(opts), ctx, args);
 }
 
+/** A low-noise view for quickly finding the work a user just left. */
+export async function cmdRecent(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["harness", "cwd", "since", "limit"],
+    booleans: ["json"],
+    alias: { n: "limit" },
+  });
+  const opts = filterOpts(args, ctx.now);
+  opts.includeGhost = false;
+  opts.includeSubagents = false;
+  opts.limit ??= 10;
+  return printRows(ctx.ledger().list(opts), ctx, args);
+}
+
+/** Print or execute the native resume command for the newest matching session. */
+export async function cmdLast(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["harness", "cwd", "since"],
+    booleans: ["exec", "id", "json"],
+  });
+  const selected = ["exec", "id", "json"].filter((flag) => flagBool(args, flag));
+  if (selected.length > 1) throw new CliError(`choose one output mode: ${selected.map((flag) => `--${flag}`).join(", ")}`);
+
+  const opts = filterOpts(args, ctx.now);
+  opts.includeGhost = false;
+  opts.includeSubagents = false;
+  opts.limit = 1;
+  const row = ctx.ledger().list(opts)[0];
+  if (!row) throw new CliError("no recent sessions matched (run `sinter scan` first?)", EXIT.AMBIGUOUS);
+
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify(row, null, 2));
+    return EXIT.OK;
+  }
+  if (flagBool(args, "id")) {
+    ctx.out(`${row.harness}:${row.nativeId}`);
+    return EXIT.OK;
+  }
+
+  const adapter = await ctx.registry.get(row.harness);
+  const ref = { harness: row.harness, nativeId: row.nativeId, nativePath: row.nativePath };
+  if (flagBool(args, "exec")) {
+    if (!ctx.exec) throw new CliError("--exec is not available in this context");
+    const resumeArgv = adapter.resumeCommand(ref);
+    ctx.err(ctx.pal.dim(`exec: ${quoteArgv(resumeArgv)}`));
+    return await ctx.exec(resumeArgv);
+  }
+  printResume(ctx, adapter, ref);
+  return EXIT.OK;
+}
+
 export async function cmdSearch(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv, {
     strings: ["harness", "cwd", "since", "limit"],

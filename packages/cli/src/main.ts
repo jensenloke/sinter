@@ -18,11 +18,13 @@ import {
   cmdFeedback,
   cmdGui,
   cmdImport,
+  cmdLast,
   cmdLs,
   cmdMenu,
   cmdPort,
   cmdPrivacy,
   cmdRelink,
+  cmdRecent,
   cmdRename,
   cmdResume,
   cmdScan,
@@ -73,6 +75,8 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   scan: cmdScan,
   ls: cmdLs,
   list: cmdLs,
+  recent: cmdRecent,
+  last: cmdLast,
   search: cmdSearch,
   rename: cmdRename,
   alias: cmdRename,
@@ -103,6 +107,9 @@ usage: sinter [command] [args]
   scan                                   refresh the ledger from every available harness
   ls [--harness x] [--cwd .] [--since 7d] [--limit n]
                                          list sessions, newest first
+  recent [--harness x] [--cwd .] [-n 10]
+                                         list recent resumable parent sessions
+  last [--harness x] [--cwd .] [--exec]  print or run the newest resume command
   search <query>                         full-text match over aliases, titles + prompts
   rename <id-prefix> <alias>             set a local alias that survives rescans
   show <id-prefix> [--json]              render a transcript from any harness
@@ -139,6 +146,8 @@ ids: any unambiguous native-id prefix, optionally harness-scoped (codex:0199ab).
 const COMMAND_HELP: Record<string, string> = {
   scan: "usage: sinter scan [--harness claude,codex]\n\nRefreshes the local ledger. Reads local stores only.",
   ls: "usage: sinter ls [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]",
+  recent: "usage: sinter recent [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]\n\nLists the newest non-ghost parent sessions; defaults to 10.",
+  last: "usage: sinter last [--harness x] [--cwd .] [--since 7d] [--id|--json|--exec]\n\nSelects the newest non-ghost parent session. By default, prints its native resume command.",
   search: "usage: sinter search <query> [--harness x] [--json]",
   rename: "usage: sinter rename <id-prefix> <alias> [--clear]\n\nStores a local alias in Sinter without modifying the native harness session.",
   alias: "usage: sinter rename <id-prefix> <alias> [--clear]",
