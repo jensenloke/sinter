@@ -68,6 +68,7 @@ explicitly acknowledged with `--allow-sensitive`; this is not a proof that a
 transcript contains no secrets. Version 1 never includes workspace files,
 environment variables, credentials, or MCP configuration. See the
 [capsule format and threat model](docs/capsule-format-v1.md).
+Existing capsule files are not overwritten unless `--force` is explicit.
 
 Inspect profile configuration without starting a scan:
 

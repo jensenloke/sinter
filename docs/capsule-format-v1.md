@@ -28,6 +28,8 @@ sinter open handoff.sinter --in codex --passphrase-file key.txt
   explicitly passes `--live-tools`.
 - Passphrases are read from a file so they do not appear in shell history or the
   process argument list. Version 1 requires at least 12 characters.
+- Capsule writes refuse to overwrite an existing file unless `--force` is
+  explicit. New files are created atomically with owner-only mode `0600`.
 
 ## Outer envelope
 

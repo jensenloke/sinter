@@ -6,7 +6,8 @@
  * Exit codes: 0 ok, 1 error, 2 ambiguous / not found.
  */
 
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
+import { open } from "node:fs/promises";
 import { dirname } from "node:path";
 import { openLedger, type Ledger } from "@sinter/ledger";
 import { CliError, EXIT } from "./args";
@@ -170,7 +171,7 @@ const COMMAND_HELP: Record<string, string> = {
   alias: "usage: sinter rename <id-prefix> <alias> [--clear]",
   show: "usage: sinter show <id-prefix> [--json] [--tool-chars n] [--no-sub]",
   export: "usage: sinter export <id-prefix> [-o file] [--slim]\n\nWithout -o, writes SIF JSON to stdout.",
-  bundle: "usage: sinter bundle <id-prefix> --context-only [--mode full|slim|compact] [-o file.sinter] --passphrase-file <file> [--allow-sensitive]\n\nCreates an encrypted context-only capsule. Workspace files, environment values, and credentials are never added implicitly.",
+  bundle: "usage: sinter bundle <id-prefix> --context-only [--mode full|slim|compact] [-o file.sinter] --passphrase-file <file> [--allow-sensitive] [--force]\n\nCreates an encrypted context-only capsule. Workspace files, environment values, and credentials are never added implicitly. Existing files are not overwritten without --force.",
   inspect: "usage: sinter inspect <file.sinter> --passphrase-file <file> [--json]\n\nAuthenticates, decrypts, validates, and reviews a capsule without invoking a harness writer.",
   open: "usage: sinter open <file.sinter> --in <harness> --passphrase-file <file> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target-native session; never modifies the capsule.",
   import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",
@@ -209,6 +210,18 @@ export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile
         await Bun.write(p, c);
       }),
     readFile: overrides.readFile ?? ((p) => Bun.file(p).text()),
+    fileExists: overrides.fileExists ?? existsSync,
+    writeFileExclusive:
+      overrides.writeFileExclusive ??
+      (async (p, c) => {
+        mkdirSync(dirname(p), { recursive: true });
+        const file = await open(p, "wx", 0o600);
+        try {
+          await file.writeFile(c, "utf8");
+        } finally {
+          await file.close();
+        }
+      }),
     exec:
       overrides.exec ??
       (async (argv) => {

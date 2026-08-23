@@ -56,6 +56,10 @@ export interface Ctx {
   now: number;
   writeFile: (path: string, content: string) => Promise<void>;
   readFile: (path: string) => Promise<string>;
+  /** Used by capsule writes to refuse accidental overwrite. */
+  fileExists?: (path: string) => boolean;
+  /** Atomically create a new file; production uses O_EXCL and mode 0600. */
+  writeFileExclusive?: (path: string, content: string) => Promise<void>;
   /** Only used by `resume --exec`. Returns the child's exit code. */
   exec?: (argv: string[]) => Promise<number>;
   profile?: SinterProfile;
@@ -498,7 +502,7 @@ function capsuleError(error: unknown): CliError {
 export async function cmdBundle(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv, {
     strings: ["output", "passphrase-file", "mode"],
-    booleans: ["context-only", "include-workspace", "allow-sensitive", "json"],
+    booleans: ["context-only", "include-workspace", "allow-sensitive", "force", "json"],
     alias: { o: "output" },
   });
   const prefix = args._[0];
@@ -528,7 +532,19 @@ export async function cmdBundle(argv: string[], ctx: Ctx): Promise<number> {
   }
   const safeId = row.nativeId.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64);
   const output = flagString(args, "output") ?? `sinter-${safeId}.sinter`;
-  await ctx.writeFile(output, serialized);
+  if (flagBool(args, "force")) {
+    await ctx.writeFile(output, serialized);
+  } else {
+    if (!ctx.writeFileExclusive && ctx.fileExists?.(output))
+      throw new CliError(`refusing to overwrite existing capsule: ${output} (use --force)`);
+    try {
+      await (ctx.writeFileExclusive ?? ctx.writeFile)(output, serialized);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === "EEXIST")
+        throw new CliError(`refusing to overwrite existing capsule: ${output} (use --force)`);
+      throw error;
+    }
+  }
   const result = {
     schema: "sinter.bundle.v1",
     output,

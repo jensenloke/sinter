@@ -68,7 +68,7 @@ ${commands}
     rename) _arguments $global_args '1:session id' '2:alias' '--clear' ;;
     show) _arguments $global_args '1:session id' '--json' '--tool-chars=[tool result limit]:characters' '--no-sub' ;;
     export) _arguments $global_args '1:session id' '(-o --output)'{-o,--output}'=[output file]:file:_files' '--slim' ;;
-    bundle) _arguments $global_args '1:session id' '--context-only' '--include-workspace' '--mode=[transfer mode]:mode:($modes)' '(-o --output)'{-o,--output}'=[capsule file]:file:_files' '--passphrase-file=[passphrase file]:file:_files' '--allow-sensitive' '--json' ;;
+    bundle) _arguments $global_args '1:session id' '--context-only' '--include-workspace' '--mode=[transfer mode]:mode:($modes)' '(-o --output)'{-o,--output}'=[capsule file]:file:_files' '--passphrase-file=[passphrase file]:file:_files' '--allow-sensitive' '--force' '--json' ;;
     inspect) _arguments $global_args '1:capsule file:_files' '--passphrase-file=[passphrase file]:file:_files' '--json' ;;
     open) _arguments $global_args '1:capsule file:_files' '--in=[target harness]:harness:($harnesses)' '--passphrase-file=[passphrase file]:file:_files' '--cwd=[target directory]:directory:_directories' '--dry-run' '--live-tools' ;;
     import) _arguments $global_args '1:SIF file:_files' '--to=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--dry-run' '--live-tools' ;;

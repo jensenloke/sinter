@@ -68,6 +68,11 @@ function harness(): Harness {
       if (!(p in files)) throw new Error("ENOENT");
       return files[p]!;
     },
+    fileExists: (p) => p in files || p in written,
+    writeFileExclusive: async (p, c) => {
+      if (p in files || p in written) throw Object.assign(new Error("EEXIST"), { code: "EEXIST" });
+      written[p] = c;
+    },
     exec: async (argv) => {
       execed.push(argv);
       return 0;
@@ -501,6 +506,26 @@ describe("encrypted capsules", () => {
       await run(["bundle", "aaa11111", "--include-workspace", "--passphrase-file", keyFile], h.ctx),
     ).toBe(1);
     expect(h.err()).toContain("no workspace files were read");
+  });
+
+  test("refuses to overwrite an existing capsule unless --force is explicit", async () => {
+    h.files[keyFile] = "correct horse battery staple";
+    h.files["/tmp/existing.sinter"] = "keep me";
+    await scan();
+    expect(
+      await run(["bundle", "aaa11111", "-o", "/tmp/existing.sinter", "--passphrase-file", keyFile], h.ctx),
+    ).toBe(1);
+    expect(h.err()).toContain("refusing to overwrite existing capsule");
+    expect(h.written["/tmp/existing.sinter"]).toBeUndefined();
+
+    h.stderr.length = 0;
+    expect(
+      await run(
+        ["bundle", "aaa11111", "-o", "/tmp/existing.sinter", "--passphrase-file", keyFile, "--force"],
+        h.ctx,
+      ),
+    ).toBe(0);
+    expect(h.written["/tmp/existing.sinter"]).toContain('"format": "sinter-capsule"');
   });
 });
 

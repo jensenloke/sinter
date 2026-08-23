@@ -52,8 +52,24 @@ const SENSITIVE_PATTERNS: Array<{ category: string; description: string; pattern
 
 /** Best-effort review. Categories are returned without ever returning matched values. */
 export function findSensitiveContent(session: SifSession): SensitiveFinding[] {
-  const text = JSON.stringify(session);
-  return SENSITIVE_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(({ category, description }) => ({
+  const texts: string[] = [];
+  const visit = (value: unknown): void => {
+    if (typeof value === "string") {
+      texts.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value)) {
+      if (typeof child === "string") texts.push(`${key}=${child}`);
+      visit(child);
+    }
+  };
+  visit(session);
+  return SENSITIVE_PATTERNS.filter(({ pattern }) => texts.some((text) => pattern.test(text))).map(({ category, description }) => ({
     category,
     description,
   }));

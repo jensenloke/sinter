@@ -51,7 +51,7 @@ describe("encrypted session capsules", () => {
     source.entries[0] = {
       ...source.entries[0]!,
       kind: "user",
-      content: [{ type: "text", text: "api_key=sk-abcdefghijklmnopqrstuvwxyz123456" }],
+      content: [{ type: "text", text: 'api_key="sk-abcdefghijklmnopqrstuvwxyz123456"' }],
     } as typeof source.entries[0];
     const findings = findSensitiveContent(source);
     expect(findings.map((finding) => finding.category)).toContain("api-key");
