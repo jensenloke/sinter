@@ -39,3 +39,6 @@ jobs:
 
       - name: Smoke built entrypoint
         run: bun packages/cli/dist/main.js --version
+
+      - name: Rehearse global package install
+        run: bun run verify:package

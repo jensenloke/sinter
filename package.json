@@ -10,6 +10,7 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "build:cli": "bun run --cwd packages/cli build",
+    "verify:package": "bash scripts/verify-package.sh",
     "sinter": "bun packages/cli/src/main.ts"
   },
   "devDependencies": {
