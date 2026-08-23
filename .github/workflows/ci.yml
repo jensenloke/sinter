@@ -14,7 +14,12 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    name: Verify (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
       - name: Check out repository
