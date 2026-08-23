@@ -32,9 +32,9 @@ the next one through real usage and privacy review.
    show|path|validate` for local profiles. Guided writes for defaults, update
    checks, and telemetry remain a later checkpoint because they require a
    stable, migration-safe config schema.
-7. **Large transcript navigation — in implementation.** Add a bounded tail view
-   for quickly reading the latest turns without rendering an entire long-running
-   session or emitting an incomplete machine-readable SIF document.
+7. **Large transcript navigation — ready in draft PR #14.** Add a bounded tail
+   view for quickly reading the latest turns without rendering an entire
+   long-running session or emitting an incomplete machine-readable SIF document.
 
 ## Phase 1: portable session capsules
 
