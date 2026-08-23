@@ -30,6 +30,9 @@ See the [v0.1.10 release notes](docs/releases/v0.1.10.md) for the latest changes
 ```sh
 sinter scan
 sinter ls --since 7d
+sinter recent --cwd .
+sinter last --cwd .             # print the newest native resume command
+sinter last --cwd . --exec      # resume it in this terminal
 sinter search "session alias or topic"
 sinter rename <id-prefix> "My important session"
 sinter show <id-prefix>

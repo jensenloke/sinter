@@ -219,6 +219,52 @@ describe("ls", () => {
   });
 });
 
+describe("recent", () => {
+  test("lists resumable parent sessions with a compact default limit", async () => {
+    await scan();
+    h.claude.summaries = h.claude.summaries.filter((s) => s.nativeId !== "bbb33333-3333");
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["recent"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("porting sessions between harnesses");
+    expect(h.out()).not.toContain("old thing");
+  });
+
+  test("keeps the useful ls filters and JSON output", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["recent", "--cwd", "/Users/test/other", "--json"], h.ctx)).toBe(0);
+    const rows = JSON.parse(h.out());
+    expect(rows.map((row: { nativeId: string }) => row.nativeId)).toEqual(["aaa22222-2222"]);
+  });
+});
+
+describe("last", () => {
+  test("prints the native resume command for the newest matching session", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["last", "--cwd", "/Users/test/other"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("claude --resume aaa22222-2222");
+  });
+
+  test("supports script-safe ids and explicit execution", async () => {
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["last", "--cwd", "/Users/test/other", "--id"], h.ctx)).toBe(0);
+    expect(h.out()).toBe("claude:aaa22222-2222");
+
+    h.stdout.length = 0;
+    expect(await run(["last", "--cwd", "/Users/test/other", "--exec"], h.ctx)).toBe(0);
+    expect(h.execed).toEqual([["claude", "--resume", "aaa22222-2222"]]);
+  });
+
+  test("fails clearly when filters match nothing", async () => {
+    await scan();
+    expect(await run(["last", "--cwd", "/nowhere"], h.ctx)).toBe(2);
+    expect(h.err()).toContain("no recent sessions matched");
+  });
+});
+
 describe("search", () => {
   test("FTS matches titles and prints the same table", async () => {
     await scan();
