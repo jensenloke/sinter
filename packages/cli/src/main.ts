@@ -42,6 +42,7 @@ import {
   cmdTelemetry,
   cmdThread,
   cmdUnpin,
+  cmdView,
   type Ctx,
 } from "./commands";
 import { colorEnabled, palette, termWidth } from "./format";
@@ -53,6 +54,12 @@ export const VERSION = "0.1.10";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
 const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "capabilities", "ghosts", "privacy", "feedback", "telemetry", "completion", "config"]);
+
+function skipsAutoScan(command: string, argv: string[]): boolean {
+  if (AUTO_SCAN_SKIP.has(command)) return true;
+  // Saved-view definitions are ledger metadata; only executing a view needs fresh sessions.
+  return command === "view" && (argv[0] ?? "list") !== "run";
+}
 
 /**
  * Keep the ledger fresh on every invocation: commands that resolve or list
@@ -94,6 +101,7 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   pin: cmdPin,
   pinned: cmdPinned,
   ghosts: cmdGhosts,
+  view: cmdView,
   thread: cmdThread,
   last: cmdLast,
   search: cmdSearch,
@@ -135,6 +143,7 @@ usage: sinter [command] [args]
   unpin <id-prefix>                      remove a local session bookmark
   pinned [--harness x] [--cwd .]        list bookmarked sessions
   ghosts [preview|prune] [...]          preview or prune disposable ghost rows
+  view <save|list|show|run|delete> ...  manage reusable local session filters
   thread <id-prefix> [--json]           inspect port lineage and resumable tip
   projects [--harness x] [--since 7d]   group resumable sessions by project
   last [--harness x] [--cwd .] [--exec]  print or run the newest resume command
@@ -184,6 +193,7 @@ const COMMAND_HELP: Record<string, string> = {
   unpin: "usage: sinter unpin <id-prefix>\n\nRemoves a Sinter-local bookmark without modifying the session.",
   pinned: "usage: sinter pinned [--harness x] [--cwd .] [--since 7d] [--limit n] [--json] [--no-ghost] [--no-sub]\n\nLists local bookmarks. Pins survive rescans and native-session garbage collection.",
   ghosts: "usage: sinter ghosts [preview|prune] [--older-than 30d] [--harness x] [--json] [--yes]\n\nPreviews old ghost rows by default. Pruning requires the explicit `prune` action and --yes, removes only disposable ledger/FTS rows, and never modifies native stores, aliases, pins, or lineage.",
+  view: "usage: sinter view <save|list|show|run|delete> ...\n\nSaves reusable local filters for harness, cwd, recency, result limit, ghosts, and subagents. Explicit flags on `view run` override the saved definition.",
   thread: "usage: sinter thread <id-prefix> [--json]\n\nShows cached port lineage, transfer modes, missing hops, and the newest resumable session without reading transcripts.",
   projects: "usage: sinter projects [--harness x] [--since 7d] [--limit n] [--json]\n\nGroups resumable parent sessions by working directory without reading transcript bodies.",
   last: "usage: sinter last [--harness x] [--cwd .] [--since 7d] [--id|--json|--exec]\n\nSelects the newest non-ghost parent session. By default, prints its native resume command.",
@@ -278,7 +288,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     return EXIT.OK;
   }
 
-  if (!AUTO_SCAN_SKIP.has(cmd)) await autoScanLedger(ctx, argv);
+  if (!skipsAutoScan(cmd, rest)) await autoScanLedger(ctx, argv);
 
   try {
     const code = await fn(rest, ctx);

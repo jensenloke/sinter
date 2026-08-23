@@ -57,8 +57,9 @@ Prioritized candidates after the current draft stack, not release commitments:
    adapter loading, store detection, read/write support, native resume
    readiness, and known limitations in human and versioned JSON forms. The TUI
    consumes the same resolver so its action availability cannot drift.
-4. **Saved views.** Name reusable combinations of project, harness, recency, and
-   ghost/subagent filters without weakening the explicit command flags.
+4. **Saved views — implemented on `feat/saved-views`.** Name reusable local
+   combinations of project, harness, recency, limit, and ghost/subagent filters;
+   explicit flags on `view run` override the saved definition.
 5. **Safe ghost housekeeping — ready in draft PR #19.**
    Preview old ghost rows by default; pruning requires an explicit action and
    confirmation, protects aliased or pinned rows, and never touches native

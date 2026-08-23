@@ -10,8 +10,9 @@
  * `CREATE ... IF NOT EXISTS`, so applying them to an older database is purely
  * additive: existing rows are never dropped, rewritten or re-created. Opening a
  * v1 ledger under v2 gains the `lineage` table; v2 under v3 gains the
- * `session_aliases` table; v3 under v4 gains the `session_pins` table. All keep
- * every session row. New versions must keep that property; a change that needs
+ * `session_aliases` table; v3 under v4 gains the `session_pins` table; v4 under
+ * v5 gains `saved_views`. All keep every session row. New versions must keep
+ * that property; a change that needs
  * to rewrite data has to be a separate, explicit, versioned step — never a
  * silent re-`exec` here.
  *
@@ -19,7 +20,7 @@
  * a trigger: nothing keys off its value, so bumping it cannot wipe anything.
  */
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -93,4 +94,15 @@ CREATE TABLE IF NOT EXISTS lineage (
 );
 
 CREATE INDEX IF NOT EXISTS lineage_thread_idx ON lineage(thread_id);
+
+CREATE TABLE IF NOT EXISTS saved_views (
+  name              TEXT PRIMARY KEY COLLATE NOCASE,
+  harnesses         TEXT,
+  cwd               TEXT,
+  since_window      TEXT,
+  row_limit         INTEGER,
+  include_ghost     INTEGER NOT NULL DEFAULT 0,
+  include_subagents INTEGER NOT NULL DEFAULT 0,
+  updated_at        TEXT NOT NULL
+);
 `;

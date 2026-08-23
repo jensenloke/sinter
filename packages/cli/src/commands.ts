@@ -512,6 +512,179 @@ export async function cmdGhosts(argv: string[], ctx: Ctx): Promise<number> {
   return EXIT.OK;
 }
 
+const VIEW_NAME = /^[a-z0-9][a-z0-9._-]{0,39}$/i;
+
+function requireViewName(name: string | undefined): string {
+  if (!name || !VIEW_NAME.test(name))
+    throw new CliError("view name must be 1-40 letters, numbers, dots, dashes, or underscores");
+  return name;
+}
+
+function viewLimit(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const limit = Number(value);
+  if (!Number.isFinite(limit) || limit <= 0) throw new CliError(`bad --limit: ${value}`);
+  return Math.floor(limit);
+}
+
+/** Manage reusable, Sinter-local list filters. */
+export async function cmdView(argv: string[], ctx: Ctx): Promise<number> {
+  const hasAction = !!argv[0] && !argv[0]!.startsWith("-");
+  const action = hasAction ? argv[0]! : "list";
+  const rest = hasAction ? argv.slice(1) : argv;
+  const ledger = ctx.ledger();
+
+  if (action === "list") {
+    const args = parseArgs(rest, { booleans: ["json"] });
+    if (args._.length) throw new CliError("usage: sinter view list [--json]");
+    const views = ledger.listViews();
+    if (flagBool(args, "json")) {
+      ctx.out(JSON.stringify({ schema: "sinter.views.v1", views }, null, 2));
+      return EXIT.OK;
+    }
+    if (!views.length) {
+      ctx.out("no saved views");
+      return EXIT.OK;
+    }
+    ctx.out(
+      renderTable(
+        [
+          { header: "NAME" },
+          { header: "HARNESSES" },
+          { header: "CWD", max: 28 },
+          { header: "SINCE" },
+          { header: "LIMIT", align: "right" },
+          { header: "INCLUDES", flex: true },
+        ],
+        views.map((view) => [
+          view.name,
+          view.harnesses?.join(",") ?? "all",
+          shortenPath(view.cwd, 28),
+          view.since ?? "all",
+          view.limit ? String(view.limit) : "-",
+          [view.includeGhost ? "ghosts" : "", view.includeSubagents ? "subagents" : ""].filter(Boolean).join(",") || "-",
+        ]),
+        { width: ctx.width, pal: ctx.pal },
+      ),
+    );
+    return EXIT.OK;
+  }
+
+  if (action === "save") {
+    const args = parseArgs(rest, {
+      strings: ["harness", "cwd", "since", "limit"],
+      booleans: ["ghosts", "subagents", "force", "json"],
+    });
+    if (args._.length !== 1)
+      throw new CliError("usage: sinter view save <name> [--harness x] [--cwd .] [--since 7d] [--limit n] [--ghosts] [--subagents] [--force]");
+    const name = requireViewName(args._[0]);
+    if (ledger.getView(name) && !flagBool(args, "force"))
+      throw new CliError(`saved view already exists: ${name} (use --force to replace it)`);
+    const harnessFlag = flagString(args, "harness");
+    const harnesses = harnessFlag
+      ? harnessFlag.split(",").map((id) => parseHarness(id)) as HarnessId[]
+      : undefined;
+    const cwdFlag = flagString(args, "cwd");
+    const cwd = cwdFlag === "." ? process.cwd() : cwdFlag?.replace(/\/$/, "");
+    const since = flagString(args, "since");
+    if (since) parseSince(since, ctx.now);
+    const limit = viewLimit(flagString(args, "limit"));
+    const saved = ledger.saveView({
+      name,
+      ...(harnesses?.length ? { harnesses } : {}),
+      ...(cwd ? { cwd } : {}),
+      ...(since ? { since } : {}),
+      ...(limit ? { limit } : {}),
+      includeGhost: flagBool(args, "ghosts"),
+      includeSubagents: flagBool(args, "subagents"),
+    }, new Date(ctx.now).toISOString());
+    if (flagBool(args, "json")) ctx.out(JSON.stringify({ schema: "sinter.view.v1", view: saved }, null, 2));
+    else ctx.out(`saved view ${saved.name}`);
+    return EXIT.OK;
+  }
+
+  if (action === "show") {
+    const args = parseArgs(rest, { booleans: ["json"] });
+    if (args._.length !== 1) throw new CliError("usage: sinter view show <name> [--json]");
+    const name = requireViewName(args._[0]);
+    const view = ledger.getView(name);
+    if (!view) throw new CliError(`saved view not found: ${name}`);
+    if (flagBool(args, "json")) {
+      ctx.out(JSON.stringify({ schema: "sinter.view.v1", view }, null, 2));
+    } else {
+      ctx.out(`view ${view.name}`);
+      ctx.out(`  harnesses: ${view.harnesses?.join(",") ?? "all"}`);
+      ctx.out(`  cwd: ${view.cwd ?? "all"}`);
+      ctx.out(`  since: ${view.since ?? "all"}`);
+      ctx.out(`  limit: ${view.limit ?? "default (30)"}`);
+      ctx.out(`  ghosts: ${view.includeGhost ? "include" : "hide"}`);
+      ctx.out(`  subagents: ${view.includeSubagents ? "include" : "hide"}`);
+    }
+    return EXIT.OK;
+  }
+
+  if (action === "delete") {
+    const args = parseArgs(rest);
+    if (args._.length !== 1) throw new CliError("usage: sinter view delete <name>");
+    const name = requireViewName(args._[0]);
+    if (!ledger.deleteView(name)) throw new CliError(`saved view not found: ${name}`);
+    ctx.out(`deleted view ${name}`);
+    return EXIT.OK;
+  }
+
+  if (action === "run") {
+    const args = parseArgs(rest, {
+      strings: ["harness", "cwd", "since", "limit"],
+      booleans: ["json", "ghosts", "no-ghosts", "subagents", "no-subagents", "all-harnesses", "all-cwd", "all-time"],
+    });
+    if (args._.length !== 1)
+      throw new CliError("usage: sinter view run <name> [--harness x|--all-harnesses] [--cwd .|--all-cwd] [--since 7d|--all-time] [--limit n] [--ghosts|--no-ghosts] [--subagents|--no-subagents] [--json]");
+    if (flagBool(args, "ghosts") && flagBool(args, "no-ghosts"))
+      throw new CliError("choose one: --ghosts or --no-ghosts");
+    if (flagBool(args, "subagents") && flagBool(args, "no-subagents"))
+      throw new CliError("choose one: --subagents or --no-subagents");
+    if (flagBool(args, "all-harnesses") && flagString(args, "harness"))
+      throw new CliError("choose one: --harness or --all-harnesses");
+    if (flagBool(args, "all-cwd") && flagString(args, "cwd"))
+      throw new CliError("choose one: --cwd or --all-cwd");
+    if (flagBool(args, "all-time") && flagString(args, "since"))
+      throw new CliError("choose one: --since or --all-time");
+    const name = requireViewName(args._[0]);
+    const view = ledger.getView(name);
+    if (!view) throw new CliError(`saved view not found: ${name}`);
+
+    const harnessFlag = flagString(args, "harness");
+    const cwdFlag = flagString(args, "cwd");
+    const sinceFlag = flagString(args, "since");
+    const limitFlag = viewLimit(flagString(args, "limit"));
+    const sinceWindow = flagBool(args, "all-time") ? undefined : sinceFlag ?? view.since;
+    const opts: ListOpts = {
+      ...(!flagBool(args, "all-harnesses") && harnessFlag
+        ? { harness: harnessFlag.split(",").map((id) => parseHarness(id)) as HarnessId[] }
+        : !flagBool(args, "all-harnesses") && view.harnesses ? { harness: view.harnesses } : {}),
+      ...(!flagBool(args, "all-cwd") && (cwdFlag ?? view.cwd)
+        ? { cwd: cwdFlag === "." ? process.cwd() : (cwdFlag ?? view.cwd)!.replace(/\/$/, "") }
+        : {}),
+      ...(sinceWindow ? { since: parseSince(sinceWindow, ctx.now) } : {}),
+      limit: limitFlag ?? view.limit ?? 30,
+      includeGhost: flagBool(args, "ghosts") ? true : flagBool(args, "no-ghosts") ? false : view.includeGhost,
+      includeSubagents: flagBool(args, "subagents") ? true : flagBool(args, "no-subagents") ? false : view.includeSubagents,
+    };
+    const sessions = ledger.list(opts);
+    if (flagBool(args, "json")) {
+      ctx.out(JSON.stringify({ schema: "sinter.view.v1", view, effective: opts, sessions }, null, 2));
+    } else if (!sessions.length) {
+      ctx.err(`no sessions matched view ${view.name}`);
+    } else {
+      ctx.out(ctx.pal.dim(`view ${view.name} · ${sessions.length} session${sessions.length === 1 ? "" : "s"}`));
+      ctx.out(rowsTable(sessions, ctx));
+    }
+    return EXIT.OK;
+  }
+
+  throw new CliError(`unknown view action: ${action} (known: save, list, show, run, delete)`);
+}
+
 interface ThreadHopView {
   hop: number;
   harness: HarnessId;

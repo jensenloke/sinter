@@ -2,6 +2,7 @@ export { Ledger, openLedger, defaultLedgerPath } from "./ledger";
 export type {
   LedgerRow,
   GhostOpts,
+  SavedView,
   LineageRow,
   ListOpts,
   ScanResult,

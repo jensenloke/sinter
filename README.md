@@ -37,6 +37,7 @@ sinter pinned                  # list bookmarks across harnesses
 sinter thread <id-prefix>      # inspect port lineage and the resumable tip
 sinter capabilities           # check read, write, store, and resume support
 sinter ghosts                 # preview disposable ghost rows older than 30 days
+sinter view run work          # run a reusable local session filter
 sinter projects                 # group resumable sessions by working directory
 sinter last --cwd .             # print the newest native resume command
 sinter last --cwd . --exec      # resume it in this terminal
@@ -83,6 +84,21 @@ sinter ghosts prune --older-than 30d --yes
 Pruning removes only eligible session and search-index rows. It never changes
 native harness stores, aliases, pins, or cached thread lineage; a later scan can
 rediscover a native session if it returns.
+
+Save frequently used filters in the local ledger, then run them by name:
+
+```sh
+sinter view save work --cwd . --harness claude,codex --since 14d --limit 25
+sinter view list
+sinter view run work
+sinter view run work --harness omp --limit 5   # explicit flags override the view
+sinter view run work --all-cwd --all-time      # clear saved scope filters
+```
+
+Views hide ghosts and subagents unless saved with `--ghosts` or `--subagents`.
+Use `view show` to inspect a definition, `view save --force` to replace it, and
+`view delete` to remove it. Definitions remain local and contain filters only,
+never transcript content.
 
 Inspect profile configuration without starting a scan:
 

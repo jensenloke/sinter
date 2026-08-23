@@ -207,6 +207,77 @@ describe("ghost housekeeping", () => {
   });
 });
 
+describe("saved views", () => {
+  test("saves, lists, shows, and runs a reusable local filter", async () => {
+    await scan();
+    h.ledger.upsert(summary({ nativeId: "ghost-view", ghost: true, updatedAt: "2026-08-10T00:00:00.000Z" }));
+    h.ledger.upsert(summary({ nativeId: "sub-view", isSubagent: true, updatedAt: "2026-08-10T00:00:00.000Z" }));
+
+    expect(await run(["view", "save", "work", "--harness", "claude", "--cwd", "/Users/test/proj", "--since", "30d", "--limit", "2"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("saved view work");
+
+    h.stdout.length = 0;
+    expect(await run(["view", "--json"], h.ctx)).toBe(0);
+    expect(JSON.parse(h.out())).toMatchObject({
+      schema: "sinter.views.v1",
+      views: [{ name: "work", harnesses: ["claude"], since: "30d", limit: 2 }],
+    });
+
+    h.stdout.length = 0;
+    expect(await run(["view", "show", "work"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("harnesses: claude");
+
+    h.stdout.length = 0;
+    expect(await run(["view", "run", "work", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result.schema).toBe("sinter.view.v1");
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0].nativeId).toBe("aaa11111-1111");
+    expect(result.sessions.map((row: { nativeId: string }) => row.nativeId)).not.toContain("ghost-view");
+    expect(result.sessions.map((row: { nativeId: string }) => row.nativeId)).not.toContain("sub-view");
+
+    h.stdout.length = 0;
+    expect(await run(["view", "run", "work", "--all-harnesses", "--all-cwd", "--all-time", "--limit", "100", "--json"], h.ctx)).toBe(0);
+    const unscoped = JSON.parse(h.out());
+    expect(unscoped.effective.harness).toBeUndefined();
+    expect(unscoped.effective.cwd).toBeUndefined();
+    expect(unscoped.effective.since).toBeUndefined();
+    expect(unscoped.sessions).toHaveLength(4);
+  });
+
+  test("explicit run flags override saved filters", async () => {
+    await scan();
+    await run(["view", "save", "recent", "--harness", "claude", "--limit", "1"], h.ctx);
+    h.stdout.length = 0;
+    expect(await run(["view", "run", "recent", "--harness", "omp", "--limit", "5", "--json"], h.ctx)).toBe(0);
+    const result = JSON.parse(h.out());
+    expect(result.effective).toMatchObject({ harness: ["omp"], limit: 5 });
+    expect(result.sessions.map((row: { nativeId: string }) => row.nativeId)).toEqual(["omp-1"]);
+  });
+
+  test("protects names from accidental replacement and deletes explicitly", async () => {
+    expect(await run(["view", "save", "daily"], h.ctx)).toBe(0);
+    expect(await run(["view", "save", "DAILY"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("use --force");
+    h.stderr.length = 0;
+    expect(await run(["view", "save", "DAILY", "--harness", "pi", "--force"], h.ctx)).toBe(0);
+    expect(h.ledger.getView("daily")?.harnesses).toEqual(["pi"]);
+    expect(await run(["view", "delete", "daily"], h.ctx)).toBe(0);
+    expect(h.ledger.getView("daily")).toBeUndefined();
+    expect(await run(["view", "delete", "daily"], h.ctx)).toBe(1);
+  });
+
+  test("validates names, filters, and conflicting overrides", async () => {
+    expect(await run(["view", "save", "bad name"], h.ctx)).toBe(1);
+    expect(await run(["view", "save", "bad-age", "--since", "later"], h.ctx)).toBe(1);
+    expect(await run(["view", "save", "bad-limit", "--limit", "0"], h.ctx)).toBe(1);
+    await run(["view", "save", "valid"], h.ctx);
+    expect(await run(["view", "run", "valid", "--ghosts", "--no-ghosts"], h.ctx)).toBe(1);
+    expect(await run(["view", "run", "valid", "--harness", "pi", "--all-harnesses"], h.ctx)).toBe(1);
+    expect(await run(["view", "unknown"], h.ctx)).toBe(1);
+  });
+});
+
 describe("config", () => {
   test("shows and validates every profile without touching the ledger", async () => {
     const dir = mkdtempSync(join(tmpdir(), "sinter-config-"));
@@ -1074,7 +1145,20 @@ describe("auto-scan (always-fresh ledger)", () => {
     h.stdout.length = 0;
     await run(["ghosts"], h.ctx);
     expect(lists).toBe(afterScan); // housekeeping acts only on the current ledger snapshot
+    h.stdout.length = 0;
+    await run(["view", "save", "quiet"], h.ctx);
+    await run(["view", "list"], h.ctx);
+    expect(lists).toBe(afterScan); // defining and inspecting views is metadata-only
     expect(h.ledger.list()).toHaveLength(4);
+  });
+
+  test("running a saved view refreshes the session ledger", async () => {
+    h.ctx.autoScan = true;
+    await run(["view", "save", "fresh", "--harness", "claude"], h.ctx);
+    expect(h.ledger.list()).toHaveLength(0);
+    expect(await run(["view", "run", "fresh"], h.ctx)).toBe(0);
+    expect(h.ledger.list()).toHaveLength(4);
+    expect(h.out()).toContain("porting sessions between harnesses");
   });
 
   test("an auto-scan error never fails the command", async () => {

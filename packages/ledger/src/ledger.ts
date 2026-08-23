@@ -73,6 +73,18 @@ export interface GhostOpts {
   before?: string;
 }
 
+export interface SavedView {
+  name: string;
+  harnesses?: HarnessId[];
+  cwd?: string;
+  /** Relative window (for example 7d), resolved each time the view runs. */
+  since?: string;
+  limit?: number;
+  includeGhost: boolean;
+  includeSubagents: boolean;
+  updatedAt: string;
+}
+
 export interface ScanHarnessStat {
   seen: number;
   inserted: number;
@@ -170,6 +182,24 @@ function lineageFromDb(r: Record<string, unknown>): LineageRow {
     parentNativeId: (r.parent_native_id as string) ?? undefined,
     portedAt: (r.ported_at as string) ?? undefined,
     mode: (r.mode as string) ?? undefined,
+  };
+}
+
+const HARNESS_IDS = new Set<HarnessId>(["claude", "codex", "devin", "opencode", "zcode", "omp", "pi"]);
+
+function viewFromDb(r: Record<string, unknown>): SavedView {
+  const harnesses = typeof r.harnesses === "string"
+    ? r.harnesses.split(",").filter((id): id is HarnessId => HARNESS_IDS.has(id as HarnessId))
+    : [];
+  return {
+    name: String(r.name),
+    ...(harnesses.length ? { harnesses } : {}),
+    ...((r.cwd as string | null) ? { cwd: String(r.cwd) } : {}),
+    ...((r.since_window as string | null) ? { since: String(r.since_window) } : {}),
+    ...(num(r.row_limit) ? { limit: num(r.row_limit) } : {}),
+    includeGhost: !!r.include_ghost,
+    includeSubagents: !!r.include_subagents,
+    updatedAt: String(r.updated_at),
   };
 }
 
@@ -330,6 +360,48 @@ export class Ledger {
        ON CONFLICT(harness, native_id) DO UPDATE SET pinned_at = excluded.pinned_at`,
       [harness, nativeId, pinnedAt],
     );
+  }
+
+  /** Save or replace a named, Sinter-local list filter. */
+  saveView(view: Omit<SavedView, "updatedAt">, updatedAt = new Date().toISOString()): SavedView {
+    this.db.run(
+      `INSERT INTO saved_views (
+        name, harnesses, cwd, since_window, row_limit, include_ghost, include_subagents, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(name) DO UPDATE SET
+        harnesses = excluded.harnesses,
+        cwd = excluded.cwd,
+        since_window = excluded.since_window,
+        row_limit = excluded.row_limit,
+        include_ghost = excluded.include_ghost,
+        include_subagents = excluded.include_subagents,
+        updated_at = excluded.updated_at`,
+      [
+        view.name,
+        view.harnesses?.join(",") ?? null,
+        view.cwd ?? null,
+        view.since ?? null,
+        view.limit ?? null,
+        view.includeGhost ? 1 : 0,
+        view.includeSubagents ? 1 : 0,
+        updatedAt,
+      ],
+    );
+    return this.getView(view.name)!;
+  }
+
+  getView(name: string): SavedView | undefined {
+    const row = this.db.query("SELECT * FROM saved_views WHERE name = ?").get(name) as Record<string, unknown> | null;
+    return row ? viewFromDb(row) : undefined;
+  }
+
+  listViews(): SavedView[] {
+    return (this.db.query("SELECT * FROM saved_views ORDER BY name COLLATE NOCASE").all() as Record<string, unknown>[])
+      .map(viewFromDb);
+  }
+
+  deleteView(name: string): boolean {
+    return this.db.run("DELETE FROM saved_views WHERE name = ?", [name]).changes > 0;
   }
 
   /**

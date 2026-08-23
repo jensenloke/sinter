@@ -9,6 +9,7 @@ const COMMANDS = [
   ["unpin", "remove a local bookmark"],
   ["pinned", "list bookmarked sessions"],
   ["ghosts", "preview or prune disposable ghost rows"],
+  ["view", "manage reusable local session filters"],
   ["thread", "inspect session port lineage"],
   ["projects", "group sessions by working directory"],
   ["last", "resume the newest matching session"],
@@ -72,6 +73,7 @@ ${commands}
     unpin) _arguments $global_args '1:session id' ;;
     pinned) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
     ghosts) _arguments $global_args '1:action:(preview prune)' '--older-than=[minimum ghost age]:duration' '--harness=[filter by harness]:harness:($harnesses)' '--json' '--yes' ;;
+    view) _arguments $global_args '1:action:(save list show run delete)' '2:view name' '--harness=[filter by harness]:harnesses' '--all-harnesses' '--cwd=[filter by directory]:directory:_directories' '--all-cwd' '--since=[time window]:duration' '--all-time' '--limit=[maximum rows]:count' '--ghosts' '--no-ghosts' '--subagents' '--no-subagents' '--force' '--json' ;;
     thread) _arguments $global_args '1:session id' '--json' ;;
     projects) _arguments $global_args '--harness=[filter by harness]:harnesses' '--since=[time window]:duration' '--limit=[maximum projects]:count' '--json' ;;
     last) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--id' '--json' '--exec' ;;
@@ -126,7 +128,7 @@ function bash(): string {
     COMPREPLY=( $(compgen -W 'show path validate --json' -- "$current") )
     return
   fi
-  COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --cwd --since --older-than --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open --yes' -- "$current") )
+  COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --all-harnesses --cwd --all-cwd --since --all-time --older-than --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open --yes --ghosts --no-ghosts --subagents --no-subagents --force' -- "$current") )
 }
 complete -F _sinter_completion sinter
 `;
@@ -158,6 +160,18 @@ function fish(): string {
     "complete -c sinter -n '__fish_seen_subcommand_from ghosts' -l older-than -r -d 'Minimum ghost age'",
     "complete -c sinter -n '__fish_seen_subcommand_from ghosts' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from ghosts' -l yes -d 'Confirm pruning'",
+    "complete -c sinter -n '__fish_seen_subcommand_from view' -a 'save list show run delete' -d 'Action'",
+    `complete -c sinter -n '__fish_seen_subcommand_from view' -l harness -xa '${HARNESSES.join(" ")}' -d 'Filter by harness'`,
+    "complete -c sinter -n '__fish_seen_subcommand_from view' -l all-harnesses -d 'Clear the saved harness filter'",
+    "complete -c sinter -n '__fish_seen_subcommand_from view' -l cwd -r -d 'Filter by directory'",
+    "complete -c sinter -n '__fish_seen_subcommand_from view' -l all-cwd -d 'Clear the saved directory filter'",
+    "complete -c sinter -n '__fish_seen_subcommand_from view' -l since -r -d 'Filter by age'",
+    "complete -c sinter -n '__fish_seen_subcommand_from view' -l all-time -d 'Clear the saved recency filter'",
+    "complete -c sinter -n '__fish_seen_subcommand_from view' -l limit -r -d 'Maximum rows'",
+    "complete -c sinter -n '__fish_seen_subcommand_from view' -l ghosts -d 'Include ghost rows'",
+    "complete -c sinter -n '__fish_seen_subcommand_from view' -l subagents -d 'Include subagents'",
+    "complete -c sinter -n '__fish_seen_subcommand_from view' -l force -d 'Replace an existing view'",
+    "complete -c sinter -n '__fish_seen_subcommand_from view' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from thread' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from show' -l json -d 'Emit one SIF JSON document'",
     "complete -c sinter -n '__fish_seen_subcommand_from show' -l ndjson -d 'Stream versioned transcript records'",

@@ -302,6 +302,47 @@ describe("ghost housekeeping", () => {
   });
 });
 
+describe("saved views", () => {
+  test("saves, replaces, lists, and deletes local filter definitions", () => {
+    const l = ledger();
+    expect(l.listViews()).toEqual([]);
+    expect(l.saveView({
+      name: "today",
+      harnesses: ["claude", "codex"],
+      cwd: "/Users/test/proj",
+      since: "1d",
+      limit: 12,
+      includeGhost: false,
+      includeSubagents: true,
+    }, "2026-08-24T01:00:00.000Z")).toEqual({
+      name: "today",
+      harnesses: ["claude", "codex"],
+      cwd: "/Users/test/proj",
+      since: "1d",
+      limit: 12,
+      includeGhost: false,
+      includeSubagents: true,
+      updatedAt: "2026-08-24T01:00:00.000Z",
+    });
+    l.saveView({
+      name: "TODAY",
+      harnesses: ["pi"],
+      includeGhost: true,
+      includeSubagents: false,
+    }, "2026-08-24T02:00:00.000Z");
+    expect(l.listViews()).toHaveLength(1);
+    expect(l.getView("today")).toMatchObject({
+      name: "today",
+      harnesses: ["pi"],
+      includeGhost: true,
+      updatedAt: "2026-08-24T02:00:00.000Z",
+    });
+    expect(l.deleteView("Today")).toBe(true);
+    expect(l.deleteView("Today")).toBe(false);
+    l.close();
+  });
+});
+
 describe("list filters", () => {
   const seed = (l: Ledger) => {
     l.upsert(summary({ nativeId: "old", updatedAt: "2026-01-01T00:00:00.000Z" }));
