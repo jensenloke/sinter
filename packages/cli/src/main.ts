@@ -139,48 +139,59 @@ const HELP = `sinter ${VERSION} — one ledger for every coding-agent session
 
 usage: sinter [command] [args]
 
+interactive
   (no command)                           interactive menu: pick a session, pick
                                          a harness, launch it right here
   menu [--all] [--mode full|slim|compact]
                                          the same menu, explicitly
+
+find and inspect
   scan [--json]                          refresh the ledger from every available harness
-  config [show|path|validate]            inspect and validate local profile configuration
   ls [--harness x] [--cwd .] [--since 7d] [--limit n]
                                          list sessions, newest first
   recent [--harness x] [--cwd .] [-n 10]
                                          list recent resumable parent sessions
   watch [recent|projects] [--interval 2s]
                                          refresh a live local session view
+  projects [--harness x] [--since 7d]   group resumable sessions by project
+  search <query>                         match aliases, tags, notes, titles + prompts
+  show <id-prefix> [--tail n|--json|--ndjson]
+                                         render or stream a transcript from any harness
+  thread <id-prefix> [--json]           inspect port lineage and resumable tip
+  compare <left-id> <right-id> [--json]  compare transcript structure, not content
+
+organize locally
   pin <id-prefix>                        bookmark a session in the local ledger
   unpin <id-prefix>                      remove a local session bookmark
   pinned [--harness x] [--cwd .]        list bookmarked sessions
+  rename <id-prefix> <alias>             set a local alias that survives rescans
   tag|untag <id-prefix> <tag...>        manage searchable local tags
   note <id-prefix> <text>|--clear       manage a searchable local note
   tags [--json]                         list tags and session counts
-  ghosts [preview|prune] [...]          preview or prune disposable ghost rows
   view <save|list|show|run|delete> ...  manage reusable local session filters
-  thread <id-prefix> [--json]           inspect port lineage and resumable tip
-  projects [--harness x] [--since 7d]   group resumable sessions by project
+
+move and continue
   last [--harness x] [--cwd .] [--exec]  print or run the newest resume command
-  search <query>                         match aliases, tags, notes, titles + prompts
-  rename <id-prefix> <alias>             set a local alias that survives rescans
-  show <id-prefix> [--tail n|--json|--ndjson]
-                                         render or stream a transcript from any harness
-  compare <left-id> <right-id> [--json]  compare transcript structure, not content
   export <id-prefix> [-o file] [--slim]  write the session as SIF JSON
   import <file> --to <harness> [...]     synthesize a new native session from SIF
-  setup [--yes] [--no-menu]              detect stores, build the ledger, then open the menu
   port <id-prefix> --to <harness> [...]  create a new target-native session
   resume <id-prefix> [--in <harness>] [--exec]
                                          print (or run) the native resume command
+
+setup and maintenance
+  setup [--yes] [--no-menu]              detect stores, build the ledger, then open the menu
+  config [show|path|validate]            inspect and validate local profile configuration
   doctor [--json|--report [-o file]]     detect stores or create a privacy-safe report
   capabilities [--harness x] [--json]   show adapter read, write, and resume support
+  ghosts [preview|prune] [...]          preview or prune disposable ghost rows
+  relink [--harness x] [--limit n]       rebuild thread lineage from target stores
+
+support and interfaces
   privacy                                explain local storage and support limits
   feedback [--title text] [--no-open]    open a safe, prefilled GitHub issue
   telemetry [status|enable|disable]      control anonymous active-use measurement
   gui [--port n] [--no-open]             open the local session workspace
   completion <zsh|bash|fish>              generate native shell completions
-  relink [--harness x] [--limit n]       rebuild thread lineage from target stores
 
 global flags:
   --profile <name>  use named local store roots from ~/.config/sinter/config.toml

@@ -106,6 +106,12 @@ describe("CLI conventions", () => {
     expect(h.out()).not.toContain("one ledger for every coding-agent session");
   });
 
+  test("groups top-level help by user job", async () => {
+    expect(await run(["--help"], h.ctx)).toBe(0);
+    for (const heading of ["interactive", "find and inspect", "organize locally", "move and continue", "setup and maintenance", "support and interfaces"])
+      expect(h.out()).toContain(`\n${heading}\n`);
+  });
+
   test("explains local-only storage and unsupported desktop surfaces", async () => {
     expect(await run(["privacy"], h.ctx)).toBe(0);
     expect(h.out()).toContain("does not upload transcripts");
