@@ -7,13 +7,30 @@ import { disableTelemetry, enableTelemetry, readTelemetryConfig, trackTelemetry 
 const dirs: string[] = [];
 const originalFetch = globalThis.fetch;
 const originalIsTTY = process.stdout.isTTY;
+const envKeys = [
+  "SINTER_TELEMETRY_CONFIG",
+  "SINTER_TELEMETRY_ENDPOINT",
+  "SINTER_TELEMETRY",
+  "CI",
+  "GITHUB_ACTIONS",
+  "BUILDKITE",
+  "JENKINS_URL",
+] as const;
+const originalEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+
+function restoreEnvironment(): void {
+  for (const key of envKeys) {
+    const value = originalEnv[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
+
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   globalThis.fetch = originalFetch;
   Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: originalIsTTY });
-  delete process.env.SINTER_TELEMETRY_CONFIG;
-  delete process.env.SINTER_TELEMETRY_ENDPOINT;
-  delete process.env.CI;
+  restoreEnvironment();
 });
 
 describe("telemetry config", () => {
@@ -45,6 +62,8 @@ describe("telemetry config", () => {
     dirs.push(dir);
     const path = join(dir, "telemetry.json");
     process.env.SINTER_TELEMETRY_CONFIG = path;
+    for (const key of ["SINTER_TELEMETRY", "CI", "GITHUB_ACTIONS", "BUILDKITE", "JENKINS_URL"] as const)
+      delete process.env[key];
     const config = enableTelemetry("https://metrics.example.test/events", path);
     Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
     let request: { input: string; init?: RequestInit } | undefined;
