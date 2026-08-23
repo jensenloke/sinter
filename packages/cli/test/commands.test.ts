@@ -279,6 +279,70 @@ describe("local tags and notes", () => {
   });
 });
 
+describe("watch mode", () => {
+  test("streams versioned snapshots and rescans before every cycle", async () => {
+    let slept = 0;
+    h.ctx.sleep = async (ms) => {
+      expect(ms).toBe(250);
+      slept++;
+      h.claude.summaries = h.claude.summaries.map((row) =>
+        row.nativeId === "aaa11111-1111"
+          ? { ...row, title: "changed while watching", updatedAt: "2026-08-13T11:30:00.000Z" }
+          : row,
+      );
+    };
+    expect(await run(["watch", "recent", "--count", "2", "--interval", "250ms", "--json"], h.ctx)).toBe(0);
+    const snapshots = h.stdout.map((line) => JSON.parse(line));
+    expect(slept).toBe(1);
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots[0]).toMatchObject({ schema: "sinter.watch.v1", sequence: 1, view: "recent", changed: true });
+    expect(snapshots[1]).toMatchObject({ schema: "sinter.watch.v1", sequence: 2, view: "recent", changed: true });
+    expect(snapshots[1].sessions[0].title).toBe("changed while watching");
+    expect(snapshots[1].scan.harnesses.claude.updated).toBe(1);
+  });
+
+  test("defaults pipes to one project snapshot and can watch the cache only", async () => {
+    await scan();
+    h.stdout.length = 0;
+    h.claude.summaries = [];
+    expect(await run(["watch", "projects", "--json", "--no-scan"], h.ctx)).toBe(0);
+    const snapshot = JSON.parse(h.out());
+    expect(snapshot).toMatchObject({
+      schema: "sinter.watch.v1",
+      sequence: 1,
+      view: "projects",
+      changed: true,
+      scan: { skipped: true },
+    });
+    expect(snapshot.projects.some((project: { cwd: string }) => project.cwd === "/Users/test/proj")).toBe(true);
+  });
+
+  test("does not treat scan bookkeeping as a visible change", async () => {
+    h.ctx.sleep = async () => {};
+    expect(await run(["watch", "recent", "--count", "2", "--interval", "250ms", "--json"], h.ctx)).toBe(0);
+    const snapshots = h.stdout.map((line) => JSON.parse(line));
+    expect(snapshots.map((snapshot) => snapshot.changed)).toEqual([true, false]);
+  });
+
+  test("redraws interactive terminals unless --no-clear is set", async () => {
+    h.ctx.interactive = true;
+    h.ctx.sleep = async () => {};
+    expect(await run(["watch", "recent", "--count", "2", "--interval", "250ms"], h.ctx)).toBe(0);
+    expect(h.stdout[1]).toStartWith("\x1b[2J\x1b[H");
+
+    h.stdout.length = 0;
+    expect(await run(["watch", "recent", "--count", "2", "--interval", "250ms", "--no-clear"], h.ctx)).toBe(0);
+    expect(h.stdout.join("\n")).not.toContain("\x1b[2J");
+  });
+
+  test("validates view, interval, count, and harness", async () => {
+    expect(await run(["watch", "threads"], h.ctx)).toBe(1);
+    expect(await run(["watch", "--interval", "10ms"], h.ctx)).toBe(1);
+    expect(await run(["watch", "--count", "0"], h.ctx)).toBe(1);
+    expect(await run(["watch", "--harness", "cursor"], h.ctx)).toBe(1);
+  });
+});
+
 describe("saved views", () => {
   test("saves, lists, shows, and runs a reusable local filter", async () => {
     await scan();

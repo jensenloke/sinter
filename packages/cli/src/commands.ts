@@ -66,6 +66,9 @@ export interface Ctx {
   autoScan?: boolean;
   /** Runtime CLI version, injected by main so helpers do not import it circularly. */
   version?: string;
+  /** Terminal capabilities and delay are injectable so long-running commands stay testable. */
+  interactive?: boolean;
+  sleep?: (ms: number) => Promise<void>;
 }
 
 // ------------------------------------------------------------------ helpers
@@ -371,6 +374,116 @@ export async function cmdRecent(argv: string[], ctx: Ctx): Promise<number> {
   opts.includeSubagents = false;
   opts.limit ??= 10;
   return printRows(ctx.ledger().list(opts), ctx, args);
+}
+
+const WATCH_SCHEMA = "sinter.watch.v1";
+
+function watchInterval(value: string | undefined): number {
+  const input = value ?? "2s";
+  const match = /^(\d+(?:\.\d+)?)\s*(ms|s|m)$/i.exec(input.trim());
+  if (!match) throw new CliError(`bad --interval: ${input} (try 2s, 500ms, or 1m)`);
+  const unit = match[2]!.toLowerCase();
+  const ms = Number(match[1]) * (unit === "m" ? 60_000 : unit === "s" ? 1_000 : 1);
+  if (!Number.isFinite(ms) || ms < 250 || ms > 3_600_000)
+    throw new CliError("--interval must be between 250ms and 1h");
+  return Math.floor(ms);
+}
+
+function positiveInteger(value: string | undefined, name: string): number | undefined {
+  if (value === undefined) return undefined;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number <= 0) throw new CliError(`bad --${name}: ${value}`);
+  return number;
+}
+
+function renderProjects(projects: ReturnType<typeof projectSummaries>, ctx: Ctx): string {
+  return renderTable(
+    [
+      { header: "AGE", max: 5, align: "right" },
+      { header: "SESS", max: 5, align: "right" },
+      { header: "MSG", max: 7, align: "right" },
+      { header: "HARNESSES", max: 24 },
+      { header: "PROJECT", flex: true },
+    ],
+    projects.map((project) => [
+      ctx.pal.dim(humanAge(project.latestAt, ctx.now)),
+      String(project.sessionCount),
+      project.messageCountSessions ? String(project.messageCount) : "-",
+      project.harnesses.join(","),
+      shortenPath(project.cwd, 400),
+    ]),
+    { width: ctx.width, pal: ctx.pal },
+  );
+}
+
+/** Continuously rescan and render a bounded recent-session or project view. */
+export async function cmdWatch(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["harness", "cwd", "since", "limit", "interval", "count"],
+    booleans: ["json", "no-clear"],
+    alias: { n: "limit" },
+  });
+  const view = args._[0] ?? "recent";
+  if (args._.length > 1 || (view !== "recent" && view !== "projects"))
+    throw new CliError("usage: sinter watch [recent|projects] [--interval 2s] [--count n] [--harness x] [--cwd .] [--since 7d] [--limit n] [--json] [--no-clear]");
+
+  const intervalMs = watchInterval(flagString(args, "interval"));
+  const requestedCount = positiveInteger(flagString(args, "count"), "count");
+  const cycles = requestedCount ?? (ctx.interactive ? Number.POSITIVE_INFINITY : 1);
+  const limit = positiveInteger(flagString(args, "limit"), "limit") ?? (view === "recent" ? 10 : 30);
+  const opts = filterOpts(args, ctx.now);
+  opts.includeGhost = false;
+  opts.includeSubagents = false;
+  if (view === "recent") opts.limit = limit;
+  else delete opts.limit;
+
+  const noScan = flagBool(args, "no-scan") || process.env.SINTER_NO_SCAN === "1";
+  const onlyHarnesses = opts.harness;
+  const loads = noScan ? [] : await ctx.registry.load();
+  const adapters = loads
+    .filter((load) => load.adapter && (!onlyHarnesses || onlyHarnesses.includes(load.id as HarnessId)))
+    .map((load) => load.adapter!);
+  if (!noScan && !adapters.length) throw new CliError("no adapters available — nothing to watch");
+
+  let previous = "";
+  for (let sequence = 1; sequence <= cycles; sequence++) {
+    const scan = noScan ? undefined : await ctx.ledger().scan(adapters);
+    const rows = ctx.ledger().list(opts);
+    // A scan refreshes `scannedAt` even when the native session is unchanged;
+    // omit that bookkeeping field from snapshots and change detection.
+    const visibleRows = rows.map(({ scannedAt: _scannedAt, ...row }) => row);
+    const data = view === "recent" ? visibleRows : projectSummaries(rows).slice(0, limit);
+    const fingerprint = JSON.stringify(data);
+    const changed = sequence === 1 || fingerprint !== previous;
+    previous = fingerprint;
+
+    if (flagBool(args, "json")) {
+      ctx.out(JSON.stringify({
+        schema: WATCH_SCHEMA,
+        sequence,
+        view,
+        changed,
+        scan: scan
+          ? { ok: scan.errors.length === 0, harnesses: scan.harnesses, errors: scan.errors.map((error) => ({ harness: error.harness, message: error.error })) }
+          : { skipped: true },
+        ...(view === "recent" ? { sessions: data } : { projects: data }),
+      }));
+    } else {
+      const heading = `watch ${view} · refresh ${intervalMs}ms · cycle ${sequence}${Number.isFinite(cycles) ? `/${cycles}` : ""}`;
+      const body = data.length
+        ? view === "recent"
+          ? rowsTable(data as LedgerRow[], ctx)
+          : renderProjects(data as ReturnType<typeof projectSummaries>, ctx)
+        : `no ${view === "recent" ? "recent sessions" : "projects"} matched`;
+      const frame = `${ctx.pal.dim(heading)}\n${body}`;
+      if (ctx.interactive && !flagBool(args, "no-clear") && sequence > 1) ctx.out(`\x1b[2J\x1b[H${frame}`);
+      else ctx.out(frame);
+      if (scan) for (const error of scan.errors) ctx.err(ctx.pal.dim(`(scan warning [${error.harness}]: ${error.error})`));
+    }
+
+    if (sequence < cycles) await (ctx.sleep ?? Bun.sleep)(intervalMs);
+  }
+  return EXIT.OK;
 }
 
 export async function cmdPin(argv: string[], ctx: Ctx): Promise<number> {
@@ -883,25 +996,7 @@ export async function cmdProjects(argv: string[], ctx: Ctx): Promise<number> {
     ctx.err("no projects matched (run `sinter scan` first?)");
     return EXIT.OK;
   }
-  ctx.out(
-    renderTable(
-      [
-        { header: "AGE", max: 5, align: "right" },
-        { header: "SESS", max: 5, align: "right" },
-        { header: "MSG", max: 7, align: "right" },
-        { header: "HARNESSES", max: 24 },
-        { header: "PROJECT", flex: true },
-      ],
-      projects.map((project) => [
-        ctx.pal.dim(humanAge(project.latestAt, ctx.now)),
-        String(project.sessionCount),
-        project.messageCountSessions ? String(project.messageCount) : "-",
-        project.harnesses.join(","),
-        shortenPath(project.cwd, 400),
-      ]),
-      { width: ctx.width, pal: ctx.pal },
-    ),
-  );
+  ctx.out(renderProjects(projects, ctx));
   return EXIT.OK;
 }
 

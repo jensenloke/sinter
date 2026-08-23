@@ -40,6 +40,7 @@ sinter ghosts                 # preview disposable ghost rows older than 30 days
 sinter view run work          # run a reusable local session filter
 sinter tag <id-prefix> release urgent
 sinter note <id-prefix> "follow up after launch"
+sinter watch recent --cwd .    # live-refresh recent work in this project
 sinter projects                 # group resumable sessions by working directory
 sinter last --cwd .             # print the newest native resume command
 sinter last --cwd . --exec      # resume it in this terminal
@@ -116,6 +117,20 @@ sinter note <id-prefix> --clear
 Tags and notes survive rescans, participate in CLI/TUI/GUI search, and protect a
 ghost row from housekeeping. Tags are normalized to lowercase. Notes are
 limited to 4,000 characters; neither is copied into a ported transcript.
+
+Watch recent sessions or project activity while local harness stores change:
+
+```sh
+sinter watch recent --cwd .
+sinter watch projects --since 7d --interval 5s
+sinter watch recent --count 3 --json
+```
+
+On an interactive terminal, watch mode redraws until Ctrl+C. In pipes and CI it
+emits one snapshot and exits unless `--count` is explicit; `--json` is compact
+NDJSON with one `sinter.watch.v1` record per snapshot. Every cycle reads only
+local indexes and session summaries, never transcript bodies. Use `--no-scan`
+to observe the cached ledger without touching harness stores.
 
 Inspect profile configuration without starting a scan:
 

@@ -5,6 +5,7 @@ const COMMANDS = [
   ["config", "inspect and validate profile configuration"],
   ["ls", "list sessions"],
   ["recent", "list recent resumable sessions"],
+  ["watch", "refresh a live local session view"],
   ["pin", "bookmark a session locally"],
   ["unpin", "remove a local bookmark"],
   ["pinned", "list bookmarked sessions"],
@@ -73,6 +74,7 @@ ${commands}
     config) _arguments $global_args '1:action:(show path validate)' '--json' ;;
     ls) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
     recent) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' ;;
+    watch) _arguments $global_args '1:view:(recent projects)' '--interval=[refresh interval]:duration' '--count=[snapshot count]:count' '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-clear' ;;
     pin) _arguments $global_args '1:session id' ;;
     unpin) _arguments $global_args '1:session id' ;;
     pinned) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
@@ -136,7 +138,7 @@ function bash(): string {
     COMPREPLY=( $(compgen -W 'show path validate --json' -- "$current") )
     return
   fi
-  COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --all-harnesses --cwd --all-cwd --since --all-time --older-than --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open --yes --ghosts --no-ghosts --subagents --no-subagents --force --all --clear' -- "$current") )
+  COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --all-harnesses --cwd --all-cwd --since --all-time --older-than --interval --count --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open --yes --ghosts --no-ghosts --subagents --no-subagents --force --all --clear --no-clear' -- "$current") )
 }
 complete -F _sinter_completion sinter
 `;
@@ -163,6 +165,15 @@ function fish(): string {
     "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l no-ghost -d 'Hide missing native sessions'",
     "complete -c sinter -n '__fish_seen_subcommand_from pinned' -l no-sub -d 'Hide subagent sessions'",
+    "complete -c sinter -n '__fish_seen_subcommand_from watch' -a 'recent projects' -d 'View'",
+    "complete -c sinter -n '__fish_seen_subcommand_from watch' -l interval -r -d 'Refresh interval'",
+    "complete -c sinter -n '__fish_seen_subcommand_from watch' -l count -r -d 'Snapshot count'",
+    `complete -c sinter -n '__fish_seen_subcommand_from watch' -l harness -xa '${HARNESSES.join(" ")}' -d 'Filter by harness'`,
+    "complete -c sinter -n '__fish_seen_subcommand_from watch' -l cwd -r -d 'Filter by directory'",
+    "complete -c sinter -n '__fish_seen_subcommand_from watch' -l since -r -d 'Filter by age'",
+    "complete -c sinter -n '__fish_seen_subcommand_from watch' -l limit -r -d 'Maximum rows'",
+    "complete -c sinter -n '__fish_seen_subcommand_from watch' -l json -d 'Emit NDJSON snapshots'",
+    "complete -c sinter -n '__fish_seen_subcommand_from watch' -l no-clear -d 'Do not redraw the terminal'",
     "complete -c sinter -n '__fish_seen_subcommand_from untag' -l all -d 'Remove all tags'",
     "complete -c sinter -n '__fish_seen_subcommand_from tags' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from note' -l clear -d 'Clear the note'",

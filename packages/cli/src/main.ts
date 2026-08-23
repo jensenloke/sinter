@@ -47,6 +47,7 @@ import {
   cmdUnpin,
   cmdUntag,
   cmdView,
+  cmdWatch,
   type Ctx,
 } from "./commands";
 import { colorEnabled, palette, termWidth } from "./format";
@@ -57,7 +58,7 @@ import { trackTelemetry, type TelemetryEvent } from "./telemetry";
 export const VERSION = "0.1.10";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
-const AUTO_SCAN_SKIP = new Set(["scan", "setup", "doctor", "capabilities", "ghosts", "tags", "privacy", "feedback", "telemetry", "completion", "config"]);
+const AUTO_SCAN_SKIP = new Set(["scan", "watch", "setup", "doctor", "capabilities", "ghosts", "tags", "privacy", "feedback", "telemetry", "completion", "config"]);
 
 function skipsAutoScan(command: string, argv: string[]): boolean {
   if (AUTO_SCAN_SKIP.has(command)) return true;
@@ -102,6 +103,7 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   ls: cmdLs,
   list: cmdLs,
   recent: cmdRecent,
+  watch: cmdWatch,
   pin: cmdPin,
   pinned: cmdPinned,
   tag: cmdTag,
@@ -147,6 +149,8 @@ usage: sinter [command] [args]
                                          list sessions, newest first
   recent [--harness x] [--cwd .] [-n 10]
                                          list recent resumable parent sessions
+  watch [recent|projects] [--interval 2s]
+                                         refresh a live local session view
   pin <id-prefix>                        bookmark a session in the local ledger
   unpin <id-prefix>                      remove a local session bookmark
   pinned [--harness x] [--cwd .]        list bookmarked sessions
@@ -200,6 +204,7 @@ const COMMAND_HELP: Record<string, string> = {
   scan: "usage: sinter scan [--harness claude,codex] [--json]\n\nRefreshes the local ledger. Reads local stores only.",
   ls: "usage: sinter ls [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]",
   recent: "usage: sinter recent [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]\n\nLists the newest non-ghost parent sessions; defaults to 10.",
+  watch: "usage: sinter watch [recent|projects] [--interval 2s] [--count n] [--harness x] [--cwd .] [--since 7d] [--limit n] [--json] [--no-clear]\n\nRescans local harness stores before every snapshot. Interactive terminals repeat until Ctrl-C and redraw in place. Pipes and CI emit one snapshot unless --count is explicit; --json emits one compact sinter.watch.v1 record per snapshot. --no-scan watches the cached ledger only.",
   pin: "usage: sinter pin <id-prefix>\n\nBookmarks a session in Sinter's local ledger without modifying its harness store.",
   unpin: "usage: sinter unpin <id-prefix>\n\nRemoves a Sinter-local bookmark without modifying the session.",
   pinned: "usage: sinter pinned [--harness x] [--cwd .] [--since 7d] [--limit n] [--json] [--no-ghost] [--no-sub]\n\nLists local bookmarks. Pins survive rescans and native-session garbage collection.",
@@ -264,6 +269,8 @@ export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile
     profile: overrides.profile,
     autoScan: overrides.autoScan ?? true,
     version: overrides.version ?? VERSION,
+    interactive: overrides.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY),
+    sleep: overrides.sleep ?? Bun.sleep,
   };
 }
 
