@@ -72,6 +72,18 @@ Prioritized candidates after the current draft stack, not release commitments:
    redraw until Ctrl+C; pipes default to one snapshot and explicit `--count`
    plus NDJSON make automation bounded and predictable.
 
+## Next release checkpoint
+
+Draft PR #23 integrates the CLI roadmap above into one review and merge path
+from `main`. GitHub CI now verifies the locked dependency install, full test
+suite, TypeScript, production CLI build, and built entrypoint on every pull
+request and push to `main`.
+
+The encrypted-capsule prototype in draft PR #10 is intentionally excluded from
+this release candidate until its security review is resolved. Cloud accounts,
+sync, telemetry enablement, npm publication, and deployment are also outside
+this checkpoint.
+
 ## Phase 1: portable session capsules
 
 Add an encrypted `.sinter` capsule that can move independently of a particular
