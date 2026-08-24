@@ -17,6 +17,10 @@ during cross-harness ports unless explicitly enabled for a compatible target.
 On POSIX systems, the local SQLite ledger and sidecar files are restricted to
 the current user.
 
+Sinter also supports named instances of the same harness and direct encrypted
+context transfer over LAN or Tailscale. Run `sinter receive --help` and
+`sinter send --help` for the one-use transfer workflow.
+
 Documentation, source, roadmap, and issue tracker:
 https://github.com/jensenloke/sinter
 
