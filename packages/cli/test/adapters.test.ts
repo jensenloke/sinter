@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DynamicAdapterRegistry, StaticAdapterRegistry, SPECS, pickAdapter } from "../src/adapters";
 import { MockAdapter } from "../../ledger/test/mock-adapter";
+import { openLedger } from "@sinter/ledger";
 
 describe("SPECS", () => {
   test("covers all seven harnesses exactly once", () => {
@@ -94,7 +95,7 @@ describe("StaticAdapterRegistry", () => {
   test("serves known adapters and names unavailable ones", async () => {
     const omp = new MockAdapter({ id: "omp" });
     const reg = new StaticAdapterRegistry([omp], { zcode: "not installed" });
-    expect(await reg.get("omp")).toBe(omp);
+    expect(await reg.get("omp")).toMatchObject({ id: "omp", instanceId: "default" });
     await expect(reg.get("zcode")).rejects.toThrow(/adapter not available: zcode/);
     expect((await reg.load()).map((l) => l.id).sort()).toEqual(["omp", "zcode"]);
   });
@@ -111,10 +112,37 @@ describe("StaticAdapterRegistry", () => {
         command: ["env", "CLAUDE_CONFIG_DIR=/tmp/work", "claude"],
       },
     ]);
-    expect(await reg.getInstance("claude", "work")).toBe(work);
+    expect(await reg.getInstance("claude", "work")).toMatchObject({ id: "claude", instanceId: "work" });
     await expect(reg.get("claude")).rejects.toThrow(/multiple claude instances/);
     expect(
       await reg.resumeCommand("claude", "work", { harness: "claude", nativeId: "abc" }),
     ).toEqual(["env", "CLAUDE_CONFIG_DIR=/tmp/work", "claude", "--resume", "abc"]);
+  });
+
+  test("available adapters preserve same-harness instance isolation during scans", async () => {
+    const personal = new MockAdapter({
+      id: "claude",
+      summaries: [{ harness: "claude", nativeId: "same-id", title: "personal" }],
+    });
+    const work = new MockAdapter({
+      id: "claude",
+      summaries: [{ harness: "claude", nativeId: "same-id", title: "work" }],
+    });
+    const registry = new StaticAdapterRegistry([
+      { instanceId: "personal", adapter: personal },
+      { instanceId: "work", adapter: work },
+    ]);
+    const available = await registry.available();
+    expect(available.map((adapter) => adapter.instanceId)).toEqual(["personal", "work"]);
+
+    const ledger = openLedger(":memory:");
+    try {
+      await ledger.scan(available);
+      expect(ledger.get("claude", "same-id", "personal")?.title).toBe("personal");
+      expect(ledger.get("claude", "same-id", "work")?.title).toBe("work");
+      expect(ledger.list()).toHaveLength(2);
+    } finally {
+      ledger.close();
+    }
   });
 });

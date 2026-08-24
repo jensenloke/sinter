@@ -10,6 +10,7 @@ import {
   type HarnessId,
   type InstanceId,
   type SessionRef,
+  type SifSession,
 } from "@sinter/core";
 import { CliError } from "./args";
 import type { SinterProfile } from "./config";
@@ -161,8 +162,60 @@ export function pickAdapter(mod: Record<string, unknown>): HarnessAdapter | unde
   return undefined;
 }
 
-function makeBinding(request: BindingRequest, adapter: HarnessAdapter): AdapterBinding {
+function stampSession(session: SifSession, harness: HarnessId, instanceId: InstanceId): SifSession {
+  return {
+    ...session,
+    origin: { ...session.origin, harness, instanceId },
+    ...(session.subsessions
+      ? { subsessions: session.subsessions.map((child) => stampSession(child, harness, instanceId)) }
+      : {}),
+  };
+}
+
+/**
+ * Existing scan and command paths intentionally consume HarnessAdapter rather
+ * than AdapterBinding. Decorate the raw adapter at the registry boundary so
+ * those compatibility paths cannot accidentally collapse two stores from the
+ * same harness into the default namespace.
+ */
+function instanceAdapter(raw: HarnessAdapter, harness: HarnessId, instanceId: InstanceId): HarnessAdapter {
+  const read = async (ref: SessionRef, ...args: unknown[]): Promise<SifSession> => {
+    const rawRead = raw.read as unknown as (ref: SessionRef, ...args: unknown[]) => Promise<SifSession>;
+    const session = await rawRead.call(raw, { ...ref, harness, instanceId }, ...args);
+    return stampSession(session, harness, instanceId);
+  };
+  const bound: HarnessAdapter = {
+    id: harness,
+    instanceId,
+    async detect() {
+      const info = await raw.detect();
+      return info ? { ...info, harness, instanceId } : null;
+    },
+    async *list() {
+      for await (const summary of raw.list()) yield { ...summary, harness, instanceId };
+    },
+    read,
+    resumeCommand(ref) {
+      return raw.resumeCommand({ ...ref, harness, instanceId });
+    },
+  };
+  if (raw.write) {
+    bound.write = async (session, opts) => {
+      const ref = await raw.write!(session, { ...opts, instanceId });
+      return { ...ref, harness, instanceId };
+    };
+  }
+  const carry = (raw as HarnessAdapter & { readWithCarry?: (ref: SessionRef) => Promise<SifSession> }).readWithCarry;
+  if (carry) {
+    (bound as HarnessAdapter & { readWithCarry: (ref: SessionRef) => Promise<SifSession> }).readWithCarry = async (ref) =>
+      stampSession(await carry.call(raw, { ...ref, harness, instanceId }), harness, instanceId);
+  }
+  return bound;
+}
+
+function makeBinding(request: BindingRequest, rawAdapter: HarnessAdapter): AdapterBinding {
   const command = request.command ? [...request.command] : undefined;
+  const adapter = instanceAdapter(rawAdapter, request.spec.id, request.instanceId);
   return {
     harness: request.spec.id,
     instanceId: request.instanceId,
@@ -231,7 +284,13 @@ export class DynamicAdapterRegistry implements AdapterRegistry {
           error: `${spec.pkg} reports id "${adapter.id}"`,
         };
       const binding = makeBinding(request, adapter);
-      return { id: spec.id, harness: spec.id, instanceId: request.instanceId, binding, adapter };
+      return {
+        id: spec.id,
+        harness: spec.id,
+        instanceId: request.instanceId,
+        binding,
+        adapter: binding.adapter,
+      };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return {
