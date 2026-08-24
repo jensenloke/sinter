@@ -938,7 +938,7 @@ function threadHop(link: LineageRow, selected: LedgerRow, ledger: Ledger): Threa
   return {
     hop: link.hop,
     harness: link.harness,
-    instanceId: link.instanceId ?? DEFAULT_INSTANCE_ID,
+    ...(link.instanceId && link.instanceId !== DEFAULT_INSTANCE_ID ? { instanceId: link.instanceId } : {}),
     nativeId: link.nativeId,
     parentHarness: link.parentHarness,
     parentNativeId: link.parentNativeId,
@@ -976,13 +976,17 @@ export async function cmdThread(argv: string[], ctx: Ctx): Promise<number> {
     threadId,
     lineageCached: !!cachedThreadId,
     ported: links.length > 1,
-    selected: { harness: selected.harness, instanceId: selected.instanceId ?? DEFAULT_INSTANCE_ID, nativeId: selected.nativeId },
+    selected: {
+      harness: selected.harness,
+      ...(selected.instanceId && selected.instanceId !== DEFAULT_INSTANCE_ID ? { instanceId: selected.instanceId } : {}),
+      nativeId: selected.nativeId,
+    },
     hops,
     resumableTip: tip
       ? {
           hop: tip.hop,
           harness: tip.harness,
-          instanceId: tip.instanceId ?? DEFAULT_INSTANCE_ID,
+          ...(tip.instanceId && tip.instanceId !== DEFAULT_INSTANCE_ID ? { instanceId: tip.instanceId } : {}),
           nativeId: tip.nativeId,
           command: ["sinter", "resume", `${instanceLabel(tip.harness, tip.instanceId)}:${tip.nativeId}`],
         }
