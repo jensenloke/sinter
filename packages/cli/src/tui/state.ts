@@ -10,7 +10,7 @@
  * tip, which is what makes `codex → claude → codex` carry the middle hop's work.
  */
 
-import type { HarnessId } from "@sinter/core";
+import { DEFAULT_INSTANCE_ID, type HarnessId, type InstanceId } from "@sinter/core";
 import type { LedgerRow } from "@sinter/ledger";
 import { displayId } from "../format";
 import { MODE_HINT, TRANSFER_MODES, type TransferMode } from "../transfer";
@@ -22,6 +22,7 @@ export type Scope = "cwd" | "all";
 /** What a harness can do on this machine, resolved once at startup. */
 export interface HarnessCaps {
   id: HarnessId;
+  instanceId?: InstanceId;
   /** The adapter package loaded. */
   available: boolean;
   /** The adapter implements write() — i.e. it is a valid port target. */
@@ -40,6 +41,7 @@ export interface MenuAction {
   kind: ActionKind;
   /** Target harness — the tip's harness for `resume`, undefined for `show`. */
   harness?: HarnessId;
+  instanceId?: InstanceId;
   label: string;
   hint: string;
   /** Exact `sinter` CLI equivalent for this action. */
@@ -79,7 +81,7 @@ export type Effect =
   /** Resume the tip natively — nothing is written. */
   | { type: "resume"; thread: Thread }
   /** Port the tip into `target` with `mode`, then launch the new session. */
-  | { type: "port"; thread: Thread; target: HarnessId; mode: TransferMode };
+  | { type: "port"; thread: Thread; target: HarnessId; targetInstanceId: InstanceId; mode: TransferMode };
 
 export interface Step {
   state: MenuState;
@@ -158,8 +160,12 @@ export function presentHarnesses(threads: Thread[]): HarnessId[] {
 
 // -------------------------------------------------------------------- actions
 
-function capOf(caps: HarnessCaps[], id: HarnessId): HarnessCaps | undefined {
-  return caps.find((c) => c.id === id);
+function capOf(caps: HarnessCaps[], id: HarnessId, instanceId?: InstanceId): HarnessCaps | undefined {
+  return caps.find((c) => c.id === id && (c.instanceId ?? DEFAULT_INSTANCE_ID) === (instanceId ?? DEFAULT_INSTANCE_ID));
+}
+
+function capLabel(cap: Pick<HarnessCaps, "id" | "instanceId">): string {
+  return cap.instanceId && cap.instanceId !== DEFAULT_INSTANCE_ID ? `${cap.id}@${cap.instanceId}` : cap.id;
 }
 
 /**
@@ -171,7 +177,7 @@ export function buildActions(thread: Thread, caps: HarnessCaps[]): MenuAction[] 
   const tip: LedgerRow = thread.tip;
   const id = displayId(tip.nativeId);
   const actions: MenuAction[] = [];
-  const own = capOf(caps, tip.harness);
+  const own = capOf(caps, tip.harness, tip.instanceId);
   const visited = harnessesIn(thread);
 
   let resumeDisabled: string | undefined;
@@ -188,26 +194,33 @@ export function buildActions(thread: Thread, caps: HarnessCaps[]): MenuAction[] 
     disabled: resumeDisabled,
   });
 
-  for (const target of HARNESS_ORDER) {
-    if (target === tip.harness) continue;
-    const cap = capOf(caps, target);
+  const targets = [...caps].sort((a, b) => {
+    const order = HARNESS_ORDER.indexOf(a.id) - HARNESS_ORDER.indexOf(b.id);
+    return order || capLabel(a).localeCompare(capLabel(b));
+  });
+  for (const cap of targets) {
+    const target = cap.id;
+    const targetInstanceId = cap.instanceId ?? DEFAULT_INSTANCE_ID;
+    if (target === tip.harness && targetInstanceId === (tip.instanceId ?? DEFAULT_INSTANCE_ID)) continue;
+    const targetLabel = capLabel(cap);
     let disabled: string | undefined;
     if (tip.ghost) disabled = "source transcript is gone (ghost row)";
-    else if (!cap?.available) disabled = cap?.error ?? "adapter not available";
+    else if (!cap.available) disabled = cap.error ?? "adapter not available";
     else if (!cap.canWrite) disabled = "no writer yet";
-    else if (!cap.onPath) disabled = `\`${target}\` is not on PATH`;
+    else if (!cap.onPath) disabled = `\`${targetLabel}\` is not on PATH`;
 
     const revisit = visited.has(target) ? "back to " : "";
     actions.push({
       kind: "port",
       harness: target,
-      label: `port → ${revisit}${target}`,
+      instanceId: targetInstanceId,
+      label: `port → ${revisit}${targetLabel}`,
       hint: disabled
         ? ""
         : cap?.experimental
           ? "writes a new session · resume unverified"
           : "writes a new session, then launches it",
-      command: `sinter resume ${id} --in ${target} --exec`,
+      command: `sinter resume ${id} --in ${targetLabel} --exec`,
       disabled,
     });
   }
@@ -302,7 +315,16 @@ function runAction(state: MenuState): Step {
   if (action.kind === "show") return { state, effect: { type: "show", thread } };
   if (action.kind === "rename") return { state, effect: { type: "rename", thread } };
   if (action.kind === "resume") return { state, effect: { type: "resume", thread } };
-  return { state, effect: { type: "port", thread, target: action.harness!, mode: state.mode } };
+  return {
+    state,
+    effect: {
+      type: "port",
+      thread,
+      target: action.harness!,
+      targetInstanceId: action.instanceId ?? DEFAULT_INSTANCE_ID,
+      mode: state.mode,
+    },
+  };
 }
 
 export function reduce(state: MenuState, key: Key): Step {

@@ -9,7 +9,6 @@
 import { createInterface } from "node:readline/promises";
 import type { HarnessAdapter, HarnessId, NativeRef, SessionRef, SifSession } from "@sinter/core";
 import { DEFAULT_INSTANCE_ID, validateSession } from "@sinter/core";
-import type { AdapterBinding } from "../adapters";
 import type { LedgerRow } from "@sinter/ledger";
 import { EXIT } from "../args";
 import { adapterCapabilities } from "../capabilities";
@@ -42,14 +41,39 @@ const ROW_LIMIT = 10000;
 export async function resolveCaps(ctx: Ctx): Promise<HarnessCaps[]> {
   const loads = await ctx.registry.load();
   const capabilities = await adapterCapabilities(ctx.registry, { detectStores: false });
-  return capabilities.map((capability) => ({
-    id: capability.harness,
-    available: capability.adapter === "available",
-    canWrite: capability.write,
-    onPath: capability.resume === "available",
-    experimental: capability.resume === "unverified",
-    error: loads.find((load) => load.id === capability.harness)?.error,
-  }));
+  const selected = loads.map((load): HarnessCaps => {
+    const capability = capabilities.find((item) => item.harness === load.harness)!;
+    let binary: string | undefined;
+    try {
+      binary = load.binding?.resumeCommand({ harness: load.harness, instanceId: load.instanceId, nativeId: "probe" })[0];
+    } catch {
+      binary = undefined;
+    }
+    return {
+      id: load.harness,
+      instanceId: load.instanceId,
+      available: !!load.adapter,
+      canWrite: typeof load.adapter?.write === "function",
+      onPath: load.harness === "zcode" ? false : !!binary && !!Bun.which(binary),
+      experimental: capability.resume === "unverified",
+      error: load.error,
+    };
+  });
+  const selectedHarnesses = new Set(loads.map((load) => load.harness));
+  return [
+    ...selected,
+    ...capabilities
+      .filter((capability) => !selectedHarnesses.has(capability.harness))
+      .map((capability) => ({
+        id: capability.harness,
+        instanceId: DEFAULT_INSTANCE_ID,
+        available: false,
+        canWrite: false,
+        onPath: false,
+        experimental: capability.resume === "unverified",
+        error: "adapter not selected or unavailable",
+      })),
+  ];
 }
 
 function loadThreads(ctx: Ctx): Thread[] {
@@ -276,21 +300,15 @@ async function doResume(ctx: Ctx, thread: Thread): Promise<number> {
   return launch(ctx, argv);
 }
 
-async function soleBinding(ctx: Ctx, harness: HarnessId): Promise<AdapterBinding> {
-  const matches = (await ctx.registry.bindings()).filter((binding) => binding.harness === harness);
-  if (matches.length !== 1)
-    throw new Error(matches.length ? `multiple ${harness} instances are selected; use the explicit CLI port command` : `${harness} adapter is unavailable`);
-  return matches[0]!;
-}
-
 async function doPort(
   ctx: Ctx,
   thread: Thread,
   target: HarnessId,
+  targetInstanceId: string,
   mode: TransferMode,
 ): Promise<number> {
   const tip = thread.tip;
-  const binding = await soleBinding(ctx, target);
+  const binding = await ctx.registry.getBinding(target, targetInstanceId);
   const adapter = binding.adapter;
   if (!adapter.write) throw new Error(`${target} adapter cannot write sessions yet`);
 
@@ -452,7 +470,7 @@ export async function runMenu(ctx: Ctx, opts: MenuOpts = {}): Promise<number> {
       screen.close();
       if (effect.type === "resume") return await doResume(ctx, effect.thread);
       if (effect.type === "show") return await doShow(ctx, effect.thread);
-      return await doPort(ctx, effect.thread, effect.target, effect.mode);
+      return await doPort(ctx, effect.thread, effect.target, effect.targetInstanceId, effect.mode);
     }
   } finally {
     screen.close();

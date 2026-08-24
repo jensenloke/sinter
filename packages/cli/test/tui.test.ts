@@ -288,6 +288,7 @@ describe("reduce", () => {
       type: "port",
       thread: opened.selected!,
       target: "omp",
+      targetInstanceId: "default",
       mode: "compact",
     });
   });
@@ -327,6 +328,16 @@ describe("reduce", () => {
 });
 
 describe("actions", () => {
+  test("lists another instance of the same harness as an exact port target", () => {
+    const thread = buildThreads([{ ...ROWS[0]!, instanceId: "personal" }])[0]!;
+    const instanceCaps: HarnessCaps[] = [
+      { id: "claude", instanceId: "personal", available: true, canWrite: true, onPath: true },
+      { id: "claude", instanceId: "work", available: true, canWrite: true, onPath: true },
+    ];
+    const action = buildActions(thread, instanceCaps).find((item) => item.label === "port → back to claude@work");
+    expect(action).toMatchObject({ harness: "claude", instanceId: "work", command: expect.stringContaining("--in claude@work") });
+  });
+
   test("unavailable targets stay listed with the reason", () => {
     const [thread] = buildThreads([ROWS[0]!]);
     const actions = buildActions(thread!, caps({ pi: { available: false, error: "not installed" } }));
