@@ -49,6 +49,40 @@ describe("direct network transfer", () => {
     expect(received.remoteAddress).toBe("127.0.0.1");
   });
 
+  test("awaits receiver acceptance before resolving or returning success", async () => {
+    const events: string[] = [];
+    let releaseAcceptance!: () => void;
+    const acceptance = new Promise<void>((resolve) => { releaseAcceptance = resolve; });
+    const target = receiver({
+      async accept(transfer) {
+        events.push(`accept:${transfer.bytes[0]}`);
+        await acceptance;
+        events.push("accepted");
+      },
+    });
+    const sending = sendTransfer(target.locator, new Uint8Array([8])).then(() => events.push("sender-success"));
+    const receiving = target.received.then(() => events.push("received-resolved"));
+    await Bun.sleep(10);
+    expect(events).toEqual(["accept:8"]);
+    releaseAcceptance();
+    await Promise.all([sending, receiving]);
+    expect(events[0]).toBe("accept:8");
+    expect(events[1]).toBe("accepted");
+    expect(events).toContain("sender-success");
+    expect(events).toContain("received-resolved");
+  });
+
+  test("returns a non-success response when receiver acceptance fails", async () => {
+    const target = receiver({
+      accept() {
+        throw new Error("destination import failed");
+      },
+    });
+    await expect(sendTransfer(target.locator, new Uint8Array([3]))).rejects.toThrow("receiver_rejected_transfer");
+    await expect(target.received).rejects.toThrow("rejected by the receiver");
+    await expect(sendTransfer(target.locator, new Uint8Array([4]))).rejects.toThrow("already_claimed");
+  });
+
   test("rejects replay after a successful claim", async () => {
     const target = receiver();
     await sendTransfer(target.locator, new Uint8Array([1, 2, 3]));

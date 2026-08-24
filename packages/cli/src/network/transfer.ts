@@ -35,6 +35,7 @@ export interface ReceiverOptions {
   port?: number;
   ttlMs?: number;
   maxBytes?: number;
+  accept?: (transfer: ReceivedTransfer) => void | Promise<void>;
 }
 
 export interface TransferReceiver {
@@ -170,15 +171,23 @@ export function startTransferReceiver(options: ReceiverOptions = {}): TransferRe
       } catch {
         return jsonResponse({ error: "invalid_envelope" }, 400);
       }
-      const digest = await digestTransfer(ciphertext);
-      const receipt = await signReceipt(keys.receiptAuthentication, metadata.transferId, digest);
-      resolveReceived({
+      const acceptedTransfer: ReceivedTransfer = {
         bytes,
         metadata: metadata.attributes,
         transferId: metadata.transferId,
         receivedAt: new Date(),
         remoteAddress: bunServer.requestIP(request)?.address,
-      });
+      };
+      try {
+        await options.accept?.(acceptedTransfer);
+      } catch {
+        const error = new Error("Transfer was rejected by the receiver");
+        rejectReceived(error);
+        return jsonResponse({ error: "receiver_rejected_transfer" }, 422);
+      }
+      const digest = await digestTransfer(ciphertext);
+      const receipt = await signReceipt(keys.receiptAuthentication, metadata.transferId, digest);
+      resolveReceived(acceptedTransfer);
       return jsonResponse({ version: 1, transferId: metadata.transferId, digest: encodeBase64Url(digest), receipt }, 200, { "content-type": RECEIPT_TYPE });
     },
   });
