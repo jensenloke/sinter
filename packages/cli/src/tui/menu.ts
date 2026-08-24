@@ -8,7 +8,8 @@
 
 import { createInterface } from "node:readline/promises";
 import type { HarnessAdapter, HarnessId, NativeRef, SessionRef, SifSession } from "@sinter/core";
-import { validateSession } from "@sinter/core";
+import { DEFAULT_INSTANCE_ID, validateSession } from "@sinter/core";
+import type { AdapterBinding } from "../adapters";
 import type { LedgerRow } from "@sinter/ledger";
 import { EXIT } from "../args";
 import { adapterCapabilities } from "../capabilities";
@@ -231,14 +232,14 @@ export async function nextEffect(
 
 async function readTip(ctx: Ctx, thread: Thread): Promise<SifSession> {
   const tip = thread.tip;
-  const adapter = await ctx.registry.get(tip.harness);
-  return adapter.read({ harness: tip.harness, nativeId: tip.nativeId, nativePath: tip.nativePath });
+  const binding = await ctx.registry.getBinding(tip.harness, tip.instanceId ?? DEFAULT_INSTANCE_ID);
+  return binding.adapter.read({ harness: tip.harness, instanceId: tip.instanceId ?? DEFAULT_INSTANCE_ID, nativeId: tip.nativeId, nativePath: tip.nativePath });
 }
 
 async function readTipForPort(ctx: Ctx, thread: Thread): Promise<SifSession> {
   const tip = thread.tip;
-  const adapter = await ctx.registry.get(tip.harness);
-  const ref: SessionRef = { harness: tip.harness, nativeId: tip.nativeId, nativePath: tip.nativePath };
+  const { adapter } = await ctx.registry.getBinding(tip.harness, tip.instanceId ?? DEFAULT_INSTANCE_ID);
+  const ref: SessionRef = { harness: tip.harness, instanceId: tip.instanceId ?? DEFAULT_INSTANCE_ID, nativeId: tip.nativeId, nativePath: tip.nativePath };
   const withCarry = adapter as HarnessAdapter & { readWithCarry?: (ref: SessionRef) => Promise<SifSession> };
   if (withCarry.readWithCarry) return withCarry.readWithCarry(ref);
   if (adapter.id === "omp" || adapter.id === "pi") {
@@ -265,13 +266,21 @@ async function launch(ctx: Ctx, argv: string[]): Promise<number> {
 
 async function doResume(ctx: Ctx, thread: Thread): Promise<number> {
   const tip = thread.tip;
-  const adapter = await ctx.registry.get(tip.harness);
-  const argv = adapter.resumeCommand({
+  const binding = await ctx.registry.getBinding(tip.harness, tip.instanceId ?? DEFAULT_INSTANCE_ID);
+  const argv = binding.resumeCommand({
     harness: tip.harness,
+    instanceId: tip.instanceId ?? DEFAULT_INSTANCE_ID,
     nativeId: tip.nativeId,
     nativePath: tip.nativePath,
   });
   return launch(ctx, argv);
+}
+
+async function soleBinding(ctx: Ctx, harness: HarnessId): Promise<AdapterBinding> {
+  const matches = (await ctx.registry.bindings()).filter((binding) => binding.harness === harness);
+  if (matches.length !== 1)
+    throw new Error(matches.length ? `multiple ${harness} instances are selected; use the explicit CLI port command` : `${harness} adapter is unavailable`);
+  return matches[0]!;
 }
 
 async function doPort(
@@ -281,7 +290,8 @@ async function doPort(
   mode: TransferMode,
 ): Promise<number> {
   const tip = thread.tip;
-  const adapter = await ctx.registry.get(target);
+  const binding = await soleBinding(ctx, target);
+  const adapter = binding.adapter;
   if (!adapter.write) throw new Error(`${target} adapter cannot write sessions yet`);
 
   ctx.err(
@@ -306,13 +316,13 @@ async function doPort(
 
   // Historical tool calls stay inert: a ported transcript must never be
   // re-executable by the receiving harness.
-  const ref = await adapter.write(session, { liveTools: false });
+  const ref = await adapter.write(session, { liveTools: false, instanceId: binding.instanceId });
   for (const c of ref.created ?? []) ctx.err(ctx.pal.dim(`  ${c}`));
   ctx.err(`  wrote ${ctx.pal.bold(`${ref.harness}:${ref.nativeId}`)}`);
 
   recordLineage(ctx, ref, thread);
 
-  return launch(ctx, adapter.resumeCommand(ref));
+  return launch(ctx, binding.resumeCommand(ref));
 }
 
 /**
@@ -333,10 +343,12 @@ function recordLineage(ctx: Ctx, ref: NativeRef, thread: Thread): void {
     const tip = thread.tip;
     ledger.recordLineage({
       harness: ref.harness,
+      instanceId: ref.instanceId ?? DEFAULT_INSTANCE_ID,
       nativeId: ref.nativeId,
-      threadId: ledger.threadIdOf(tip.harness, tip.nativeId) ?? `${tip.harness}:${tip.nativeId}`,
+      threadId: ledger.threadIdOf(tip.harness, tip.nativeId, tip.instanceId ?? DEFAULT_INSTANCE_ID) ?? `${tip.harness}:${tip.instanceId ?? DEFAULT_INSTANCE_ID}:${tip.nativeId}`,
       hop: thread.hops.length,
       parentHarness: tip.harness,
+      parentInstanceId: tip.instanceId ?? DEFAULT_INSTANCE_ID,
       parentNativeId: tip.nativeId,
       portedAt: new Date().toISOString(),
     });
@@ -420,7 +432,7 @@ export async function runMenu(ctx: Ctx, opts: MenuOpts = {}): Promise<number> {
         screen.close();
         const renamed = await promptAlias(effect.thread);
         if (renamed.changed)
-          ctx.ledger().setAlias(effect.thread.tip.harness, effect.thread.tip.nativeId, renamed.alias);
+          ctx.ledger().setAlias(effect.thread.tip.harness, effect.thread.tip.nativeId, renamed.alias, effect.thread.tip.instanceId ?? DEFAULT_INSTANCE_ID);
         state = {
           ...state,
           screen: "sessions",

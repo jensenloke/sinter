@@ -11,7 +11,7 @@
  * its own single-hop thread — which is exactly what the menu should show.
  */
 
-import type { HarnessId } from "@sinter/core";
+import { DEFAULT_INSTANCE_ID, type HarnessId, type InstanceId } from "@sinter/core";
 import type { LedgerRow } from "@sinter/ledger";
 
 /**
@@ -24,6 +24,7 @@ import type { LedgerRow } from "@sinter/ledger";
 export interface LineageLink {
   threadId: string;
   harness: HarnessId;
+  instanceId?: InstanceId;
   nativeId: string;
   /** 0-based position in the thread. Authoritative ordering when present. */
   hop?: number;
@@ -43,8 +44,9 @@ export interface Thread {
   ported: boolean;
 }
 
-const key = (harness: string, nativeId: string) => `${harness}\\0${nativeId}`;
-const rowKey = (r: LedgerRow) => key(r.harness, r.nativeId);
+const key = (harness: string, instanceId: string | undefined, nativeId: string) =>
+  `${harness}\\0${instanceId ?? DEFAULT_INSTANCE_ID}\\0${nativeId}`;
+const rowKey = (r: LedgerRow) => key(r.harness, r.instanceId, r.nativeId);
 
 function sortKey(r: LedgerRow): string {
   return r.updatedAt ?? r.createdAt ?? "";
@@ -59,7 +61,7 @@ export function buildThreads(rows: LedgerRow[], links: LineageLink[] = []): Thre
   const threadIdOf = new Map<string, string>();
   const hopOf = new Map<string, number>();
   for (const l of links) {
-    const k = key(l.harness, l.nativeId);
+    const k = key(l.harness, l.instanceId, l.nativeId);
     threadIdOf.set(k, l.threadId);
     if (typeof l.hop === "number") hopOf.set(k, l.hop);
   }
@@ -84,7 +86,7 @@ export function buildThreads(rows: LedgerRow[], links: LineageLink[] = []): Thre
     });
     const tip = hops[hops.length - 1]!;
     threads.push({
-      id: id.includes("\\0") ? id.replace("\\0", ":") : id,
+      id: id.includes("\\0") ? id.split("\\0").join(":") : id,
       hops,
       tip,
       ported: hops.length > 1,
@@ -97,7 +99,9 @@ export function buildThreads(rows: LedgerRow[], links: LineageLink[] = []): Thre
 
 /** `codex → claude → omp`, for the thread's detail line. */
 export function chainLabel(thread: Thread): string {
-  return thread.hops.map((h) => h.harness).join(" → ");
+  return thread.hops
+    .map((h) => h.instanceId && h.instanceId !== DEFAULT_INSTANCE_ID ? `${h.harness}@${h.instanceId}` : h.harness)
+    .join(" → ");
 }
 
 /** Harnesses this conversation already lives in — a re-port target is not new work. */

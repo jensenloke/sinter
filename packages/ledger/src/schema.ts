@@ -6,15 +6,13 @@
  * The primary key is (harness, instance_id, native_id): native ids are only
  * unique inside one configured harness store.
  *
- * MIGRATION POLICY — the statements below are the whole migration. Every one is
- * `CREATE ... IF NOT EXISTS`, so applying them to an older database is purely
- * additive: existing rows are never dropped, rewritten or re-created. Opening a
- * v1 ledger under v2 gains the `lineage` table; v2 under v3 gains the
+ * MIGRATION POLICY — `SCHEMA_SQL` is additive for fresh and current databases.
+ * Opening a v1 ledger under v2 gains the `lineage` table; v2 under v3 gains the
  * `session_aliases` table; v3 under v4 gains the `session_pins` table; v4 under
  * v5 gains `saved_views`; v5 under v6 gains `session_notes` and `session_tags`.
- * All keep every session row. New versions must keep that property; a change that needs
- * to rewrite data has to be a separate, explicit, versioned step — never a
- * silent re-`exec` here.
+ * Versions that rewrite identity or data must use a separate, explicit,
+ * transactional migration before this schema is applied. v7 does that in
+ * `migrateLedgerV7`, preserving every legacy row under instance `default`.
  *
  * `SCHEMA_VERSION` is a record of what was last applied (stored in `meta`), not
  * a trigger: nothing keys off its value, so bumping it cannot wipe anything.

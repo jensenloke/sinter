@@ -22,6 +22,8 @@ export interface SessionRef {
 }
 
 export interface WriteOpts {
+  /** Exact configured target store namespace. Omitted means `default`. */
+  instanceId?: InstanceId;
   /** Target cwd for the synthesized session; defaults to the SIF session cwd. */
   cwd?: string;
   /** Transfer mode stamped into port provenance for later lineage inspection. */

@@ -118,4 +118,21 @@ export function parseHarness(input: string): KnownHarness {
   return h as KnownHarness;
 }
 
+export interface HarnessTarget {
+  harness: KnownHarness;
+  instanceId?: string;
+}
+
+/** Parse `claude` or an exact configured target such as `claude@work`. */
+export function parseHarnessTarget(input: string): HarnessTarget {
+  const value = input.trim();
+  const separator = value.indexOf("@");
+  if (separator < 0) return { harness: parseHarness(value) };
+  const harness = parseHarness(value.slice(0, separator));
+  const instanceId = value.slice(separator + 1);
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(instanceId))
+    throw new CliError(`bad harness instance: ${input} (try ${harness}@work)`);
+  return { harness, instanceId };
+}
+
 export const ALL_HARNESSES: readonly KnownHarness[] = HARNESSES;

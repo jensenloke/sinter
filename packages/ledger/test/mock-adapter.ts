@@ -74,7 +74,7 @@ export class MockAdapter implements HarnessAdapter {
     const nativeId = `new-${this.id}-${this.written.length}`;
     const provenance = buildProvenance({
       source: session,
-      target: { harness: this.id, nativeId },
+      target: { harness: this.id, nativeId, ...(opts?.instanceId ? { instanceId: opts.instanceId } : {}) },
       sinterVersion: "0.1.0-mock",
       portedAt: new Date().toISOString(),
       mode: opts?.mode,

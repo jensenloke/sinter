@@ -53,6 +53,8 @@ sinter show <id-prefix> --tail 20       # render only the latest entries
 sinter port <id-prefix> --to codex --mode compact --preview
 sinter port <id-prefix> --to omp
 sinter resume <id-prefix> --in omp --exec
+sinter receive --to claude@work --advertise 100.64.0.12
+sinter send <id-prefix> --to 'sinter://transfer/v1?...'
 sinter feedback
 sinter gui
 ```
@@ -140,6 +142,55 @@ sinter config show
 sinter config validate
 ```
 
+Named instances let one profile use several stores for the same harness, such
+as personal Claude Code and a work wrapper:
+
+```toml
+[instances.claude-personal]
+harness = "claude"
+store = "/Users/me/.claude/projects"
+command = ["claude"]
+
+[instances.claude-work]
+harness = "claude"
+store = "/Users/me/.claude-work/projects"
+command = ["claude-addvita"]
+
+[profiles.all]
+instances = ["claude-personal", "claude-work"]
+```
+
+Select exact stores with `claude@claude-personal:<id>` and targets with
+`--to claude@claude-work`. Legacy one-store profiles continue to use the
+`default` instance.
+
+## Direct device transfer
+
+On the receiving device, create a one-use encrypted locator:
+
+```sh
+# LAN address is selected automatically when available
+sinter receive --to claude@claude-work
+
+# Or advertise the device's Tailscale IP explicitly
+sinter receive --to claude@claude-work --advertise 100.64.0.12
+```
+
+Copy the printed `sinter://transfer/v1?...` locator to the sending device:
+
+```sh
+sinter send <id-prefix> --to 'sinter://transfer/v1?...'
+```
+
+The capability in the locator encrypts and authenticates one transfer, expires
+after five minutes by default, and is never sent to the receiver as an HTTP
+credential. The sender reports success only after the receiver validates,
+confirms, and imports the session. Network payloads exclude raw adapter
+records, provider-private state, native store paths, and extra workspace
+directories. This transfers conversation context, not repository files or
+credentials. LAN and Tailscale use the same direct protocol; no SSH or cloud
+account is required.
+
 ## Feedback
 
 Run `sinter feedback` to open a prefilled GitHub issue. Sinter includes only its
@@ -199,6 +250,7 @@ directory managed by your shell or dotfiles.
 - On POSIX systems, the local SQLite ledger and sidecar files are restricted to the current user (`0600`).
 - Anonymous product telemetry is off by default and never contains session data.
 - Source stores are read-only. A port creates a new target-native session.
+- Direct device transfer is end-to-end encrypted and one-use; the locator itself is a secret capability.
 - Historical tool calls are rendered inert by default. Use `--live-tools` only when that behavior is explicitly required.
 - `sinter privacy` describes local data handling and `sinter doctor` reports detected stores.
 - `sinter doctor --report -o sinter-diagnostics.md` creates a reviewable support report without paths, prompts, titles, session IDs, transcripts, or raw adapter errors.

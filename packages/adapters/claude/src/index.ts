@@ -494,7 +494,7 @@ async function resolveProvenance(
   nativeId: string,
   opts?: WriteOpts,
 ): Promise<SinterProvenance> {
-  const target: Hop = { harness: "claude", nativeId };
+  const target: Hop = { harness: "claude", nativeId, ...(opts?.instanceId ? { instanceId: opts.instanceId } : {}) };
   const prior = readProvenance(session.preserve?.[PRESERVE_KEY]);
   const tail = prior?.chain[prior.chain.length - 1];
   const targetsThisWrite = !!prior && tail?.harness === "claude" && tail.nativeId !== session.origin.nativeId;

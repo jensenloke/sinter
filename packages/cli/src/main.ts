@@ -34,9 +34,11 @@ import {
   cmdPrivacy,
   cmdRelink,
   cmdRecent,
+  cmdReceive,
   cmdRename,
   cmdResume,
   cmdScan,
+  cmdSend,
   cmdSetup,
   cmdSearch,
   cmdShow,
@@ -122,6 +124,8 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   export: cmdExport,
   import: cmdImport,
   port: cmdPort,
+  send: cmdSend,
+  receive: cmdReceive,
   projects: cmdProjects,
   resume: cmdResume,
   doctor: cmdDoctor,
@@ -177,6 +181,8 @@ move and continue
   port <id-prefix> --to <harness> [...]  create a new target-native session
   resume <id-prefix> [--in <harness>] [--exec]
                                          print (or run) the native resume command
+  receive --to <harness@instance> [...]  accept one encrypted LAN/Tailscale transfer
+  send <id-prefix> --to <locator> [...]  send encrypted context to that receiver
 
 setup and maintenance
   setup [--yes] [--no-menu]              detect stores, build the ledger, then open the menu
@@ -204,8 +210,8 @@ global flags:
   -h, --help        this help
   --version         print version
 
-profiles: one configured local store per harness. Run \`sinter privacy\` for
-storage, support limits, and an example configuration.
+profiles: named instances may select multiple stores for one harness. Run
+\`sinter privacy\` for storage, support limits, and an example configuration.
 
 ids: any unambiguous native-id prefix, optionally harness-scoped (codex:0199ab).
 `;
@@ -237,6 +243,8 @@ const COMMAND_HELP: Record<string, string> = {
   import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",
   port: "usage: sinter port <id-prefix> --to <harness> [--mode full|slim|compact] [--preview [--json]] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.\n--preview reports target readiness and transfer impact without invoking the target writer.\n--dry-run asks the target writer to validate and describe its planned native output.\nHistorical tool calls are inert unless --live-tools is explicit.",
   resume: "usage: sinter resume <id-prefix> [--in <harness>] [--exec]\n\n--exec hands this terminal to the target harness.",
+  send: "usage: sinter send <id-prefix> --to <sinter://transfer/...> [--mode compact|slim|full] [--preview] [--json]\n\nSends a one-use encrypted, context-only payload. The sender reports success only after the receiver accepts and imports it.",
+  receive: "usage: sinter receive --to <harness@instance> [--bind 0.0.0.0] [--advertise <LAN-or-Tailscale-IP>] [--port n] [--ttl 5m] [--cwd dir] [--yes]\n\nPrints a one-use locator, accepts one encrypted transfer, confirms it, and imports it into the exact target instance. Use --advertise with a Tailscale IP for tailnet transfer.",
   doctor: "usage: sinter doctor [--json|--report [-o file]]\n\nNormal output shows resolved local store paths. --json emits safe structured health. --report emits a reviewable support report that excludes paths, prompts, titles, session IDs, transcripts, and raw errors.",
   capabilities: "usage: sinter capabilities [--harness x] [--json]\n\nChecks adapter loading, local-store detection, write support, and native resume availability without reading transcripts or touching the ledger.",
   setup: "usage: sinter setup [--yes] [--no-menu]\n\nShows detected local stores. Interactive setup asks before scanning and opening the menu; --yes scans without opening it.",

@@ -136,6 +136,102 @@ describe("CLI conventions", () => {
   });
 });
 
+describe("named harness instances", () => {
+  test("routes scans, reads, same-harness ports, metadata, and resume through the exact instance", async () => {
+    const personal = new MockAdapter({
+      id: "claude",
+      summaries: [summary({ nativeId: "same-native", title: "personal title" })],
+      sessions: { "same-native": { ...session("same-native"), title: { text: "personal title", source: "auto" } } },
+    });
+    const work = new MockAdapter({
+      id: "claude",
+      summaries: [summary({ nativeId: "same-native", title: "work title" })],
+      sessions: { "same-native": { ...session("same-native"), title: { text: "work title", source: "auto" } } },
+    });
+    const ledger = new Ledger(":memory:");
+    const output: string[] = [];
+    const ctx: Ctx = {
+      ...h.ctx,
+      ledger: () => ledger,
+      out: (line) => output.push(line),
+      registry: new StaticAdapterRegistry([
+        { instanceId: "personal", adapter: personal, command: ["claude-personal"] },
+        { instanceId: "work", adapter: work, command: ["claude-work"] },
+      ]),
+    };
+
+    expect(await run(["scan"], ctx)).toBe(0);
+    expect(ledger.list()).toHaveLength(2);
+    output.length = 0;
+    expect(await run(["show", "claude@personal:same"], ctx)).toBe(0);
+    expect(output.join("\n")).toContain("personal title");
+    expect(await run(["rename", "claude@personal:same", "mine"], ctx)).toBe(0);
+    expect(ledger.get("claude", "same-native", "personal")?.alias).toBe("mine");
+    expect(ledger.get("claude", "same-native", "work")?.alias).toBeUndefined();
+
+    output.length = 0;
+    expect(await run(["port", "claude@personal:same", "--to", "claude@work"], ctx)).toBe(0);
+    expect(work.written).toHaveLength(1);
+    expect(work.written[0]!.opts?.instanceId).toBe("work");
+    expect(output.join("\n")).toContain("claude@work:new-claude-1");
+
+    output.length = 0;
+    expect(await run(["resume", "claude@work:same"], ctx)).toBe(0);
+    expect(output.join("\n")).toContain("claude-work --resume same-native");
+    ledger.close();
+  });
+
+  test("send/receive imports only after an encrypted receiver accepts", async () => {
+    const source = new MockAdapter({
+      id: "claude",
+      summaries: [summary({ nativeId: "source-one" })],
+      sessions: {
+        "source-one": {
+          ...session("source-one"),
+          preserve: { secretProviderState: "drop-me" },
+        },
+      },
+    });
+    const target = new MockAdapter({ id: "codex" });
+    const senderLedger = new Ledger(":memory:");
+    const receiverLedger = new Ledger(":memory:");
+    await senderLedger.scan(await new StaticAdapterRegistry([{ instanceId: "personal", adapter: source }]).available());
+    const receiverOut: string[] = [];
+    const senderOut: string[] = [];
+    const receiverCtx: Ctx = {
+      ...h.ctx,
+      ledger: () => receiverLedger,
+      out: (line) => receiverOut.push(line),
+      registry: new StaticAdapterRegistry([{ instanceId: "work", adapter: target, command: ["codex-work"] }]),
+      interactive: false,
+    };
+    const senderCtx: Ctx = {
+      ...h.ctx,
+      ledger: () => senderLedger,
+      out: (line) => senderOut.push(line),
+      registry: new StaticAdapterRegistry([{ instanceId: "personal", adapter: source }]),
+    };
+
+    const receiving = run([
+      "receive", "--to", "codex@work", "--bind", "127.0.0.1", "--advertise", "127.0.0.1", "--ttl", "30s", "--yes",
+    ], receiverCtx);
+    await Bun.sleep(0);
+    const locator = receiverOut.find((line) => line.startsWith("sinter://"));
+    expect(locator).toBeDefined();
+    const sendCode = await run(["send", "claude@personal:source", "--to", locator!], senderCtx);
+    expect({ sendCode, senderError: h.stderr.join("\n"), receiverOutput: receiverOut }).toMatchObject({ sendCode: 0 });
+    expect(await receiving).toBe(0);
+    expect(target.written).toHaveLength(1);
+    expect(target.written[0]!.opts?.instanceId).toBe("work");
+    expect(target.written[0]!.session.preserve).toBeUndefined();
+    expect(target.written[0]!.session.origin.nativePath).toBeUndefined();
+    expect(target.written[0]!.session.entries.every((entry) => entry.raw === undefined)).toBe(true);
+    expect(senderOut.join("\n")).toContain("accepted as");
+    senderLedger.close();
+    receiverLedger.close();
+  });
+});
+
 describe("capabilities", () => {
   test("renders the canonical support matrix without touching the ledger", async () => {
     expect(await run(["capabilities"], h.ctx)).toBe(0);

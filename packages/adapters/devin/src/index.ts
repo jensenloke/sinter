@@ -297,7 +297,7 @@ function carrySource(session: SifSession): SifSession {
 }
 
 async function buildWriteProvenance(session: SifSession, nativeId: string, opts?: WriteOpts): Promise<SinterProvenance> {
-  const target = { harness: "devin" as const, nativeId };
+  const target = { harness: "devin" as const, nativeId, ...(opts?.instanceId ? { instanceId: opts.instanceId } : {}) };
   const prior = readProvenance(session.preserve?.[PRESERVE_KEY]);
   const tail = prior?.chain[prior.chain.length - 1];
   const record = prior && tail?.harness === "devin" && tail.nativeId !== session.origin.nativeId
