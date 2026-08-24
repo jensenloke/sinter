@@ -55,6 +55,39 @@ describe("DynamicAdapterRegistry", () => {
     const reg = new DynamicAdapterRegistry([{ id: "pi", pkg: "@sinter/nope" }]);
     expect(await reg.load()).toBe(await reg.load());
   });
+
+  test("a selected profile is a strict boundary with no default fallbacks", async () => {
+    const reg = new DynamicAdapterRegistry(SPECS, {
+      name: "claude-only",
+      configPath: "/tmp/config.toml",
+      stores: { claude: "/tmp/claude" },
+    });
+    const loads = await reg.load();
+    expect(loads.map((load) => `${load.harness}@${load.instanceId}`)).toEqual(["claude@default"]);
+    await expect(reg.get("codex")).rejects.toThrow(/not selected/);
+  });
+
+  test("loads two named instances of the same harness and rejects ambiguous compatibility lookup", async () => {
+    const reg = new DynamicAdapterRegistry(SPECS, {
+      name: "all",
+      configPath: "/tmp/config.toml",
+      stores: {},
+      instances: [
+        { id: "personal", harness: "claude", store: "/tmp/personal", command: ["claude"] },
+        { id: "addvita", harness: "claude", store: "/tmp/addvita", command: ["claude-addvita"] },
+      ],
+    });
+    expect((await reg.bindings()).map((binding) => binding.instanceId)).toEqual(["personal", "addvita"]);
+    expect((await reg.getInstance("claude", "addvita")).id).toBe("claude");
+    await expect(reg.get("claude")).rejects.toThrow(/multiple claude instances/);
+    expect(
+      await reg.resumeCommand("claude", "addvita", {
+        harness: "claude",
+        instanceId: "addvita",
+        nativeId: "session-1",
+      }),
+    ).toEqual(["claude-addvita", "--resume", "session-1"]);
+  });
 });
 
 describe("StaticAdapterRegistry", () => {
@@ -64,5 +97,24 @@ describe("StaticAdapterRegistry", () => {
     expect(await reg.get("omp")).toBe(omp);
     await expect(reg.get("zcode")).rejects.toThrow(/adapter not available: zcode/);
     expect((await reg.load()).map((l) => l.id).sort()).toEqual(["omp", "zcode"]);
+  });
+
+
+  test("supports exact instance lookup and multi-part command prefixes", async () => {
+    const personal = new MockAdapter({ id: "claude" });
+    const work = new MockAdapter({ id: "claude" });
+    const reg = new StaticAdapterRegistry([
+      { instanceId: "personal", adapter: personal },
+      {
+        instanceId: "work",
+        adapter: work,
+        command: ["env", "CLAUDE_CONFIG_DIR=/tmp/work", "claude"],
+      },
+    ]);
+    expect(await reg.getInstance("claude", "work")).toBe(work);
+    await expect(reg.get("claude")).rejects.toThrow(/multiple claude instances/);
+    expect(
+      await reg.resumeCommand("claude", "work", { harness: "claude", nativeId: "abc" }),
+    ).toEqual(["env", "CLAUDE_CONFIG_DIR=/tmp/work", "claude", "--resume", "abc"]);
   });
 });
