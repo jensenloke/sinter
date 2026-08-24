@@ -612,6 +612,50 @@ describe("counts", () => {
   });
 });
 
+describe("same-harness instances", () => {
+  test("same native id remains independent across stores and metadata", () => {
+    const l = ledger();
+    l.upsert(summary({ nativeId: "same", instanceId: "personal", title: "personal session" }));
+    l.upsert(summary({ nativeId: "same", instanceId: "addvita", title: "work session" }));
+    l.setAlias("claude", "same", "private", "personal");
+    l.setAlias("claude", "same", "client", "addvita");
+    l.setNote("claude", "same", "personal note", undefined, "personal");
+    l.setNote("claude", "same", "work note", undefined, "addvita");
+
+    expect(l.get("claude", "same", "personal")).toMatchObject({ title: "personal session", alias: "private" });
+    expect(l.get("claude", "same", "addvita")).toMatchObject({ title: "work session", alias: "client" });
+    expect(l.resolve("claude@personal:same").row?.instanceId).toBe("personal");
+    expect(l.resolve("claude:same").row).toBeUndefined();
+    expect(l.search("work note", { instanceId: "addvita" })).toHaveLength(1);
+    expect(l.search("work note", { instanceId: "personal" })).toHaveLength(0);
+    l.close();
+  });
+
+  test("scans and ghosts only the adapter instance snapshot", async () => {
+    const l = ledger();
+    const personal = new MockAdapter({ instanceId: "personal", summaries: [summary({ nativeId: "p" })] });
+    const addvita = new MockAdapter({ instanceId: "addvita", summaries: [summary({ nativeId: "w" })] });
+    const first = await l.scan([personal, addvita]);
+    expect(first.harnesses["claude@personal"]?.inserted).toBe(1);
+    expect(first.harnesses["claude@addvita"]?.inserted).toBe(1);
+    personal.summaries = [];
+    await l.scan([personal]);
+    expect(l.get("claude", "p", "personal")?.ghost).toBe(true);
+    expect(l.get("claude", "w", "addvita")?.ghost).toBe(false);
+    l.close();
+  });
+
+  test("lineage distinguishes matching native ids in matching harnesses", () => {
+    const l = ledger();
+    l.recordLineage({ harness: "claude", instanceId: "personal", nativeId: "same", threadId: "p", hop: 0 });
+    l.recordLineage({ harness: "claude", instanceId: "addvita", nativeId: "same", threadId: "w", hop: 0 });
+    expect(l.threadIdOf("claude", "same", "personal")).toBe("p");
+    expect(l.threadIdOf("claude", "same", "addvita")).toBe("w");
+    expect(l.lineageCount()).toBe(2);
+    l.close();
+  });
+});
+
 describe("persistence", () => {
   test("hardens an existing ledger and its SQLite sidecars to owner-only", async () => {
     const dir = `/tmp/sinter-ledger-permissions-${Bun.randomUUIDv7()}`;

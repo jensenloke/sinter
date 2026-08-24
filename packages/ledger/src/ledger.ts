@@ -2,11 +2,12 @@ import { Database } from "bun:sqlite";
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir, hostname } from "node:os";
-import type { HarnessAdapter, HarnessId, SessionSummary, SinterProvenance } from "@sinter/core";
-import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema";
+import { DEFAULT_INSTANCE_ID, type HarnessAdapter, type HarnessId, type InstanceId, type SessionSummary, type SinterProvenance } from "@sinter/core";
+import { migrateLedgerV7, SCHEMA_SQL, SCHEMA_VERSION } from "./schema";
 
 export interface LedgerRow {
   harness: HarnessId;
+  instanceId?: InstanceId;
   nativeId: string;
   nativePath?: string;
   cwd?: string;
@@ -45,11 +46,13 @@ export interface LedgerRow {
  */
 export interface LineageRow {
   harness: HarnessId;
+  instanceId?: InstanceId;
   nativeId: string;
   threadId: string;
   /** 0-based position within the thread. 0 is the session nothing was ported from. */
   hop: number;
   parentHarness?: HarnessId;
+  parentInstanceId?: InstanceId;
   parentNativeId?: string;
   portedAt?: string;
   mode?: string;
@@ -57,6 +60,7 @@ export interface LineageRow {
 
 export interface ListOpts {
   harness?: HarnessId | HarnessId[];
+  instanceId?: InstanceId | InstanceId[];
   /** Exact cwd match. */
   cwd?: string;
   /** ISO cutoff; rows with updated_at (or created_at) >= this are kept. */
@@ -72,6 +76,7 @@ export interface ListOpts {
 
 export interface GhostOpts {
   harness?: HarnessId;
+  instanceId?: InstanceId;
   /** Include ghosts last observed at or before this ISO timestamp. */
   before?: string;
 }
@@ -108,17 +113,18 @@ export interface ResolveResult {
 
 const SESSION_SELECT = `SELECT s.*, a.alias AS alias, p.pinned_at AS pinned_at, n.note AS note,
   (SELECT group_concat(t.tag, char(31)) FROM session_tags AS t
-   WHERE t.harness = s.harness AND t.native_id = s.native_id) AS tags
+   WHERE t.harness = s.harness AND t.instance_id = s.instance_id AND t.native_id = s.native_id) AS tags
 FROM sessions AS s
 LEFT JOIN session_aliases AS a
-  ON a.harness = s.harness AND a.native_id = s.native_id
+  ON a.harness = s.harness AND a.instance_id = s.instance_id AND a.native_id = s.native_id
 LEFT JOIN session_pins AS p
-  ON p.harness = s.harness AND p.native_id = s.native_id
+  ON p.harness = s.harness AND p.instance_id = s.instance_id AND p.native_id = s.native_id
 LEFT JOIN session_notes AS n
-  ON n.harness = s.harness AND n.native_id = s.native_id`;
+  ON n.harness = s.harness AND n.instance_id = s.instance_id AND n.native_id = s.native_id`;
 
 const COLUMNS = [
   "harness",
+  "instance_id",
   "native_id",
   "native_path",
   "cwd",
@@ -154,6 +160,7 @@ function rowFromDb(r: Record<string, unknown>): LedgerRow {
   const tags = typeof r.tags === "string" ? r.tags.split("\x1f").filter(Boolean).sort() : [];
   return {
     harness: r.harness as HarnessId,
+    instanceId: String(r.instance_id ?? DEFAULT_INSTANCE_ID),
     nativeId: String(r.native_id),
     nativePath: (r.native_path as string) ?? undefined,
     cwd: (r.cwd as string) ?? undefined,
@@ -183,12 +190,16 @@ function rowFromDb(r: Record<string, unknown>): LedgerRow {
 }
 
 function lineageFromDb(r: Record<string, unknown>): LineageRow {
+  const instanceId = String(r.instance_id ?? DEFAULT_INSTANCE_ID);
+  const parentInstanceId = (r.parent_instance_id as string) ?? undefined;
   return {
     harness: r.harness as HarnessId,
+    ...(instanceId !== DEFAULT_INSTANCE_ID ? { instanceId } : {}),
     nativeId: String(r.native_id),
     threadId: String(r.thread_id),
     hop: num(r.hop) ?? 0,
     parentHarness: (r.parent_harness as HarnessId) ?? undefined,
+    ...(parentInstanceId && parentInstanceId !== DEFAULT_INSTANCE_ID ? { parentInstanceId } : {}),
     parentNativeId: (r.parent_native_id as string) ?? undefined,
     portedAt: (r.ported_at as string) ?? undefined,
     mode: (r.mode as string) ?? undefined,
@@ -214,7 +225,7 @@ function viewFromDb(r: Record<string, unknown>): SavedView {
 }
 
 /**
- * Upsert keyed on (harness, native_id).
+ * Upsert keyed on (harness, instance_id, native_id).
  *
  * Identity columns are last-write-wins, but `ported_at` / `mode` are COALESCEd:
  * a record that does not know them (the ancestors named by a later port's
@@ -222,12 +233,13 @@ function viewFromDb(r: Record<string, unknown>): SavedView {
  */
 const LINEAGE_UPSERT_SQL = `
 INSERT INTO lineage (
-  harness, native_id, thread_id, hop, parent_harness, parent_native_id, ported_at, mode, recorded_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(harness, native_id) DO UPDATE SET
+  harness, instance_id, native_id, thread_id, hop, parent_harness, parent_instance_id, parent_native_id, ported_at, mode, recorded_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(harness, instance_id, native_id) DO UPDATE SET
   thread_id        = excluded.thread_id,
   hop              = excluded.hop,
   parent_harness   = excluded.parent_harness,
+  parent_instance_id = excluded.parent_instance_id,
   parent_native_id = excluded.parent_native_id,
   ported_at        = COALESCE(excluded.ported_at, lineage.ported_at),
   mode             = COALESCE(excluded.mode, lineage.mode),
@@ -237,6 +249,7 @@ ON CONFLICT(harness, native_id) DO UPDATE SET
 function bindValues(s: SessionSummary, host: string, scannedAt: string): unknown[] {
   return [
     s.harness,
+    s.instanceId ?? DEFAULT_INSTANCE_ID,
     s.nativeId,
     s.nativePath ?? null,
     s.cwd ?? null,
@@ -292,6 +305,7 @@ export class Ledger {
     this.db.exec("PRAGMA busy_timeout = 5000");
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec(SCHEMA_SQL);
+    migrateLedgerV7(this.db);
     this.db.run("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)", [
       String(SCHEMA_VERSION),
     ]);
@@ -308,14 +322,15 @@ export class Ledger {
   /** Insert-or-update one summary. Returns what happened. */
   upsert(s: SessionSummary): "inserted" | "updated" | "unchanged" {
     const scannedAt = new Date().toISOString();
+    const instanceId = s.instanceId ?? DEFAULT_INSTANCE_ID;
     const existing = this.db
       .query(`SELECT
         native_path, cwd, title, first_prompt, created_at, updated_at,
         message_count, model, git_branch, tokens_input, tokens_output,
         tokens_reasoning, tokens_cache_read, tokens_cache_write, cost,
         parent_native_id, is_subagent, ghost, host
-      FROM sessions WHERE harness = ? AND native_id = ?`)
-      .get(s.harness, s.nativeId) as Record<string, unknown> | null;
+      FROM sessions WHERE harness = ? AND instance_id = ? AND native_id = ?`)
+      .get(s.harness, instanceId, s.nativeId) as Record<string, unknown> | null;
 
     if (
       existing &&
@@ -339,34 +354,35 @@ export class Ledger {
       !!existing.ghost === !!s.ghost &&
       (existing.host ?? null) === this.host
     ) {
-      this.db.run("UPDATE sessions SET scanned_at = ? WHERE harness = ? AND native_id = ?", [
+      this.db.run("UPDATE sessions SET scanned_at = ? WHERE harness = ? AND instance_id = ? AND native_id = ?", [
         scannedAt,
         s.harness,
+        instanceId,
         s.nativeId,
       ]);
       return "unchanged";
     }
 
     const placeholders = COLUMNS.map(() => "?").join(", ");
-    const updates = COLUMNS.filter((c) => c !== "harness" && c !== "native_id")
+    const updates = COLUMNS.filter((c) => c !== "harness" && c !== "instance_id" && c !== "native_id")
       .map((c) => `${c} = excluded.${c}`)
       .join(", ");
     this.db.run(
       `INSERT INTO sessions (${COLUMNS.join(", ")}) VALUES (${placeholders})
-       ON CONFLICT(harness, native_id) DO UPDATE SET ${updates}`,
+       ON CONFLICT(harness, instance_id, native_id) DO UPDATE SET ${updates}`,
       bindValues(s, this.host, scannedAt) as never[],
     );
-    this.reindexFts(s.harness, s.nativeId, s.title, s.firstPrompt);
+    this.reindexFts(s.harness, instanceId, s.nativeId, s.title, s.firstPrompt);
     return existing ? "updated" : "inserted";
   }
 
-  private reindexFts(harness: string, nativeId: string, title?: string, firstPrompt?: string): void {
+  private reindexFts(harness: string, instanceId: string, nativeId: string, title?: string, firstPrompt?: string): void {
     const metadata = this.db
       .query(`SELECT
-        (SELECT alias FROM session_aliases WHERE harness = ? AND native_id = ?) AS alias,
-        (SELECT note FROM session_notes WHERE harness = ? AND native_id = ?) AS note,
-        (SELECT group_concat(tag, ' ') FROM session_tags WHERE harness = ? AND native_id = ?) AS tags`)
-      .get(harness, nativeId, harness, nativeId, harness, nativeId) as {
+        (SELECT alias FROM session_aliases WHERE harness = ? AND instance_id = ? AND native_id = ?) AS alias,
+        (SELECT note FROM session_notes WHERE harness = ? AND instance_id = ? AND native_id = ?) AS note,
+        (SELECT group_concat(tag, ' ') FROM session_tags WHERE harness = ? AND instance_id = ? AND native_id = ?) AS tags`)
+      .get(harness, instanceId, nativeId, harness, instanceId, nativeId, harness, instanceId, nativeId) as {
         alias: string | null;
         note: string | null;
         tags: string | null;
@@ -374,91 +390,91 @@ export class Ledger {
     const indexedTitle = [metadata?.alias, title, metadata?.tags].filter(Boolean).join("\n");
     const indexedPrompt = [firstPrompt, metadata?.note].filter(Boolean).join("\n");
 
-    this.db.run("DELETE FROM sessions_fts WHERE harness = ? AND native_id = ?", [harness, nativeId]);
+    this.db.run("DELETE FROM sessions_fts WHERE harness = ? AND instance_id = ? AND native_id = ?", [harness, instanceId, nativeId]);
     this.db.run(
-      "INSERT INTO sessions_fts (harness, native_id, title, first_prompt) VALUES (?, ?, ?, ?)",
-      [harness, nativeId, indexedTitle, indexedPrompt],
+      "INSERT INTO sessions_fts (harness, instance_id, native_id, title, first_prompt) VALUES (?, ?, ?, ?, ?)",
+      [harness, instanceId, nativeId, indexedTitle, indexedPrompt],
     );
   }
 
   /** Set, change, or clear a Sinter-local alias without modifying the source row. */
-  setAlias(harness: HarnessId, nativeId: string, alias?: string): void {
+  setAlias(harness: HarnessId, nativeId: string, alias?: string, instanceId: InstanceId = DEFAULT_INSTANCE_ID): void {
     this.db.transaction(() => {
       if (alias === undefined) {
-        this.db.run("DELETE FROM session_aliases WHERE harness = ? AND native_id = ?", [harness, nativeId]);
+        this.db.run("DELETE FROM session_aliases WHERE harness = ? AND instance_id = ? AND native_id = ?", [harness, instanceId, nativeId]);
       } else {
         this.db.run(
-          `INSERT INTO session_aliases (harness, native_id, alias) VALUES (?, ?, ?)
-           ON CONFLICT(harness, native_id) DO UPDATE SET alias = excluded.alias`,
-          [harness, nativeId, alias],
+          `INSERT INTO session_aliases (harness, instance_id, native_id, alias) VALUES (?, ?, ?, ?)
+           ON CONFLICT(harness, instance_id, native_id) DO UPDATE SET alias = excluded.alias`,
+          [harness, instanceId, nativeId, alias],
         );
       }
 
       const session = this.db
-        .query("SELECT title, first_prompt FROM sessions WHERE harness = ? AND native_id = ?")
-        .get(harness, nativeId) as { title: string | null; first_prompt: string | null } | null;
+        .query("SELECT title, first_prompt FROM sessions WHERE harness = ? AND instance_id = ? AND native_id = ?")
+        .get(harness, instanceId, nativeId) as { title: string | null; first_prompt: string | null } | null;
       if (session) {
-        this.reindexFts(harness, nativeId, session.title ?? undefined, session.first_prompt ?? undefined);
+        this.reindexFts(harness, instanceId, nativeId, session.title ?? undefined, session.first_prompt ?? undefined);
       } else {
-        this.db.run("DELETE FROM sessions_fts WHERE harness = ? AND native_id = ?", [harness, nativeId]);
+        this.db.run("DELETE FROM sessions_fts WHERE harness = ? AND instance_id = ? AND native_id = ?", [harness, instanceId, nativeId]);
       }
     })();
   }
 
   /** Set or clear a Sinter-local bookmark without modifying the native session. */
-  setPinned(harness: HarnessId, nativeId: string, pinned: boolean, pinnedAt = new Date().toISOString()): void {
+  setPinned(harness: HarnessId, nativeId: string, pinned: boolean, pinnedAt = new Date().toISOString(), instanceId: InstanceId = DEFAULT_INSTANCE_ID): void {
     if (!pinned) {
-      this.db.run("DELETE FROM session_pins WHERE harness = ? AND native_id = ?", [harness, nativeId]);
+      this.db.run("DELETE FROM session_pins WHERE harness = ? AND instance_id = ? AND native_id = ?", [harness, instanceId, nativeId]);
       return;
     }
     this.db.run(
-      `INSERT INTO session_pins (harness, native_id, pinned_at) VALUES (?, ?, ?)
-       ON CONFLICT(harness, native_id) DO UPDATE SET pinned_at = excluded.pinned_at`,
-      [harness, nativeId, pinnedAt],
+      `INSERT INTO session_pins (harness, instance_id, native_id, pinned_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(harness, instance_id, native_id) DO UPDATE SET pinned_at = excluded.pinned_at`,
+      [harness, instanceId, nativeId, pinnedAt],
     );
   }
 
   /** Set or clear a Sinter-local note and refresh the search index. */
-  setNote(harness: HarnessId, nativeId: string, note?: string, updatedAt = new Date().toISOString()): void {
+  setNote(harness: HarnessId, nativeId: string, note?: string, updatedAt = new Date().toISOString(), instanceId: InstanceId = DEFAULT_INSTANCE_ID): void {
     this.db.transaction(() => {
       if (note === undefined) {
-        this.db.run("DELETE FROM session_notes WHERE harness = ? AND native_id = ?", [harness, nativeId]);
+        this.db.run("DELETE FROM session_notes WHERE harness = ? AND instance_id = ? AND native_id = ?", [harness, instanceId, nativeId]);
       } else {
         this.db.run(
-          `INSERT INTO session_notes (harness, native_id, note, updated_at) VALUES (?, ?, ?, ?)
-           ON CONFLICT(harness, native_id) DO UPDATE SET note = excluded.note, updated_at = excluded.updated_at`,
-          [harness, nativeId, note, updatedAt],
+          `INSERT INTO session_notes (harness, instance_id, native_id, note, updated_at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(harness, instance_id, native_id) DO UPDATE SET note = excluded.note, updated_at = excluded.updated_at`,
+          [harness, instanceId, nativeId, note, updatedAt],
         );
       }
-      const session = this.db.query("SELECT title, first_prompt FROM sessions WHERE harness = ? AND native_id = ?")
-        .get(harness, nativeId) as { title: string | null; first_prompt: string | null } | null;
-      if (session) this.reindexFts(harness, nativeId, session.title ?? undefined, session.first_prompt ?? undefined);
+      const session = this.db.query("SELECT title, first_prompt FROM sessions WHERE harness = ? AND instance_id = ? AND native_id = ?")
+        .get(harness, instanceId, nativeId) as { title: string | null; first_prompt: string | null } | null;
+      if (session) this.reindexFts(harness, instanceId, nativeId, session.title ?? undefined, session.first_prompt ?? undefined);
     })();
   }
 
   /** Add normalized, Sinter-local tags and refresh the search index. */
-  addTags(harness: HarnessId, nativeId: string, tags: string[]): void {
+  addTags(harness: HarnessId, nativeId: string, tags: string[], instanceId: InstanceId = DEFAULT_INSTANCE_ID): void {
     this.db.transaction(() => {
-      const insert = this.db.prepare("INSERT OR IGNORE INTO session_tags (harness, native_id, tag) VALUES (?, ?, ?)");
-      for (const tag of tags) insert.run(harness, nativeId, tag);
-      const session = this.db.query("SELECT title, first_prompt FROM sessions WHERE harness = ? AND native_id = ?")
-        .get(harness, nativeId) as { title: string | null; first_prompt: string | null } | null;
-      if (session) this.reindexFts(harness, nativeId, session.title ?? undefined, session.first_prompt ?? undefined);
+      const insert = this.db.prepare("INSERT OR IGNORE INTO session_tags (harness, instance_id, native_id, tag) VALUES (?, ?, ?, ?)");
+      for (const tag of tags) insert.run(harness, instanceId, nativeId, tag);
+      const session = this.db.query("SELECT title, first_prompt FROM sessions WHERE harness = ? AND instance_id = ? AND native_id = ?")
+        .get(harness, instanceId, nativeId) as { title: string | null; first_prompt: string | null } | null;
+      if (session) this.reindexFts(harness, instanceId, nativeId, session.title ?? undefined, session.first_prompt ?? undefined);
     })();
   }
 
   /** Remove selected tags, or every tag when `tags` is omitted. */
-  removeTags(harness: HarnessId, nativeId: string, tags?: string[]): void {
+  removeTags(harness: HarnessId, nativeId: string, tags?: string[], instanceId: InstanceId = DEFAULT_INSTANCE_ID): void {
     this.db.transaction(() => {
       if (tags?.length) {
-        const drop = this.db.prepare("DELETE FROM session_tags WHERE harness = ? AND native_id = ? AND tag = ?");
-        for (const tag of tags) drop.run(harness, nativeId, tag);
+        const drop = this.db.prepare("DELETE FROM session_tags WHERE harness = ? AND instance_id = ? AND native_id = ? AND tag = ?");
+        for (const tag of tags) drop.run(harness, instanceId, nativeId, tag);
       } else {
-        this.db.run("DELETE FROM session_tags WHERE harness = ? AND native_id = ?", [harness, nativeId]);
+        this.db.run("DELETE FROM session_tags WHERE harness = ? AND instance_id = ? AND native_id = ?", [harness, instanceId, nativeId]);
       }
-      const session = this.db.query("SELECT title, first_prompt FROM sessions WHERE harness = ? AND native_id = ?")
-        .get(harness, nativeId) as { title: string | null; first_prompt: string | null } | null;
-      if (session) this.reindexFts(harness, nativeId, session.title ?? undefined, session.first_prompt ?? undefined);
+      const session = this.db.query("SELECT title, first_prompt FROM sessions WHERE harness = ? AND instance_id = ? AND native_id = ?")
+        .get(harness, instanceId, nativeId) as { title: string | null; first_prompt: string | null } | null;
+      if (session) this.reindexFts(harness, instanceId, nativeId, session.title ?? undefined, session.first_prompt ?? undefined);
     })();
   }
 
@@ -519,8 +535,10 @@ export class Ledger {
     const result: ScanResult = { harnesses: {}, errors: [] };
 
     for (const adapter of adapters) {
+      const instanceId = adapter.instanceId ?? DEFAULT_INSTANCE_ID;
+      const scanKey = instanceId === DEFAULT_INSTANCE_ID ? adapter.id : `${adapter.id}@${instanceId}`;
       const stat: ScanHarnessStat = { seen: 0, inserted: 0, updated: 0, unchanged: 0, ghosts: 0 };
-      result.harnesses[adapter.id] = stat;
+      result.harnesses[scanKey] = stat;
       const summaries: SessionSummary[] = [];
       const seen = new Set<string>();
 
@@ -532,10 +550,13 @@ export class Ledger {
           if (summary.harness !== undefined && summary.harness !== adapter.id) {
             throw new Error(`adapter yielded a session for the wrong harness (${summary.harness})`);
           }
+          if (summary.instanceId !== undefined && summary.instanceId !== instanceId) {
+            throw new Error(`adapter yielded a session for the wrong instance (${summary.instanceId})`);
+          }
           if (seen.has(summary.nativeId)) {
             throw new Error("adapter yielded a duplicate native session id");
           }
-          const s: SessionSummary = { ...summary, harness: adapter.id };
+          const s: SessionSummary = { ...summary, harness: adapter.id, instanceId };
           seen.add(s.nativeId);
           summaries.push(s);
           stat.seen++;
@@ -549,7 +570,7 @@ export class Ledger {
           }
           // Rows the harness no longer lists are ghosts: the ledger keeps the
           // history after the harness GCs the transcript.
-          stat.ghosts += this.markGhosts(adapter.id, [...seen]);
+          stat.ghosts += this.markGhosts(adapter.id, [...seen], instanceId);
         });
         // Acquire the write reservation before upsert() performs its first
         // read. A deferred transaction can otherwise hit SQLITE_BUSY_SNAPSHOT
@@ -563,23 +584,23 @@ export class Ledger {
         stat.updated = 0;
         stat.unchanged = 0;
         stat.ghosts = 0;
-        result.errors.push({ harness: adapter.id, error: err instanceof Error ? err.message : String(err) });
+        result.errors.push({ harness: scanKey, error: err instanceof Error ? err.message : String(err) });
       }
     }
     return result;
   }
 
   /** Mark every row of `harness` not in `seen` as a ghost. Returns rows flipped. */
-  markGhosts(harness: HarnessId, seen: string[]): number {
+  markGhosts(harness: HarnessId, seen: string[], instanceId: InstanceId = DEFAULT_INSTANCE_ID): number {
     const keep = new Set(seen);
     const rows = this.db
-      .query("SELECT native_id FROM sessions WHERE harness = ? AND ghost = 0")
-      .all(harness) as { native_id: string }[];
+      .query("SELECT native_id FROM sessions WHERE harness = ? AND instance_id = ? AND ghost = 0")
+      .all(harness, instanceId) as { native_id: string }[];
     let flipped = 0;
-    const stmt = this.db.prepare("UPDATE sessions SET ghost = 1 WHERE harness = ? AND native_id = ?");
+    const stmt = this.db.prepare("UPDATE sessions SET ghost = 1 WHERE harness = ? AND instance_id = ? AND native_id = ?");
     for (const r of rows) {
       if (!keep.has(r.native_id)) {
-        stmt.run(harness, r.native_id);
+        stmt.run(harness, instanceId, r.native_id);
         flipped++;
       }
     }
@@ -593,6 +614,10 @@ export class Ledger {
     if (opts.harness) {
       where.push("s.harness = ?");
       params.push(opts.harness);
+    }
+    if (opts.instanceId) {
+      where.push("s.instance_id = ?");
+      params.push(opts.instanceId);
     }
     if (opts.before) {
       where.push("COALESCE(s.scanned_at, s.updated_at, s.created_at, '') <= ?");
@@ -613,12 +638,12 @@ export class Ledger {
       const candidates = this.ghosts(opts).filter(
         (row) => !row.alias && !row.pinnedAt && !row.note && !row.tags?.length,
       );
-      const dropFts = this.db.prepare("DELETE FROM sessions_fts WHERE harness = ? AND native_id = ?");
-      const dropSession = this.db.prepare("DELETE FROM sessions WHERE harness = ? AND native_id = ? AND ghost = 1");
+      const dropFts = this.db.prepare("DELETE FROM sessions_fts WHERE harness = ? AND instance_id = ? AND native_id = ?");
+      const dropSession = this.db.prepare("DELETE FROM sessions WHERE harness = ? AND instance_id = ? AND native_id = ? AND ghost = 1");
       const removed: LedgerRow[] = [];
       for (const row of candidates) {
-        dropFts.run(row.harness, row.nativeId);
-        const result = dropSession.run(row.harness, row.nativeId);
+        dropFts.run(row.harness, row.instanceId ?? DEFAULT_INSTANCE_ID, row.nativeId);
+        const result = dropSession.run(row.harness, row.instanceId ?? DEFAULT_INSTANCE_ID, row.nativeId);
         if (result.changes) removed.push(row);
       }
       return removed;
@@ -627,10 +652,10 @@ export class Ledger {
 
   // ------------------------------------------------------------- read path
 
-  get(harness: HarnessId, nativeId: string): LedgerRow | undefined {
+  get(harness: HarnessId, nativeId: string, instanceId: InstanceId = DEFAULT_INSTANCE_ID): LedgerRow | undefined {
     const r = this.db
-      .query(`${SESSION_SELECT} WHERE s.harness = ? AND s.native_id = ?`)
-      .get(harness, nativeId) as Record<string, unknown> | null;
+      .query(`${SESSION_SELECT} WHERE s.harness = ? AND s.instance_id = ? AND s.native_id = ?`)
+      .get(harness, instanceId, nativeId) as Record<string, unknown> | null;
     return r ? rowFromDb(r) : undefined;
   }
 
@@ -643,6 +668,13 @@ export class Ledger {
       if (hs.length) {
         where.push(`s.harness IN (${hs.map(() => "?").join(", ")})`);
         params.push(...hs);
+      }
+    }
+    if (opts.instanceId) {
+      const ids = Array.isArray(opts.instanceId) ? opts.instanceId : [opts.instanceId];
+      if (ids.length) {
+        where.push(`s.instance_id IN (${ids.map(() => "?").join(", ")})`);
+        params.push(...ids);
       }
     }
     if (opts.cwd) {
@@ -671,11 +703,11 @@ export class Ledger {
     const run = (q: string) =>
       this.db
         .query(
-          "SELECT harness, native_id FROM sessions_fts WHERE sessions_fts MATCH ? ORDER BY rank LIMIT 5000",
+          "SELECT harness, instance_id, native_id FROM sessions_fts WHERE sessions_fts MATCH ? ORDER BY rank LIMIT 5000",
         )
-        .all(q) as { harness: string; native_id: string }[];
+        .all(q) as { harness: string; instance_id: string; native_id: string }[];
 
-    let hits: { harness: string; native_id: string }[];
+    let hits: { harness: string; instance_id: string; native_id: string }[];
     try {
       hits = run(query);
     } catch {
@@ -686,10 +718,14 @@ export class Ledger {
     const harnesses = opts.harness
       ? new Set(Array.isArray(opts.harness) ? opts.harness : [opts.harness])
       : undefined;
+    const instances = opts.instanceId
+      ? new Set(Array.isArray(opts.instanceId) ? opts.instanceId : [opts.instanceId])
+      : undefined;
     for (const h of hits) {
-      const row = this.get(h.harness as HarnessId, h.native_id);
+      const row = this.get(h.harness as HarnessId, h.native_id, h.instance_id);
       if (!row) continue;
       if (harnesses && !harnesses.has(row.harness)) continue;
+      if (instances && !instances.has(row.instanceId ?? DEFAULT_INSTANCE_ID)) continue;
       if (opts.cwd && row.cwd !== opts.cwd) continue;
       if (opts.since && (row.updatedAt ?? row.createdAt ?? "") < opts.since) continue;
       if (opts.includeGhost === false && row.ghost) continue;
@@ -705,15 +741,18 @@ export class Ledger {
    * Resolve an id prefix across the whole ledger (stricter than first-match:
    * ambiguity is an error the caller must report).
    *
-   * Accepts `prefix`, `harness:prefix` and `harness/prefix`.
+   * Accepts `prefix`, `harness:prefix`, `harness/prefix`, and
+   * `harness@instance:prefix`.
    */
   resolve(input: string): ResolveResult {
     let harness: string | undefined;
+    let instanceId: string | undefined;
     let prefix = input.trim();
-    const m = /^([a-z]+)[:/](.*)$/i.exec(prefix);
+    const m = /^([a-z]+)(?:@([a-z0-9][a-z0-9._-]*))?[:/](.*)$/i.exec(prefix);
     if (m && ["claude", "codex", "devin", "opencode", "zcode", "omp", "pi"].includes(m[1]!.toLowerCase())) {
       harness = m[1]!.toLowerCase();
-      prefix = m[2]!;
+      instanceId = m[2];
+      prefix = m[3]!;
     }
 
     const params: unknown[] = [];
@@ -723,6 +762,10 @@ export class Ledger {
     if (harness) {
       sql += " AND s.harness = ?";
       params.push(harness);
+    }
+    if (instanceId) {
+      sql += " AND s.instance_id = ?";
+      params.push(instanceId);
     }
     sql += " ORDER BY COALESCE(s.updated_at, s.created_at, '') DESC LIMIT 50";
 
@@ -742,7 +785,7 @@ export class Ledger {
     if (candidates.length > 1) {
       const root = candidates.find((r) =>
         candidates.every(
-          (c) => c === r || (c.harness === r.harness && c.nativeId.startsWith(`${r.nativeId}/`)),
+          (c) => c === r || (c.harness === r.harness && c.instanceId === r.instanceId && c.nativeId.startsWith(`${r.nativeId}/`)),
         ),
       );
       if (root) return { row: root, candidates };
@@ -758,23 +801,26 @@ export class Ledger {
       .all() as { harness: string; total: number; ghosts: number }[];
   }
 
-  countFor(harness: HarnessId): number {
+  countFor(harness: HarnessId, instanceId?: InstanceId): number {
+    const where = instanceId ? "harness = ? AND instance_id = ?" : "harness = ?";
     const r = this.db
-      .query("SELECT count(*) AS n FROM sessions WHERE harness = ?")
-      .get(harness) as { n: number } | null;
+      .query(`SELECT count(*) AS n FROM sessions WHERE ${where}`)
+      .get(...([harness, ...(instanceId ? [instanceId] : [])] as never[])) as { n: number } | null;
     return r?.n ?? 0;
   }
 
   // --------------------------------------------------------------- lineage
 
-  /** Idempotent upsert of one link, keyed on (harness, native_id). */
+  /** Idempotent upsert keyed on (harness, instance_id, native_id). */
   recordLineage(row: LineageRow): void {
     this.db.run(LINEAGE_UPSERT_SQL, [
       row.harness,
+      row.instanceId ?? DEFAULT_INSTANCE_ID,
       row.nativeId,
       row.threadId,
       Number.isFinite(row.hop) ? Math.max(0, Math.floor(row.hop)) : 0,
       row.parentHarness ?? null,
+      row.parentHarness ? (row.parentInstanceId ?? DEFAULT_INSTANCE_ID) : null,
       row.parentNativeId ?? null,
       row.portedAt ?? null,
       row.mode ?? null,
@@ -806,10 +852,12 @@ export class Ledger {
         const parent = i > 0 ? chain[i - 1] : undefined;
         this.recordLineage({
           harness: hop.harness,
+          instanceId: hop.instanceId ?? DEFAULT_INSTANCE_ID,
           nativeId: hop.nativeId,
           threadId: prov.threadId,
           hop: i,
           parentHarness: parent?.harness,
+          parentInstanceId: parent ? (parent.instanceId ?? DEFAULT_INSTANCE_ID) : undefined,
           parentNativeId: parent?.nativeId,
           portedAt: i === self ? prov.portedAt || undefined : undefined,
           mode: i === self ? prov.mode : undefined,
@@ -822,7 +870,7 @@ export class Ledger {
   lineage(): LineageRow[] {
     return (
       this.db
-        .query("SELECT * FROM lineage ORDER BY thread_id, hop, harness, native_id")
+        .query("SELECT * FROM lineage ORDER BY thread_id, hop, harness, instance_id, native_id")
         .all() as Record<string, unknown>[]
     ).map(lineageFromDb);
   }
@@ -831,16 +879,16 @@ export class Ledger {
   lineageFor(threadId: string): LineageRow[] {
     return (
       this.db
-        .query("SELECT * FROM lineage WHERE thread_id = ? ORDER BY hop, harness, native_id")
+        .query("SELECT * FROM lineage WHERE thread_id = ? ORDER BY hop, harness, instance_id, native_id")
         .all(threadId) as Record<string, unknown>[]
     ).map(lineageFromDb);
   }
 
   /** The thread a native session belongs to, if sinter has ever seen it ported. */
-  threadIdOf(harness: HarnessId, nativeId: string): string | undefined {
+  threadIdOf(harness: HarnessId, nativeId: string, instanceId: InstanceId = DEFAULT_INSTANCE_ID): string | undefined {
     const r = this.db
-      .query("SELECT thread_id FROM lineage WHERE harness = ? AND native_id = ?")
-      .get(harness, nativeId) as { thread_id: string } | null;
+      .query("SELECT thread_id FROM lineage WHERE harness = ? AND instance_id = ? AND native_id = ?")
+      .get(harness, instanceId, nativeId) as { thread_id: string } | null;
     return r?.thread_id ?? undefined;
   }
 

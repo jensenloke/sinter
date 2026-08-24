@@ -17,10 +17,16 @@
 
 export type HarnessId = "claude" | "codex" | "devin" | "opencode" | "zcode" | "omp" | "pi";
 
+/** Stable namespace used by legacy/single-store configurations. */
+export const DEFAULT_INSTANCE_ID = "default" as const;
+export type InstanceId = string;
+
 export const SIF_VERSION = "sif/0";
 
 export interface SifOrigin {
   harness: HarnessId;
+  /** Which configured store/command produced this session. Omitted means `default`. */
+  instanceId?: InstanceId;
   nativeId: string;
   nativePath?: string;
   host?: string;
@@ -183,6 +189,8 @@ export interface SifSession {
 /** Cheap listing row — built from indexes/head-windows, never full parses. */
 export interface SessionSummary {
   harness: HarnessId;
+  /** Which configured store produced this row. Omitted means `default`. */
+  instanceId?: InstanceId;
   nativeId: string;
   nativePath?: string;
   cwd?: string;
