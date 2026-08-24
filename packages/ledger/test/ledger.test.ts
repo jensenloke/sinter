@@ -79,6 +79,48 @@ describe("scan", () => {
     l.close();
   });
 
+  test("persists every corrected summary field without a timestamp or message-count change", async () => {
+    const l = ledger();
+    const a = new MockAdapter({
+      id: "claude",
+      summaries: [summary({
+        nativeId: "corrected",
+        nativePath: "/old/session.jsonl",
+        cwd: "/old/project",
+        createdAt: "2026-07-01T00:00:00.000Z",
+        model: "old-model",
+        gitBranch: "old-branch",
+        usage: { input: 1, output: 2, reasoning: 3, cacheRead: 4, cacheWrite: 5, costUsd: 0.01 },
+      })],
+    });
+    await l.scan([a]);
+    a.summaries = [summary({
+      nativeId: "corrected",
+      nativePath: "/new/session.jsonl",
+      cwd: "/new/project",
+      createdAt: "2026-07-02T00:00:00.000Z",
+      model: "new-model",
+      gitBranch: "new-branch",
+      usage: { input: 10, output: 20, reasoning: 30, cacheRead: 40, cacheWrite: 50, costUsd: 0.5 },
+    })];
+    const result = await l.scan([a]);
+    expect(result.harnesses.claude!.updated).toBe(1);
+    expect(l.get("claude", "corrected")).toMatchObject({
+      nativePath: "/new/session.jsonl",
+      cwd: "/new/project",
+      createdAt: "2026-07-02T00:00:00.000Z",
+      model: "new-model",
+      gitBranch: "new-branch",
+      tokensInput: 10,
+      tokensOutput: 20,
+      tokensReasoning: 30,
+      tokensCacheRead: 40,
+      tokensCacheWrite: 50,
+      cost: 0.5,
+    });
+    l.close();
+  });
+
   test("marks rows as ghost once the harness stops listing them", async () => {
     const l = ledger();
     const a = new MockAdapter({
@@ -122,8 +164,8 @@ describe("scan", () => {
     expect(r.errors).toHaveLength(1);
     expect(r.errors[0]!.harness).toBe("zcode");
     expect(r.harnesses.omp!.inserted).toBe(1);
-    // partial rows before the throw are kept
-    expect(l.get("zcode", "z1")).toBeDefined();
+    // A failed adapter leaves no partial snapshot behind.
+    expect(l.get("zcode", "z1")).toBeUndefined();
     l.close();
   });
 
@@ -135,6 +177,42 @@ describe("scan", () => {
     a.throwOnList = "*";
     await l.scan([a]);
     expect(l.get("omp", "keep")!.ghost).toBe(false);
+    l.close();
+  });
+
+  test("a mid-stream failure rolls back updates as well as inserts", async () => {
+    const l = ledger();
+    const a = new MockAdapter({ id: "omp", summaries: [summary({ nativeId: "keep", harness: "omp", title: "before" })] });
+    await l.scan([a]);
+    a.summaries = [
+      summary({ nativeId: "keep", harness: "omp", title: "partial update" }),
+      summary({ nativeId: "boom", harness: "omp" }),
+    ];
+    a.throwOnList = "boom";
+    const result = await l.scan([a]);
+    expect(result.harnesses.omp).toMatchObject({ inserted: 0, updated: 0, unchanged: 0, ghosts: 0 });
+    expect(l.get("omp", "keep")!.title).toBe("before");
+    l.close();
+  });
+
+  test("malformed, duplicate, and cross-harness summaries cannot poison a snapshot", async () => {
+    const l = ledger();
+    const malformed = new MockAdapter({ id: "claude", summaries: [summary({ nativeId: "" })] });
+    const duplicate = new MockAdapter({
+      id: "codex",
+      summaries: [
+        summary({ nativeId: "same", harness: "codex" }),
+        summary({ nativeId: "same", harness: "codex", title: "conflict" }),
+      ],
+    });
+    const crossed = new MockAdapter({
+      id: "omp",
+      summaries: [summary({ nativeId: "wrong", harness: "claude" })],
+    });
+
+    const result = await l.scan([malformed, duplicate, crossed]);
+    expect(result.errors.map((error) => error.harness)).toEqual(["claude", "codex", "omp"]);
+    expect(l.list()).toHaveLength(0);
     l.close();
   });
 });

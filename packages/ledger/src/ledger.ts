@@ -289,6 +289,7 @@ export class Ledger {
       secureLedgerFiles(path);
     }
     this.db = new Database(path, { create: true });
+    this.db.exec("PRAGMA busy_timeout = 5000");
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec(SCHEMA_SQL);
     this.db.run("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)", [
@@ -308,18 +309,35 @@ export class Ledger {
   upsert(s: SessionSummary): "inserted" | "updated" | "unchanged" {
     const scannedAt = new Date().toISOString();
     const existing = this.db
-      .query("SELECT updated_at, message_count, ghost, title, first_prompt, is_subagent, parent_native_id FROM sessions WHERE harness = ? AND native_id = ?")
+      .query(`SELECT
+        native_path, cwd, title, first_prompt, created_at, updated_at,
+        message_count, model, git_branch, tokens_input, tokens_output,
+        tokens_reasoning, tokens_cache_read, tokens_cache_write, cost,
+        parent_native_id, is_subagent, ghost, host
+      FROM sessions WHERE harness = ? AND native_id = ?`)
       .get(s.harness, s.nativeId) as Record<string, unknown> | null;
 
     if (
       existing &&
-      (existing.updated_at ?? null) === (s.updatedAt ?? null) &&
-      (existing.message_count ?? null) === (s.messageCount ?? null) &&
-      !!existing.ghost === !!s.ghost &&
+      (existing.native_path ?? null) === (s.nativePath ?? null) &&
+      (existing.cwd ?? null) === (s.cwd ?? null) &&
       (existing.title ?? null) === (s.title ?? null) &&
       (existing.first_prompt ?? null) === (s.firstPrompt ?? null) &&
+      (existing.created_at ?? null) === (s.createdAt ?? null) &&
+      (existing.updated_at ?? null) === (s.updatedAt ?? null) &&
+      (existing.message_count ?? null) === (s.messageCount ?? null) &&
+      (existing.model ?? null) === (s.model ?? null) &&
+      (existing.git_branch ?? null) === (s.gitBranch ?? null) &&
+      (existing.tokens_input ?? null) === (s.usage?.input ?? null) &&
+      (existing.tokens_output ?? null) === (s.usage?.output ?? null) &&
+      (existing.tokens_reasoning ?? null) === (s.usage?.reasoning ?? null) &&
+      (existing.tokens_cache_read ?? null) === (s.usage?.cacheRead ?? null) &&
+      (existing.tokens_cache_write ?? null) === (s.usage?.cacheWrite ?? null) &&
+      (existing.cost ?? null) === (s.usage?.costUsd ?? null) &&
+      (existing.parent_native_id ?? null) === (s.parentNativeId ?? null) &&
       !!existing.is_subagent === !!s.isSubagent &&
-      (existing.parent_native_id ?? null) === (s.parentNativeId ?? null)
+      !!existing.ghost === !!s.ghost &&
+      (existing.host ?? null) === this.host
     ) {
       this.db.run("UPDATE sessions SET scanned_at = ? WHERE harness = ? AND native_id = ?", [
         scannedAt,
@@ -503,28 +521,49 @@ export class Ledger {
     for (const adapter of adapters) {
       const stat: ScanHarnessStat = { seen: 0, inserted: 0, updated: 0, unchanged: 0, ghosts: 0 };
       result.harnesses[adapter.id] = stat;
-      const seen: string[] = [];
-      let failed = false;
+      const summaries: SessionSummary[] = [];
+      const seen = new Set<string>();
 
       try {
         for await (const summary of adapter.list()) {
-          if (!summary || summary.nativeId === undefined || summary.nativeId === null) continue;
-          const s: SessionSummary = { ...summary, harness: summary.harness ?? adapter.id };
-          seen.push(s.nativeId);
+          if (!summary || typeof summary.nativeId !== "string" || summary.nativeId.length === 0) {
+            throw new Error("adapter yielded a malformed session summary");
+          }
+          if (summary.harness !== undefined && summary.harness !== adapter.id) {
+            throw new Error(`adapter yielded a session for the wrong harness (${summary.harness})`);
+          }
+          if (seen.has(summary.nativeId)) {
+            throw new Error("adapter yielded a duplicate native session id");
+          }
+          const s: SessionSummary = { ...summary, harness: adapter.id };
+          seen.add(s.nativeId);
+          summaries.push(s);
           stat.seen++;
-          const what = this.upsert(s);
-          stat[what]++;
-          if (s.ghost) stat.ghosts++;
         }
-      } catch (err) {
-        failed = true;
-        result.errors.push({ harness: adapter.id, error: err instanceof Error ? err.message : String(err) });
-      }
 
-      if (!failed) {
-        // Rows the harness no longer lists are ghosts: the ledger keeps the
-        // history after the harness GCs the transcript.
-        stat.ghosts += this.markGhosts(adapter.id, seen);
+        const applySnapshot = this.db.transaction(() => {
+          for (const summary of summaries) {
+            const what = this.upsert(summary);
+            stat[what]++;
+            if (summary.ghost) stat.ghosts++;
+          }
+          // Rows the harness no longer lists are ghosts: the ledger keeps the
+          // history after the harness GCs the transcript.
+          stat.ghosts += this.markGhosts(adapter.id, [...seen]);
+        });
+        // Acquire the write reservation before upsert() performs its first
+        // read. A deferred transaction can otherwise hit SQLITE_BUSY_SNAPSHOT
+        // when two Sinter processes scan concurrently, which busy_timeout
+        // cannot safely retry after the read snapshot has been established.
+        applySnapshot.immediate();
+      } catch (err) {
+        // A list or database failure leaves this harness at its last complete
+        // snapshot. Other adapters still scan normally.
+        stat.inserted = 0;
+        stat.updated = 0;
+        stat.unchanged = 0;
+        stat.ghosts = 0;
+        result.errors.push({ harness: adapter.id, error: err instanceof Error ? err.message : String(err) });
       }
     }
     return result;
