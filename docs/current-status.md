@@ -9,13 +9,14 @@ operations.
 
 ## Release state
 
-- Current CLI version: `0.3.0`.
-- npm package: `@jensenloke/sinter@0.3.0`.
-- npm `latest`: `0.3.0`, publicly verified after publication.
-- The globally resolved Bun executable was verified at version `0.3.0`.
-- Release notes: [releases/v0.3.0.md](releases/v0.3.0.md).
-- Release preparation commit: `42c32e3 release: prepare v0.3.0`.
-- npm `0.3.0` is already published and cannot be republished. Any correction
+- Current CLI version: `0.3.1`.
+- npm package: `@jensenloke/sinter@0.3.1`.
+- npm `latest`: `0.3.1`, publicly verified after publication.
+- Both the globally resolved npm executable and Bun's global executable were
+  verified at version `0.3.1`.
+- Release notes: [releases/v0.3.1.md](releases/v0.3.1.md).
+- Release commit: `f805f3e feat: bootstrap multi-instance profiles`.
+- npm `0.3.1` is already published and cannot be republished. Any correction
   requires a new version.
 
 ## Git state at handoff
@@ -25,6 +26,7 @@ operations.
   that remote branch. It has not yet been merged into `origin/main`.
 - GitHub PR #24 targets `main`:
   `https://github.com/jensenloke/sinter/pull/24`.
+- PR #24's macOS and Ubuntu verification checks passed for commit `f805f3e`.
 - The sibling `sinter-public` checkout currently uses the same GitHub upstream,
   `jensenloke/sinter`, and was clean at `origin/main`/`v0.2.0` before this
   branch was pushed. Follow the public-clone parity protocol in `AGENTS.md`;
@@ -45,6 +47,40 @@ npm view @jensenloke/sinter version dist-tags --json
 
 Do not infer that npm publication means GitHub was updated; these are separate
 release operations.
+
+## Completed in v0.3.1
+
+### Automatic multi-instance configuration
+
+The first operational run checks for `~/.claude/projects` and
+`~/.claude-*/projects`. When at least two exist and the resolved config path is
+missing, Sinter creates an owner-only `config.toml` and immediately selects its
+`default` profile. Existing configuration is never overwritten.
+
+Generated alternate instances resume with `env CLAUDE_CONFIG_DIR=<root> claude`,
+so agent workflows do not depend on interactive shell aliases. The
+generated profile uses `include_defaults = true`: Claude is routed through its
+named stores while all other harnesses retain default discovery.
+
+The maintainer machine currently has generated instances `personal`,
+`addvita`, and `kimi`. A real global JSON scan completed successfully with no
+stderr output and scanned each independently alongside every other detected
+harness.
+
+Agent-facing discovery is available through:
+
+```sh
+sinter help instances
+sinter config path
+sinter config show
+sinter config validate
+sinter config example
+```
+
+Requested results and machine data remain on stdout. Creation notices and
+errors use stderr; invalid help/usage/configuration returns non-zero. Help,
+version, completion, config-path, and config-example invocations do not create
+configuration.
 
 ## Completed in v0.3.0
 
@@ -136,10 +172,10 @@ Primary implementation locations:
 
 ## Verification baseline
 
-The `v0.3.0` release passed:
+The `v0.3.1` release passed:
 
-- 647 tests;
-- 8,842 assertions;
+- 655 tests;
+- 8,863 assertions;
 - TypeScript checking;
 - production CLI build;
 - npm tarball inspection;
@@ -160,7 +196,7 @@ For a published-version check:
 
 ```sh
 npm view @jensenloke/sinter version dist-tags --json
-bunx @jensenloke/sinter@0.3.0 --version
+bunx @jensenloke/sinter@0.3.1 --version
 ```
 
 ## Known boundaries
@@ -173,6 +209,9 @@ bunx @jensenloke/sinter@0.3.0 --version
 - There is no offline inbox, cloud relay, account/device identity, revocation
   service, or cross-device search yet.
 - Workspace files and Git dirty state are not transferred.
+- Automatic profile bootstrap currently recognizes Claude Code's standard
+  `.claude` / `.claude-*` directory convention. Other custom stores still use
+  explicit TOML configuration.
 - The ledger migration is transactional and rollback-safe but does not create a
   separate user-visible backup file. Backup/repair UX remains roadmap work.
 - Sinter Cloud remains roadmap work. The open-source CLI must remain useful
@@ -182,11 +221,11 @@ bunx @jensenloke/sinter@0.3.0 --version
 
 1. Review and merge GitHub PR #24 so the public default branch catches up with
    the already-published npm package.
-2. After merge, create the Git tag/GitHub release for `v0.3.0`; do not publish
-   `0.3.0` to npm again.
-3. Test two real Claude instances (`claude` and `claude-addvita`) using a named
-   profile, including scan, qualified resolution, same-harness port, and custom
-   resume command.
+2. After merge, create the Git tag/GitHub release for `v0.3.1`; do not publish
+   `0.3.1` to npm again.
+3. Test an actual same-harness port from `claude@personal` to
+   `claude@addvita`, including preview, write, qualified resolution, and the
+   generated `CLAUDE_CONFIG_DIR` resume command.
 4. Test direct transfer between two physical devices on LAN, then across
    Tailscale. Record firewall and address-selection problems as issues.
 5. Choose the next CLI checkpoint from [../ROADMAP.md](../ROADMAP.md). The most
