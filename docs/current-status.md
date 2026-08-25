@@ -1,0 +1,190 @@
+# Sinter current status
+
+Last updated: 2026-08-25 (Asia/Singapore)
+
+This is the durable continuation handoff for maintainers and coding agents.
+Read the root [AGENTS.md](../AGENTS.md) first. Mutable facts below were verified
+on the date above and must be checked again before release, merge, or publish
+operations.
+
+## Release state
+
+- Current CLI version: `0.3.0`.
+- npm package: `@jensenloke/sinter@0.3.0`.
+- npm `latest`: `0.3.0`, publicly verified after publication.
+- The globally resolved executable was verified as
+  `/Users/jensen/.bun/bin/sinter`, version `0.3.0`.
+- Release notes: [releases/v0.3.0.md](releases/v0.3.0.md).
+- Release preparation commit: `42c32e3 release: prepare v0.3.0`.
+- npm `0.3.0` is already published and cannot be republished. Any correction
+  requires a new version.
+
+## Git state at handoff
+
+- Working branch: `feat/multi-instance-lan`.
+- The feature branch and `v0.3.0` release commit are local at this handoff; they
+  have not been pushed to GitHub or merged into `origin/main`.
+- Sinter Cloud experiments remain isolated from this CLI branch. Do not mix
+  them into this release line without an explicit product decision.
+
+Before continuing, run:
+
+```sh
+git status --short --branch
+git branch --show-current
+git log --oneline -12
+git fetch origin
+git rev-list --left-right --count origin/main...HEAD
+npm view @jensenloke/sinter version dist-tags --json
+```
+
+Do not infer that npm publication means GitHub was updated; these are separate
+release operations.
+
+## Completed in v0.3.0
+
+### Multiple same-harness instances
+
+Profiles may select several named stores for one harness:
+
+```toml
+[instances.personal]
+harness = "claude"
+store = "/Users/me/.claude/projects"
+command = ["claude"]
+
+[instances.addvita]
+harness = "claude"
+store = "/Users/me/.claude-addvita/projects"
+command = ["claude-addvita"]
+
+[profiles.all]
+instances = ["personal", "addvita"]
+```
+
+Exact identities and targets use `harness@instance`:
+
+```sh
+sinter scan --profile all
+sinter show claude@personal:<id> --profile all
+sinter port claude@personal:<id> --to claude@addvita --profile all
+sinter resume claude@addvita:<id> --profile all --exec
+```
+
+The ledger schema is version 7. Sessions, aliases, pins, notes, tags, FTS,
+lineage, carry sidecars, scanning, ghosting, resolution, and filtering are keyed
+by `(harness, instance_id, native_id)`. Legacy rows migrate transactionally to
+instance `default`. Existing one-store profiles remain compatible.
+
+Instance routing reaches CLI reads/writes/ports/resumes, configured command
+prefixes, adapter provenance, metadata, thread views, GUI actions, and TUI
+source and target actions. Identical native IDs in two stores remain distinct.
+
+Primary implementation locations:
+
+- `packages/core/src/sif.ts` and `packages/core/src/adapter.ts`
+- `packages/ledger/src/schema.ts` and `packages/ledger/src/ledger.ts`
+- `packages/cli/src/config.ts` and `packages/cli/src/adapters.ts`
+- `packages/cli/src/commands.ts`
+- `packages/cli/src/tui/` and `packages/cli/src/gui.ts`
+
+### Direct encrypted transfer
+
+The receiver prints a short-lived one-use locator, then imports one accepted
+session into an exact target instance:
+
+```sh
+# LAN: advertise a private address automatically when one is available
+sinter receive --to claude@addvita --profile all
+
+# Tailscale: advertise the device's tailnet IP explicitly
+sinter receive --to claude@addvita --advertise <tailscale-ip> --profile all
+
+# On the sending device
+sinter send <id> --to 'sinter://transfer/v1?...' --profile all
+```
+
+Protocol properties:
+
+- direct HTTP transport with encrypted/authenticated payloads;
+- 192-bit one-time capability carried in the locator, not sent as an HTTP
+  credential;
+- HKDF-SHA256 key separation, AES-GCM payload encryption, request
+  authentication, and authenticated receipts;
+- five-minute default expiry, one successful claim, replay rejection, and a
+  16 MiB default maximum payload;
+- sender success only after receiver validation, confirmation, and target
+  import complete;
+- LAN and Tailscale supported by address from day one; no SSH dependency.
+
+Network payloads remove raw adapter records, provider-private `preserve` state,
+native store paths, and additional workspace directories. Historical tools are
+inert on import. The feature moves conversation context only: it does not copy
+repository files, dirty changes, environment values, or credentials.
+
+Primary implementation locations:
+
+- `packages/cli/src/network/crypto.ts`
+- `packages/cli/src/network/locator.ts`
+- `packages/cli/src/network/transfer.ts`
+- `packages/cli/src/commands.ts` (`cmdSend` and `cmdReceive`)
+
+## Verification baseline
+
+The `v0.3.0` release passed:
+
+- 647 tests;
+- 8,842 assertions;
+- TypeScript checking;
+- production CLI build;
+- npm tarball inspection;
+- isolated Bun and npm global installs;
+- same-harness/native-ID collision coverage;
+- encrypted loopback send/receive with import-before-receipt coverage.
+
+Run the complete gate with:
+
+```sh
+bun run typecheck
+bun test
+bun run build:cli
+bun run verify:package
+```
+
+For a published-version check:
+
+```sh
+npm view @jensenloke/sinter version dist-tags --json
+bunx @jensenloke/sinter@0.3.0 --version
+```
+
+## Known boundaries
+
+- There is no automatic peer discovery; the receiver locator must be copied to
+  the sender.
+- Direct transfer requires network reachability and may be blocked by host or
+  network firewalls. Tailscale is transport reachability, not a separate Sinter
+  protocol.
+- There is no offline inbox, cloud relay, account/device identity, revocation
+  service, or cross-device search yet.
+- Workspace files and Git dirty state are not transferred.
+- The ledger migration is transactional and rollback-safe but does not create a
+  separate user-visible backup file. Backup/repair UX remains roadmap work.
+- Sinter Cloud remains roadmap work. The open-source CLI must remain useful
+  without an account.
+
+## Recommended next actions
+
+1. Push `feat/multi-instance-lan` and open/review a PR into `main` so GitHub
+   catches up with the already-published npm package.
+2. After merge, create the Git tag/GitHub release for `v0.3.0`; do not publish
+   `0.3.0` to npm again.
+3. Test two real Claude instances (`claude` and `claude-addvita`) using a named
+   profile, including scan, qualified resolution, same-harness port, and custom
+   resume command.
+4. Test direct transfer between two physical devices on LAN, then across
+   Tailscale. Record firewall and address-selection problems as issues.
+5. Choose the next CLI checkpoint from [../ROADMAP.md](../ROADMAP.md). The most
+   natural follow-ups are peer discovery, inspect-before-send UX, and explicit
+   ledger backup/repair—not Sinter Cloud implementation yet.
+

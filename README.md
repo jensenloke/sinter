@@ -273,6 +273,9 @@ See [ROADMAP.md](ROADMAP.md) for planned CLI improvements, encrypted
 cross-device session transfer, Sinter Cloud, team handoffs, and the longer-term
 cloud-execution research path.
 
+Maintainers and resumed coding agents should start with [AGENTS.md](AGENTS.md)
+and the dated [current status handoff](docs/current-status.md).
+
 ## Development
 
 ```sh
