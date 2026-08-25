@@ -13,9 +13,9 @@ operations.
 - Latest published CLI version: `0.3.1`.
 - npm package: `@jensenloke/sinter@0.3.1`.
 - npm `latest`: `0.3.1`, publicly verified after publication.
-- The executable currently resolved on `PATH` is the locally installed,
-  unpublished `0.4.0` development build at `/opt/homebrew/bin/sinter`. Bun's
-  separate global executable remains the published `0.3.1` build.
+- Both local global executables (`/opt/homebrew/bin/sinter` and
+  `~/.bun/bin/sinter`) are the unpublished `0.4.0` development build. npm
+  `latest` remains `0.3.1`; do not mistake a local install for publication.
 - Release notes: [releases/v0.3.1.md](releases/v0.3.1.md).
 - Release commit: `f805f3e feat: bootstrap multi-instance profiles`.
 - npm `0.3.1` is already published and cannot be republished. Any correction
@@ -40,19 +40,33 @@ operations.
 - Cloud planning and implementation continue on `docs/sinter-cloud-inventory`;
   its inventory is documented in
   [sinter-cloud-inventory.md](sinter-cloud-inventory.md).
+- The branch remains at pushed commit `6be9f96`; the Auth0 cutover, provider-
+  neutral identity migration, and rebuilt portal are deployed but still
+  uncommitted in the working tree. Review and commit them only on this Cloud
+  branch.
 
 ## Cloud development foundation
 
-- The private Next.js shell is live at `https://sinter-cloud.vercel.app` on a
-  Vercel Hobby project.
+- The responsive Next.js development portal is live at
+  `https://sinter-cloud.vercel.app` on a Vercel Hobby project. Its authenticated
+  dashboard exposes real overview, account, security, and device states while
+  unavailable product surfaces remain clearly disabled.
 - One free Supabase development project runs in Singapore. It uses the
   publishable-key model, and legacy JWT API keys are disabled.
-- Supabase Auth accepts the stable web callback, the exact CLI-flow callback,
-  and the explicit localhost development callback. Email magic-link login,
-  callback exchange, protected dashboard, and sign-out are implemented.
-- The `profiles` and `devices` migrations are applied to hosted development.
-  Nine identity assertions prove own-row access and cross-user denial; three
-  more verify the keepalive RPC's narrow privileges and execution.
+- Auth0 now owns web and CLI authentication. The web app uses authorization
+  code plus rotating refresh tokens; the native CLI uses OAuth device
+  authorization plus rotating refresh tokens. Both applications sign RS256
+  tokens, and the post-login Action adds `role=authenticated` to ID tokens.
+- Hosted Supabase trusts the canonical Auth0 tenant through a manually created
+  Third-Party Auth connection. Supabase CLI 2.115.0 ignores
+  `[auth.third_party.auth0]` during `config push`, so the local block documents
+  local development but does not create the hosted connection.
+- The provider-neutral `profiles`, `account_identities`, and `devices` model is
+  applied to hosted development. The verified Google/Auth0 identity linked to
+  the one existing profile without creating a duplicate (`profiles=1`,
+  `account_identities=1`). Twelve identity assertions prove claim idempotency,
+  own-row access, and cross-user denial; three more verify the keepalive RPC's
+  narrow privileges and execution.
 - `/api/health` reports configuration state without exposing credentials.
 - A free Vercel cron invokes a secret-protected, content-free Supabase database
   RPC once daily to reduce free-project idle-pausing risk. It neither reads nor
@@ -60,17 +74,18 @@ operations.
 - Real session/capsule uploads, Storage, Realtime, Edge Runtime, Analytics,
   billing, and cloud agent execution remain disabled or absent. No real session
   content has been uploaded.
-- The `0.4.0` development CLI adds browser-loopback `sinter login`, verified
-  `whoami`, and revoking `logout`. macOS stores the credential in Keychain;
-  other platforms currently use an owner-only file. These account commands do
-  not scan sessions, create profile configuration, or enable uploads.
-- The Cloud UI now uses an original five-cell sintered-mineral mark with
-  transparent 512, 192, and 32 px assets. The raster concept should be traced
-  and optically refined before final trademark use.
-- Development verification: 664 tests, 8,899 assertions, both TypeScript
+- The `0.4.0` development CLI adds Auth0 device-code `sinter login`, verified
+  `whoami`, rotating refresh, and revoking `logout`. macOS stores the credential
+  in Keychain; other platforms currently use an owner-only file. A real Google
+  login and refresh completed successfully. These account commands do not scan
+  sessions, create profile configuration, or enable uploads.
+- The Cloud UI uses an original five-cell sintered-mineral mark with transparent
+  512, 192, and 32 px assets. The raster concept should be traced and optically
+  refined before final trademark use.
+- Development verification: 667 tests, 8,905 assertions, both TypeScript
   checks, both production builds, npm package inspection, isolated Bun/npm
-  installs, live endpoint rejection checks, and a successful Vercel production
-  deployment. A human magic-link round trip remains the immediate manual test.
+  installs, live identity/account-claim checks, an authenticated browser
+  request, and a successful Vercel production deployment.
 - Linked-provider state and `.env` files are ignored. The database password is
   held in the maintainer machine's credential store, not in the repository.
 
@@ -246,8 +261,9 @@ bunx @jensenloke/sinter@0.3.1 --version
 - Direct transfer requires network reachability and may be blocked by host or
   network firewalls. Tailscale is transport reachability, not a separate Sinter
   protocol.
-- There is no offline inbox, cloud relay, account/device identity, revocation
-  service, or cross-device search yet.
+- There is no offline inbox, cloud relay, device enrollment, device revocation
+  service, or cross-device search yet. Account identity exists, but no session
+  content is stored remotely.
 - Workspace files and Git dirty state are not transferred.
 - Automatic profile bootstrap currently recognizes Claude Code's standard
   `.claude` / `.claude-*` directory convention. Other custom stores still use
@@ -259,15 +275,19 @@ bunx @jensenloke/sinter@0.3.1 --version
 
 ## Recommended next actions
 
-1. Review and merge GitHub PR #24 so the public default branch catches up with
+1. Review and commit the deployed Auth0 cutover, provider-neutral identity
+   migration, and portal changes on `docs/sinter-cloud-inventory`; keep them out
+   of the CLI release line. Preserve the manual hosted Third-Party Auth setup in
+   operational notes until Supabase CLI can push it reliably.
+2. Review and merge GitHub PR #24 so the public default branch catches up with
    the already-published npm package.
-2. After merge, create the Git tag/GitHub release for `v0.3.1`; do not publish
+3. After merge, create the Git tag/GitHub release for `v0.3.1`; do not publish
    `0.3.1` to npm again.
-3. Test an actual same-harness port from `claude@personal` to
+4. Test an actual same-harness port from `claude@personal` to
    `claude@addvita`, including preview, write, qualified resolution, and the
    generated `CLAUDE_CONFIG_DIR` resume command.
-4. Test direct transfer between two physical devices on LAN, then across
+5. Test direct transfer between two physical devices on LAN, then across
    Tailscale. Record firewall and address-selection problems as issues.
-5. Choose the next CLI checkpoint from [../ROADMAP.md](../ROADMAP.md). The most
+6. Choose the next CLI checkpoint from [../ROADMAP.md](../ROADMAP.md). The most
    natural follow-ups are peer discovery, inspect-before-send UX, and explicit
-   ledger backup/repair—not Sinter Cloud implementation yet.
+   ledger backup/repair.

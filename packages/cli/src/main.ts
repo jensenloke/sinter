@@ -199,7 +199,7 @@ setup and maintenance
   relink [--harness x] [--limit n]       rebuild thread lineage from target stores
 
 cloud account (optional)
-  login [--no-open] [--timeout 10m]      sign in through the browser on this device
+  login [--no-open] [--timeout 10m]      approve this CLI through Auth0 device login
   whoami [--json]                        verify and print the current Cloud identity
   logout [--json]                        revoke and remove this device's Cloud login
 
@@ -296,7 +296,7 @@ const COMMAND_HELP: Record<string, string> = {
   setup: "usage: sinter setup [--yes] [--no-menu]\n\nShows detected local stores. Interactive setup asks before scanning and opening the menu; --yes scans without opening it.",
   privacy: "usage: sinter privacy\n\nExplains local storage, profile limits, and harness support.",
   feedback: "usage: sinter feedback [--title text] [--no-open]\n\nOpens a prefilled GitHub issue with safe diagnostics only.",
-  login: "usage: sinter login [--no-open] [--timeout 10m] [--json]\n\nOpens Sinter Cloud in the browser, waits on a short-lived 127.0.0.1 callback, validates the returned identity, and stores credentials in macOS Keychain (or an owner-only file when no native credential store is available). It does not upload sessions.",
+  login: "usage: sinter login [--no-open] [--timeout 10m] [--json]\n\nStarts an OAuth device authorization, opens Auth0 in the browser, prints the confirmation code for headless/SSH use, validates the returned Sinter Cloud identity, and stores rotating credentials in macOS Keychain (or an owner-only file when no native credential store is available). It does not upload sessions.",
   whoami: "usage: sinter whoami [--json]\n\nRefreshes the Cloud session when needed and verifies the identity with Sinter Cloud. It never scans local sessions.",
   logout: "usage: sinter logout [--json]\n\nRevokes the current Cloud session when reachable, then removes the local credential even if the network is unavailable.",
   telemetry: "usage: sinter telemetry [status|enable|disable] [--endpoint https://…]\n\nOpt-in anonymous active-use measurement. CI and non-interactive commands never emit events.",

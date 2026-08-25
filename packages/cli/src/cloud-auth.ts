@@ -1,4 +1,3 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
 import { chmod, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { homedir, platform } from "node:os";
 import { dirname, join } from "node:path";
@@ -14,8 +13,11 @@ export interface CloudIdentity {
 }
 
 export interface StoredCloudSession {
-  schema: "sinter.cloud.credentials.v1";
+  schema: "sinter.cloud.credentials.v2";
+  provider: "auth0";
   baseUrl: string;
+  issuer: string;
+  clientId: string;
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
@@ -27,6 +29,7 @@ export interface CloudLoginOptions {
   timeoutMs?: number;
   openBrowser?: boolean;
   onUrl?: (url: string) => void;
+  onDeviceCode?: (code: string) => void;
 }
 
 export interface CloudAuthService {
@@ -58,8 +61,10 @@ async function runCommand(argv: string[]): Promise<CommandResult> {
 function validSession(value: unknown): value is StoredCloudSession {
   if (!value || typeof value !== "object") return false;
   const session = value as Partial<StoredCloudSession>;
-  return session.schema === "sinter.cloud.credentials.v1" &&
+  return session.schema === "sinter.cloud.credentials.v2" && session.provider === "auth0" &&
     typeof session.baseUrl === "string" &&
+    typeof session.issuer === "string" &&
+    typeof session.clientId === "string" &&
     typeof session.accessToken === "string" && session.accessToken.length > 0 &&
     typeof session.refreshToken === "string" && session.refreshToken.length > 0 &&
     typeof session.expiresAt === "number" && Number.isFinite(session.expiresAt) &&
@@ -141,65 +146,42 @@ function normalizeBaseUrl(value: string) {
   return url.toString().replace(/\/$/, "");
 }
 
-function safeEqual(left: string, right: string) {
-  const a = Buffer.from(left);
-  const b = Buffer.from(right);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
-interface CallbackSession {
+interface Auth0Session {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
 }
 
-async function waitForBrowserSession(state: string, timeoutMs: number, onReady: (callback: string) => Promise<void>) {
-  let resolveSession!: (session: CallbackSession) => void;
-  let rejectSession!: (error: Error) => void;
-  const received = new Promise<CallbackSession>((resolve, reject) => {
-    resolveSession = resolve;
-    rejectSession = reject;
-  });
-  let settled = false;
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    async fetch(request) {
-      const url = new URL(request.url);
-      if (url.pathname !== "/callback" || request.method !== "POST") return new Response("Not found", { status: 404 });
-      const length = Number(request.headers.get("content-length") ?? 0);
-      if (length > 24_576) return new Response("Request too large", { status: 413 });
-      const contentType = request.headers.get("content-type") ?? "";
-      if (!contentType.startsWith("application/x-www-form-urlencoded")) return new Response("Unsupported request", { status: 415 });
-      const body = await request.text();
-      if (body.length > 24_576) return new Response("Request too large", { status: 413 });
-      const form = new URLSearchParams(body);
-      if (!safeEqual(form.get("state") ?? "", state)) return new Response("Login state did not match", { status: 403 });
-      const accessToken = form.get("access_token") ?? "";
-      const refreshToken = form.get("refresh_token") ?? "";
-      const expiresAt = Number(form.get("expires_at"));
-      if (!accessToken || accessToken.length > 16_384 || !refreshToken || refreshToken.length > 8192 || !Number.isFinite(expiresAt)) {
-        return new Response("Invalid session", { status: 400 });
-      }
-      if (!settled) {
-        settled = true;
-        resolveSession({ accessToken, refreshToken, expiresAt });
-      }
-      return new Response("<!doctype html><title>Sinter login complete</title><style>body{font:18px system-ui;display:grid;place-items:center;min-height:90vh;background:#0d0f0e;color:#f4f1e8}</style><p>Sinter is connected. You can close this tab.</p>", {
-        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'" },
-      });
-    },
-  });
-  const timer = setTimeout(() => {
-    if (!settled) rejectSession(new Error("Cloud login timed out; run `sinter login` to try again"));
-  }, timeoutMs);
-  try {
-    await onReady(`http://127.0.0.1:${server.port}/callback`);
-    return await received;
-  } finally {
-    clearTimeout(timer);
-    await server.stop(true);
+interface DeviceConfig {
+  provider: "auth0";
+  issuer: string;
+  clientId: string;
+  audience: string;
+  scope: string;
+}
+
+interface DeviceCode {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  verification_uri_complete?: string;
+  expires_in: number;
+  interval?: number;
+}
+
+function auth0Endpoint(issuer: string, path: string) {
+  const base = new URL(issuer);
+  if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash) {
+    throw new Error("Sinter Cloud returned an invalid Auth0 issuer");
   }
+  return new URL(path.replace(/^\//, ""), base.toString().replace(/\/?$/, "/")).toString();
+}
+
+async function pause(ms: number, signal: AbortSignal) {
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+  });
 }
 
 async function jsonResponse(response: Response) {
@@ -236,23 +218,25 @@ export function createCloudAuthService(options: {
   }
 
   async function refresh(session: StoredCloudSession): Promise<StoredCloudSession> {
-    const response = await request(`${session.baseUrl}/api/cli/refresh`, {
+    const response = await request(auth0Endpoint(session.issuer, "/oauth/token"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken: session.refreshToken }),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: session.clientId,
+        refresh_token: session.refreshToken,
+      }),
     });
     if (!response.ok) throw new Error("Cloud session expired; run `sinter login` again");
     const body = await jsonResponse(response);
-    const user = body?.user as Partial<CloudIdentity> | undefined;
-    if (
-      typeof body?.accessToken !== "string" || typeof body.refreshToken !== "string" ||
-      typeof body.expiresAt !== "number" || !user || typeof user.id !== "string" ||
-      (typeof user.email !== "string" && user.email !== null)
-    ) throw new Error("Sinter Cloud returned an invalid refresh response");
+    if (typeof body?.access_token !== "string" || typeof body.expires_in !== "number") {
+      throw new Error("Auth0 returned an invalid refresh response");
+    }
     const updated: StoredCloudSession = {
-      schema: "sinter.cloud.credentials.v1", baseUrl: session.baseUrl,
-      accessToken: body.accessToken, refreshToken: body.refreshToken,
-      expiresAt: body.expiresAt, user: { id: user.id, email: user.email },
+      ...session,
+      accessToken: body.access_token,
+      refreshToken: typeof body.refresh_token === "string" ? body.refresh_token : session.refreshToken,
+      expiresAt: Math.floor(now() / 1000) + body.expires_in,
     };
     await store.save(updated);
     return updated;
@@ -263,18 +247,69 @@ export function createCloudAuthService(options: {
       const baseUrl = normalizeBaseUrl(loginOptions.baseUrl ?? process.env.SINTER_CLOUD_URL ?? DEFAULT_CLOUD_URL);
       const timeoutMs = loginOptions.timeoutMs ?? 10 * 60_000;
       if (!Number.isFinite(timeoutMs) || timeoutMs < 30_000 || timeoutMs > 15 * 60_000) throw new Error("Login timeout must be between 30 seconds and 15 minutes");
-      const state = randomBytes(32).toString("base64url");
-      const callbackSession = await waitForBrowserSession(state, timeoutMs, async (callback) => {
-        const url = `${baseUrl}/cli/login?${new URLSearchParams({ callback, state })}`;
-        loginOptions.onUrl?.(url);
-        if (loginOptions.openBrowser !== false) {
-          try { await openUrl(url); } catch { /* The printed URL remains usable. */ }
-        }
+      const configResponse = await request(`${baseUrl}/api/cli/config`);
+      const configBody = await jsonResponse(configResponse);
+      const config = configBody?.auth as Partial<DeviceConfig> | undefined;
+      if (!configResponse.ok || config?.provider !== "auth0" || typeof config.issuer !== "string" ||
+        typeof config.clientId !== "string" || typeof config.audience !== "string" || typeof config.scope !== "string") {
+        throw new Error("Sinter Cloud device login is not configured");
+      }
+      const codeResponse = await request(auth0Endpoint(config.issuer, "/oauth/device/code"), {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ client_id: config.clientId, audience: config.audience, scope: config.scope }),
       });
+      const code = await jsonResponse(codeResponse) as Partial<DeviceCode> | undefined;
+      if (!codeResponse.ok || typeof code?.device_code !== "string" || typeof code.user_code !== "string" ||
+        typeof code.verification_uri !== "string" || typeof code.expires_in !== "number") {
+        throw new Error("Auth0 could not start device login");
+      }
+      const verificationUrl = typeof code.verification_uri_complete === "string" ? code.verification_uri_complete : code.verification_uri;
+      loginOptions.onDeviceCode?.(code.user_code);
+      loginOptions.onUrl?.(verificationUrl);
+      if (loginOptions.openBrowser !== false) {
+        try { await openUrl(verificationUrl); } catch { /* The printed URL remains usable. */ }
+      }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(new Error("Cloud login timed out; run `sinter login` to try again")), Math.min(timeoutMs, code.expires_in * 1000));
+      const intervalMs = Math.max(1, code.interval ?? 5) * 1000;
+      let tokenBody: Record<string, unknown> | undefined;
+      try {
+        while (!controller.signal.aborted) {
+          const tokenResponse = await request(auth0Endpoint(config.issuer, "/oauth/token"), {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+              device_code: code.device_code,
+              client_id: config.clientId,
+            }),
+            signal: controller.signal,
+          });
+          tokenBody = await jsonResponse(tokenResponse);
+          if (tokenResponse.ok) break;
+          if (tokenBody?.error === "authorization_pending") { await pause(intervalMs, controller.signal); continue; }
+          if (tokenBody?.error === "slow_down") { await pause(intervalMs + 5_000, controller.signal); continue; }
+          if (tokenBody?.error === "access_denied") throw new Error("Sinter Cloud login was denied");
+          if (tokenBody?.error === "expired_token") throw new Error("Sinter Cloud login code expired; run `sinter login` again");
+          throw new Error("Auth0 could not complete device login");
+        }
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (typeof tokenBody?.access_token !== "string" || typeof tokenBody.refresh_token !== "string" || typeof tokenBody.expires_in !== "number") {
+        throw controller.signal.reason instanceof Error ? controller.signal.reason : new Error("Auth0 returned an invalid device session");
+      }
+      const callbackSession: Auth0Session = {
+        accessToken: tokenBody.access_token,
+        refreshToken: tokenBody.refresh_token,
+        expiresAt: Math.floor(now() / 1000) + tokenBody.expires_in,
+      };
       const user = await identity(baseUrl, callbackSession.accessToken);
       if (!user) throw new Error("Sinter Cloud rejected the returned login session");
       const session: StoredCloudSession = {
-        schema: "sinter.cloud.credentials.v1", baseUrl,
+        schema: "sinter.cloud.credentials.v2", provider: "auth0", baseUrl,
+        issuer: config.issuer, clientId: config.clientId,
         ...callbackSession, user,
       };
       await store.save(session);

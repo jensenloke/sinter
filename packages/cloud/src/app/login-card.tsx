@@ -1,56 +1,34 @@
-"use client";
-
-import { useState, type FormEvent } from "react";
-import { createClient } from "@/lib/supabase/client";
-
 interface LoginCardProps {
   eyebrow?: string;
   heading?: string;
   description?: string;
   fine?: string;
-  redirectPath?: string;
+  signedIn?: boolean;
 }
 
 export function LoginCard({
   eyebrow = "DEVELOPMENT ACCESS",
-  heading = "Open your private library",
-  description = "Use a one-time email link. No password is stored by Sinter.",
-  fine = "Authentication only. Session upload is intentionally unavailable.",
-  redirectPath = "/auth/callback",
+  heading = "Open your account portal",
+  description = "Use Auth0 to review the identity and devices linked to your Sinter account.",
+  fine = "Account preview only. Session upload is intentionally unavailable.",
+  signedIn = false,
 }: LoginCardProps = {}) {
-  const [email, setEmail] = useState("");
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setMessage("");
-    try {
-      const supabase = createClient();
-      const redirectTo = `${window.location.origin}${redirectPath}`;
-      const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
-      if (error) throw error;
-      setMessage("Check your email for a one-time sign-in link.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Sign-in could not be started.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
-    <aside className="card">
-      <p className="card-label">{eyebrow}</p>
-      <h2>{heading}</h2>
-      <p>{description}</p>
-      <form onSubmit={submit}>
-        <label htmlFor="email">Email address</label>
-        <input id="email" type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />
-        <button disabled={busy}>{busy ? "Sending…" : "Send sign-in link"}</button>
-      </form>
-      {message && <p className="message" role="status">{message}</p>}
-      <p className="fine">{fine}</p>
+    <aside className="card login-card">
+      <div className="card-topline">
+        <p className="card-label">{eyebrow}</p>
+        <span className="preview-chip">Preview</span>
+      </div>
+      <h2>{signedIn ? "Your session is active" : heading}</h2>
+      <p>{signedIn ? "Continue to your private development dashboard." : description}</p>
+      <a className="auth-button" href={signedIn ? "/dashboard" : "/auth/login?returnTo=/dashboard"}>
+        {signedIn ? "Open dashboard" : "Continue securely"}
+        <span aria-hidden="true">→</span>
+      </a>
+      <div className="auth-boundary">
+        <span className="mini-lock" aria-hidden="true" />
+        <p>{fine}</p>
+      </div>
     </aside>
   );
 }

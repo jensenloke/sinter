@@ -2004,9 +2004,10 @@ export async function cmdLogin(argv: string[], ctx: Ctx): Promise<number> {
     timeoutMs: cloudLoginTimeout(flagString(args, "timeout")),
     openBrowser: !flagBool(args, "no-open"),
     onUrl: (url) => {
-      ctx.err(flagBool(args, "no-open") ? "Open this URL to sign in:" : "Waiting for browser sign-in. If it did not open, use:");
+      ctx.err(flagBool(args, "no-open") ? "Open this URL to sign in:" : "Waiting for device approval. If the browser did not open, use:");
       ctx.err(url);
     },
+    onDeviceCode: (code) => ctx.err(`Confirm code: ${code}`),
   });
   if (flagBool(args, "json")) {
     ctx.out(JSON.stringify({ schema: "sinter.cloud.login.v1", ok: true, user: result.user, storage: result.storage }));

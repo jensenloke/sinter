@@ -1,5 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { auth0Issuer } from "@/lib/auth0";
+import { auth0Identity } from "@/lib/auth0-token";
 
 export const dynamic = "force-dynamic";
 
@@ -10,20 +11,26 @@ export async function POST(request: Request) {
   if (typeof body.refreshToken !== "string" || body.refreshToken.length > 8192) {
     return NextResponse.json({ ok: false, error: "Invalid refresh token" }, { status: 400 });
   }
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) return NextResponse.json({ ok: false, error: "Unavailable" }, { status: 503 });
-  const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data, error } = await supabase.auth.refreshSession({ refresh_token: body.refreshToken });
-  if (error || !data.session || !data.user) {
+  const clientId = process.env.AUTH0_CLI_CLIENT_ID;
+  if (!clientId) return NextResponse.json({ ok: false, error: "Unavailable" }, { status: 503 });
+  const response = await fetch(new URL("oauth/token", auth0Issuer()), {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "refresh_token", client_id: clientId, refresh_token: body.refreshToken }),
+    cache: "no-store",
+  });
+  const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok || typeof data.access_token !== "string" || typeof data.expires_in !== "number") {
     return NextResponse.json({ ok: false, error: "Session expired" }, { status: 401 });
   }
+  const user = await auth0Identity(data.access_token).catch(() => undefined);
+  if (!user) return NextResponse.json({ ok: false, error: "Session expired" }, { status: 401 });
   return NextResponse.json({
-    schema: "sinter.cloud.session.v1",
+    schema: "sinter.cloud.session.v2",
     ok: true,
-    accessToken: data.session.access_token,
-    refreshToken: data.session.refresh_token,
-    expiresAt: data.session.expires_at,
-    user: { id: data.user.id, email: data.user.email ?? null },
+    accessToken: data.access_token,
+    refreshToken: typeof data.refresh_token === "string" ? data.refresh_token : body.refreshToken,
+    expiresAt: Math.floor(Date.now() / 1000) + data.expires_in,
+    user,
   }, { headers: { "Cache-Control": "private, no-store" } });
 }

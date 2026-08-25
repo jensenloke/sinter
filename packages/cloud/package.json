@@ -9,8 +9,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.12.5",
+    "@auth0/nextjs-auth0": "^4.27.0",
     "@supabase/supabase-js": "^2.112.4",
+    "jose": "^6.2.10",
     "next": "^16.3.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

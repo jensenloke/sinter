@@ -1,5 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { auth0Issuer } from "@/lib/auth0";
+import { auth0Identity } from "@/lib/auth0-token";
 
 export const dynamic = "force-dynamic";
 
@@ -10,13 +11,17 @@ export async function POST(request: Request) {
   if (!accessToken || typeof body.refreshToken !== "string") {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) return NextResponse.json({ ok: false, error: "Unavailable" }, { status: 503 });
-  const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { error: sessionError } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: body.refreshToken });
-  if (sessionError) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  const { error } = await supabase.auth.signOut({ scope: "local" });
-  if (error) return NextResponse.json({ ok: false, error: "Could not revoke session" }, { status: 502 });
-  return NextResponse.json({ schema: "sinter.cloud.logout.v1", ok: true }, { headers: { "Cache-Control": "private, no-store" } });
+  const clientId = process.env.AUTH0_CLI_CLIENT_ID;
+  if (!clientId) return NextResponse.json({ ok: false, error: "Unavailable" }, { status: 503 });
+  if (!await auth0Identity(accessToken).catch(() => undefined)) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+  const response = await fetch(new URL("oauth/revoke", auth0Issuer()), {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: clientId, token: body.refreshToken, token_type_hint: "refresh_token" }),
+    cache: "no-store",
+  });
+  if (!response.ok) return NextResponse.json({ ok: false, error: "Could not revoke session" }, { status: 502 });
+  return NextResponse.json({ schema: "sinter.cloud.logout.v2", ok: true }, { headers: { "Cache-Control": "private, no-store" } });
 }

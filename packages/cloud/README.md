@@ -35,19 +35,32 @@ least 16 characters. Never commit it. An unauthenticated request must return
 HTTP 401. This automation reduces idle-pausing risk on the free tier but is not
 an uptime guarantee; production availability still requires a paid plan.
 
-## CLI browser login
+## Auth0 authentication
 
-`/cli/login` accepts only an explicit `http://127.0.0.1:<port>/callback` plus a
-random state value. It stores that flow in a signed, HTTP-only, ten-minute
-cookie. After magic-link authentication, `/cli/complete` presents an explicit
-button that POSTs the short-lived Supabase session and state to the waiting
-loopback process. Tokens never appear in the callback URL.
+Auth0 owns web and CLI authentication. Supabase remains the Postgres, RLS,
+Storage, and Realtime data plane. Configure two first-party Auth0 applications
+in one tenant:
 
-Set `SINTER_CLI_FLOW_SECRET` in Vercel Production to an independent random
-value of at least 32 characters. It signs browser-flow cookies only; do not
-reuse `CRON_SECRET` or commit either value. CLI identity, refresh, and logout
-routes use the public Supabase client and the user's own token—never an admin
-or service-role key.
+- `Sinter Cloud`: Regular Web Application, callback
+  `https://sinter-cloud.vercel.app/auth/callback`;
+- `Sinter CLI`: Native Application with Device Code and Refresh Token grants.
+
+The CLI requests configuration from `/api/cli/config`, starts Auth0's OAuth
+Device Authorization flow, and prints the user code and verification URL. It
+works from SSH/headless machines and never embeds a client secret or opens a
+localhost callback. Refresh credentials are rotated and stored in the OS
+credential store.
+
+The Auth0 API audience must use RS256 and allow offline access. Deploy
+`auth0/post-login.js` on the post-login flow so ID tokens contain the literal
+`role: authenticated` claim required by Supabase Third-Party Auth. Configure
+the Auth0 tenant in Supabase Authentication > Third-Party Auth before applying
+the provider-neutral identity migration.
+
+Required server-only Vercel variables are `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`,
+`AUTH0_CLIENT_SECRET`, `AUTH0_SECRET`, `AUTH0_AUDIENCE`, and
+`AUTH0_CLI_CLIENT_ID`. `APP_BASE_URL` is the production site URL. Never commit
+the web client secret, cookie secret, refresh tokens, or management token.
 
 ## Deployment boundary
 

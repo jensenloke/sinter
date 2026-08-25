@@ -12,8 +12,11 @@ import {
 
 const USER = { id: "user-1", email: "jensen@example.test" };
 const SESSION: StoredCloudSession = {
-  schema: "sinter.cloud.credentials.v1",
+  schema: "sinter.cloud.credentials.v2",
+  provider: "auth0",
   baseUrl: "https://cloud.example.test",
+  issuer: "https://tenant.example.test/",
+  clientId: "cli-client",
   accessToken: "access-one",
   refreshToken: "refresh-one",
   expiresAt: 2_000_000_000,
@@ -70,29 +73,42 @@ describe("Cloud credential storage", () => {
 });
 
 describe("Cloud auth service", () => {
-  test("completes a browser-loopback login, validates identity, and saves it", async () => {
+  test("completes Auth0 device login, validates identity, and saves it", async () => {
     const store = memoryStore();
+    const opened: string[] = [];
+    const deviceCodes: string[] = [];
     const service = createCloudAuthService({
       store,
-      openUrl: async (loginUrl) => {
-        const url = new URL(loginUrl);
-        const callback = url.searchParams.get("callback")!;
-        const state = url.searchParams.get("state")!;
-        const response = await fetch(callback, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ state, access_token: "access-one", refresh_token: "refresh-one", expires_at: "2000000000" }),
-        });
-        expect(response.status).toBe(200);
-      },
+      now: () => 1_900_000_000_000,
+      openUrl: async (loginUrl) => { opened.push(loginUrl); },
       fetch: async (input) => {
-        expect(String(input)).toBe("https://cloud.example.test/api/cli/session");
-        return Response.json({ ok: true, user: USER });
+        const url = String(input);
+        if (url.endsWith("/api/cli/config")) return Response.json({ auth: {
+          provider: "auth0", issuer: "https://tenant.example.test/", clientId: "cli-client",
+          audience: "https://api.example.test", scope: "openid profile email offline_access",
+        } });
+        if (url.endsWith("/oauth/device/code")) return Response.json({
+          device_code: "device-secret", user_code: "STONE-RIVER",
+          verification_uri: "https://tenant.example.test/activate",
+          verification_uri_complete: "https://tenant.example.test/activate?user_code=STONE-RIVER",
+          expires_in: 300, interval: 1,
+        });
+        if (url.endsWith("/oauth/token")) return Response.json({
+          access_token: "access-one", refresh_token: "refresh-one", expires_in: 3600,
+        });
+        if (url.endsWith("/api/cli/session")) return Response.json({ ok: true, user: USER });
+        throw new Error(`unexpected request: ${url}`);
       },
     });
-    const result = await service.login({ baseUrl: "https://cloud.example.test", timeoutMs: 30_000 });
+    const result = await service.login({
+      baseUrl: "https://cloud.example.test", timeoutMs: 30_000,
+      onDeviceCode: (code) => deviceCodes.push(code),
+    });
     expect(result.user).toEqual(USER);
     expect(store.current?.refreshToken).toBe("refresh-one");
+    expect(store.current?.provider).toBe("auth0");
+    expect(deviceCodes).toEqual(["STONE-RIVER"]);
+    expect(opened).toEqual(["https://tenant.example.test/activate?user_code=STONE-RIVER"]);
   });
 
   test("refreshes an expiring session before verifying whoami", async () => {
@@ -104,15 +120,15 @@ describe("Cloud auth service", () => {
       fetch: async (input) => {
         const url = String(input);
         endpoints.push(url);
-        if (url.endsWith("/refresh")) return Response.json({
-          accessToken: "access-two", refreshToken: "refresh-two", expiresAt: 3000, user: USER,
+        if (url.endsWith("/oauth/token")) return Response.json({
+          access_token: "access-two", refresh_token: "refresh-two", expires_in: 3000,
         });
         return Response.json({ user: USER });
       },
     });
     expect((await service.whoami())?.user).toEqual(USER);
     expect(store.current?.accessToken).toBe("access-two");
-    expect(endpoints.map((url) => url.split("/").at(-1))).toEqual(["refresh", "session"]);
+    expect(endpoints.map((url) => url.split("/").at(-1))).toEqual(["token", "session"]);
   });
 
   test("logout removes the local credential even when revocation fails", async () => {

@@ -1,30 +1,47 @@
+import { auth0 } from "@/lib/auth0";
 import { LoginCard } from "./login-card";
 import { Brand } from "./brand";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const session = await auth0.getSession();
+  const signedIn = Boolean(session?.user);
+
   return (
-    <main className="shell">
-      <nav className="nav">
+    <main className="shell landing-shell">
+      <nav className="nav landing-nav">
         <Brand />
-        <span className="status"><i />Private development preview</span>
+        <div className="landing-nav-actions">
+          <span className="status"><i />Private development preview</span>
+          <a className="nav-link" href={signedIn ? "/dashboard" : "/auth/login?returnTo=/dashboard"}>
+            {signedIn ? "Dashboard" : "Sign in"}
+          </a>
+        </div>
       </nav>
       <section className="hero">
         <div className="copy">
-          <p className="eyebrow">SESSION CONTINUITY</p>
-          <h1>Continue on another device, without giving up your context.</h1>
+          <p className="eyebrow">LOCAL-FIRST SESSION CONTINUITY</p>
+          <h1>Your context should move when you do.</h1>
           <p className="lede">
-            Sinter Cloud is the encrypted bridge between your local coding-agent sessions.
-            Your CLI keeps the keys; the cloud stores ciphertext.
+            Sinter is building a secure path for coding-agent sessions to continue across your devices. The open-source CLI stays useful on its own.
           </p>
-          <div className="principles">
-            <div><strong>Local-first</strong><span>The CLI remains useful without an account.</span></div>
-            <div><strong>End-to-end encrypted</strong><span>Plaintext transcripts never reach the service.</span></div>
-            <div><strong>Explicit movement</strong><span>Inspect before sending, importing, or deleting.</span></div>
+          <div className="availability-note">
+            <span className="note-mark" aria-hidden="true">01</span>
+            <div><strong>Account foundation available now</strong><p>Sign in and review linked account and device records. Real session uploads are disabled.</p></div>
           </div>
         </div>
-        <LoginCard />
+        <LoginCard signedIn={signedIn} />
       </section>
-      <footer>Development foundation · Real session uploads are disabled</footer>
+      <section className="principle-band" aria-label="Product boundaries">
+        <div><span>01</span><strong>Local-first</strong><p>Your local sessions and CLI do not require a cloud account.</p></div>
+        <div><span>02</span><strong>Encryption before sync</strong><p>No transcript upload before the cryptography and deletion model is ready.</p></div>
+        <div><span>03</span><strong>Explicit movement</strong><p>Future transfer flows must be inspectable and user initiated.</p></div>
+      </section>
+      <footer className="landing-footer">
+        <span>Sinter Cloud</span>
+        <span>Development foundation · No real session uploads</span>
+      </footer>
     </main>
   );
 }
