@@ -368,6 +368,12 @@ code { padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; back
 .device-meta div { min-width: 0; }
 .device-meta dt, .device-meta dd { text-align: left; }
 .device-meta dd { margin-top: 5px; font-size: 9px; }
+.pending-device-group, .registered-device-group { margin-top: 26px; }
+.pending-device-group { padding: 18px; border: 1px solid rgba(242, 184, 112, .22); border-radius: 10px; background: rgba(242, 184, 112, .035); }
+.pending-device-group .device-list { margin-top: 13px; }
+.pending-device-icon { border-color: rgba(242, 184, 112, .32); }
+.device-group-label { margin: 0; color: var(--muted-bright); font-size: 9px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.device-boundary-note { margin: 14px 0 0; color: var(--muted); font-size: 9px; line-height: 1.55; }
 .empty-state { margin-top: 26px; padding: 48px 24px; text-align: center; border: 1px dashed var(--line-bright); border-radius: 10px; background: rgba(10, 12, 11, .46); }
 .empty-device { width: 50px; height: 50px; margin: 0 auto 19px; display: grid; place-items: center; border: 1px solid var(--line-bright); border-radius: 50%; background: var(--surface-soft); }
 .empty-device::before { content: ""; width: 21px; height: 14px; border: 1px solid #838a81; border-radius: 2px; }

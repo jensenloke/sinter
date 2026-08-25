@@ -40,10 +40,10 @@ operations.
 - Cloud planning and implementation continue on `docs/sinter-cloud-inventory`;
   its inventory is documented in
   [sinter-cloud-inventory.md](sinter-cloud-inventory.md).
-- The branch remains at pushed commit `6be9f96`; the Auth0 cutover, provider-
-  neutral identity migration, and rebuilt portal are deployed but still
-  uncommitted in the working tree. Review and commit them only on this Cloud
-  branch.
+- The Cloud branch is ahead of `origin/docs/sinter-cloud-inventory` with
+  reviewed, unpushed commits. Phase 1 device identity is verified and committed
+  locally but remains unapplied to hosted development. Keep all of this work
+  off the CLI release line.
 
 ## Cloud development foundation
 
@@ -79,13 +79,21 @@ operations.
   in Keychain; other platforms currently use an owner-only file. A real Google
   login and refresh completed successfully. These account commands do not scan
   sessions, create profile configuration, or enable uploads.
+- Phase 1 device identity is implemented locally but not deployed: paired Auth0
+  token verification, separate P-256 encryption/signing keys, Keychain or
+  owner-only private-key custody, first-device bootstrap, signed approval for
+  subsequent devices, immutable fingerprints, list/rename/revoke/pending/
+  approve commands, service-only registration RPCs, RLS, and portal inventory.
+  No real device has been registered. Revocation is irreversible; after all
+  devices are lost or revoked there is intentionally no recovery.
 - The Cloud UI uses an original five-cell sintered-mineral mark with transparent
   512, 192, and 32 px assets. The raster concept should be traced and optically
   refined before final trademark use.
-- Development verification: 667 tests, 8,905 assertions, both TypeScript
-  checks, both production builds, npm package inspection, isolated Bun/npm
-  installs, live identity/account-claim checks, an authenticated browser
-  request, and a successful Vercel production deployment.
+- Development verification: 723 tests, 9,113 assertions, 59 database policy
+  assertions, schema lint, both TypeScript checks, both production builds, npm
+  package inspection, isolated Bun/npm installs, and an independent adversarial
+  device-security review. The earlier Auth0 portal deployment and live identity/
+  account-claim checks remain healthy; Phase 1 device code is local-only.
 - Linked-provider state and `.env` files are ignored. The database password is
   held in the maintainer machine's credential store, not in the repository.
 
@@ -261,9 +269,10 @@ bunx @jensenloke/sinter@0.3.1 --version
 - Direct transfer requires network reachability and may be blocked by host or
   network firewalls. Tailscale is transport reachability, not a separate Sinter
   protocol.
-- There is no offline inbox, cloud relay, device enrollment, device revocation
-  service, or cross-device search yet. Account identity exists, but no session
-  content is stored remotely.
+- There is no offline inbox, cloud relay, encrypted capsule storage, browser
+  device, or cross-device search yet. Device enrollment/revocation is verified
+  locally but not deployed. Account identity exists, and no session content is
+  stored remotely.
 - Workspace files and Git dirty state are not transferred.
 - Automatic profile bootstrap currently recognizes Claude Code's standard
   `.claude` / `.claude-*` directory convention. Other custom stores still use
@@ -275,19 +284,17 @@ bunx @jensenloke/sinter@0.3.1 --version
 
 ## Recommended next actions
 
-1. Review and commit the deployed Auth0 cutover, provider-neutral identity
-   migration, and portal changes on `docs/sinter-cloud-inventory`; keep them out
-   of the CLI release line. Preserve the manual hosted Third-Party Auth setup in
-   operational notes until Supabase CLI can push it reliably.
-2. Review and merge GitHub PR #24 so the public default branch catches up with
-   the already-published npm package.
-3. After merge, create the Git tag/GitHub release for `v0.3.1`; do not publish
-   `0.3.1` to npm again.
-4. Test an actual same-harness port from `claude@personal` to
-   `claude@addvita`, including preview, write, qualified resolution, and the
-   generated `CLAUDE_CONFIG_DIR` resume command.
-5. Test direct transfer between two physical devices on LAN, then across
-   Tailscale. Record firewall and address-selection problems as issues.
-6. Choose the next CLI checkpoint from [../ROADMAP.md](../ROADMAP.md). The most
-   natural follow-ups are peer discovery, inspect-before-send UX, and explicit
-   ledger backup/repair.
+1. Keep the committed Phase 1 device identity checkpoint on
+   `docs/sinter-cloud-inventory` and out of the CLI release line.
+2. Before any deployment, dry-run then apply the device migration to hosted
+   development, configure the server-only `SUPABASE_SECRET_KEY` in Vercel, and
+   redeploy the Cloud portal/API. Never expose that key to browser code.
+3. Install the verified development CLI and register the first real device.
+   Confirm list/rename/revoke safeguards, but do not revoke the only active
+   device. A second device must complete the signed approval flow before C2.
+4. Freeze the encrypted synthetic capsule/manifest format with test vectors,
+   tamper/wrong-key tests, and no real transcript upload.
+5. Separately review and merge GitHub PR #24 so the public default branch catches
+   up with the already-published npm package; then create the `v0.3.1` tag and
+   GitHub release without republishing npm.
+6. Continue physical-device LAN/Tailscale transfer tests independently of Cloud.

@@ -146,6 +146,7 @@ describe("CLI conventions", () => {
       login: async () => ({ user: { id: "user-1", email: "jensen@example.test" }, storage: "test keychain" }),
       whoami: async () => ({ user: { id: "user-1", email: "jensen@example.test" }, storage: "test keychain" }),
       logout: async () => ({ hadSession: true, revoked: true }),
+      apiSession: async () => undefined,
     };
     expect(await run(["whoami", "--json"], h.ctx)).toBe(0);
     expect(JSON.parse(h.out())).toMatchObject({ ok: true, loggedIn: true, user: { email: "jensen@example.test" } });

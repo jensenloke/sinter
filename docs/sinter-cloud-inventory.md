@@ -1,6 +1,6 @@
 # Sinter Cloud inventory
 
-Status: C0 complete; C1 authentication and policy skeleton in progress
+Status: C0 complete; C1 device identity verified locally, hosted rollout pending
 Last reviewed: 2026-08-25 (Asia/Singapore)
 
 This document turns the Sinter Cloud direction in [ROADMAP.md](../ROADMAP.md)
@@ -99,31 +99,33 @@ search feature needs a separate encrypted-index design.
 
 ## Authentication and device enrollment
 
-Web authentication can use Supabase's PKCE flow. The CLI login design needs a
-small security spike before implementation:
+Auth0 owns web and CLI authentication. The web uses authorization code; the
+native CLI uses OAuth Device Authorization so headless/SSH users receive the
+same supported flow. Refresh credentials stay in the operating-system
+credential store when available and never enter `config.toml`, the ledger,
+shell history, telemetry, or support reports.
 
-1. Preferred desktop path: browser login with a loopback callback, a locally
-   held PKCE verifier, strict state validation, and a bounded callback lifetime.
-2. Required fallback for SSH/headless use: a short-lived device approval flow
-   on the web app. Store only a hash of the one-time secret, bind approval to
-   the requesting device public key, and allow one claim.
-3. Store refresh tokens in the operating system credential store when
-   available. Never place tokens in `config.toml`, the ledger, shell history,
-   telemetry, or support reports.
-4. `sinter logout` revokes the local session. `sinter devices revoke <id>`
-   blocks future server access; capsule-key rotation/re-wrapping is a separate
-   operation and must be made clear to the user.
+Each CLI device generates separate local P-256 ECDH and ECDSA key pairs. The
+first-ever device may bootstrap only after the server verifies a paired Auth0
+API access token and CLI-audience ID token. Every later device proves possession
+of its signing key and requires a bounded, signed approval from an active
+existing device. Private keys never leave local custody. Fingerprints bind both
+normalized public keys. Revocation is irreversible, and losing or revoking all
+devices intentionally leaves no recovery path in the initial design.
 
-Initial auth can support one provider plus email magic link. Do not add many
-identity providers until account linking and takeover cases are tested.
+The browser will later enroll as another device with a non-exportable local key
+and existing-device approval. Do not add more identity providers until account
+linking and takeover cases are tested.
 
 ## Application and API split
 
-The browser and CLI may use the Supabase publishable key with the user's JWT
-where RLS fully expresses the operation. The Supabase service-role key bypasses
-RLS and must exist only in server-side Vercel functions, limited to operations
-that genuinely need it—for example verified billing webhooks or administrative
-deletion jobs.
+The browser may use the Supabase publishable key with the user's Auth0 ID token
+where RLS fully expresses the operation. Device creation and approval require
+server-side signature verification, so their Vercel routes use the server-only
+`SUPABASE_SECRET_KEY` only after paired Auth0 verification and explicit account
+resolution. That key bypasses RLS, must never enter browser code, and every
+query/RPC remains explicitly account-scoped. Billing webhooks and final deletion
+jobs may later use the same trust boundary after separate review.
 
 Suggested repository layout:
 
@@ -182,7 +184,7 @@ Names are provisional but the visibility boundary is not:
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Browser-safe | Development project URL. |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser-safe | Relies on grants and RLS; it is not an admin secret. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server only | Bypasses RLS; never prefix with `NEXT_PUBLIC_`. |
+| `SUPABASE_SECRET_KEY` | Server only | Bypasses RLS; device APIs fail closed without it; never prefix with `NEXT_PUBLIC_`. |
 | `SINTER_CLOUD_BASE_URL` | CLI/public | Defaults to the generated Vercel URL during testing. |
 | `SINTER_CLOUD_REAL_UPLOADS` | Server only | Off until crypto and deletion gates pass. |
 | `STRIPE_SECRET_KEY` / webhook secret | Server only, later | Not needed for the first hosted test. |
@@ -259,12 +261,14 @@ availability guarantee.
 
 ### C1 — authentication and policy skeleton
 
-- [x] Add email magic-link sign-in, callback exchange, protected dashboard, and
-  sign-out on the generated URL.
-- [ ] Register, rename, list, and revoke a synthetic device.
-- [x] Apply migrations for `profiles` and `devices` locally and to hosted
-  development.
-- [x] RLS tests prove user A cannot read or mutate user B.
+- [x] Add Auth0 web sign-in, protected dashboard, CLI device authorization,
+  rotating refresh, and sign-out/logout.
+- [x] Implement device key custody, first-device bootstrap, signed subsequent-
+  device approval, list, rename, revoke, pending, and approval flows locally.
+- [ ] Apply the device identity migration and server-only secret to hosted
+  development, then register the first real device.
+- [x] RLS/service-boundary tests prove user A cannot read or mutate user B and
+  authenticated SQL cannot bypass cryptographic approval.
 - [x] Keep all session and capsule upload paths absent and disabled.
 
 ### C2 — encrypted synthetic capsule
@@ -277,9 +281,10 @@ availability guarantee.
 
 ### C3 — CLI private alpha
 
-- [x] Add browser-loopback `sinter login`, verified `whoami`, and revoking
-  `logout`, with macOS Keychain storage and an owner-only fallback.
-- [ ] Add device register, rename, list, and revoke commands.
+- [x] Add Auth0 device-code `sinter login`, verified `whoami`, rotating refresh,
+  and revoking `logout`, with macOS Keychain storage and an owner-only fallback.
+- [x] Add device register, rename, list, revoke, pending, and approve commands;
+  hosted activation remains gated on the C1 rollout.
 - [ ] Add explicit `cloud push`, `cloud ls`, `cloud inspect`, and `cloud pull`;
   do not overload local `scan` or silently sync.
 - [ ] Preserve qualified `(harness, instance, native-id)` provenance locally
@@ -307,28 +312,31 @@ current deployment stores no session content and cannot run agents.
 
 ## Open decisions
 
-1. When should headless device approval supplement the implemented browser
-   loopback flow?
-2. No-recovery alpha, or a user-held printable recovery key before real data?
-3. Maximum synthetic capsule size for C2 and the initial free allowance?
-4. When should a separate production project be created?
+1. Maximum synthetic capsule size for C2 and the initial alpha allowance?
+2. When should a separate production project be created?
+3. Which reviewed HPKE implementation and vector source should freeze the C2
+   P-256/HKDF-SHA256/AES-256-GCM envelope?
 
-Resolved for the development foundation: Next.js on Vercel, email magic link
-first, a Singapore Supabase region, and browser-to-`127.0.0.1` CLI login with a
-signed ten-minute flow cookie and state-bound POST. Additional providers and
-headless approval are intentionally deferred.
+Resolved: Next.js on Vercel, a Singapore Supabase region, Auth0 web plus native
+Device Authorization, explicit immutable Cloud snapshots rather than automatic
+mirroring, no recovery when every device is lost, existing-device approval for
+new devices, browser-as-device client-side decryption, and user-approved,
+time-bounded support access instead of an administrative master key.
 
 ## Recommended immediate checkpoint
 
-Finish the remaining non-data portion of C1:
+Activate the verified non-data C1 checkpoint without enabling uploads:
 
-1. add authenticated device registration, rename, and revoke actions;
-2. test the full magic-link flow with a named development account;
-3. add browser-level auth and cross-user policy checks;
-4. stop before capsule upload and review the threat model and CLI auth flow.
+1. review the committed local device identity checkpoint;
+2. dry-run and apply the migration to hosted development;
+3. configure the server-only Supabase secret key and deploy the device APIs;
+4. install the development CLI and bootstrap the first device;
+5. complete one signed second-device approval, rename, list, and safe revocation
+   test without revoking the only remaining active device;
+6. stop before capsule upload and freeze C2 test vectors and threat cases.
 
-This proves the deployment, auth, schema, and isolation foundation without
-placing a real coding-agent transcript in the cloud.
+This proves authentication, local key custody, cryptographic approval, schema,
+and account isolation without placing a real coding-agent transcript in Cloud.
 
 ## Official references
 

@@ -12,8 +12,7 @@ export interface CloudIdentity {
   email: string | null;
 }
 
-export interface StoredCloudSession {
-  schema: "sinter.cloud.credentials.v2";
+interface CloudSessionFields {
   provider: "auth0";
   baseUrl: string;
   issuer: string;
@@ -22,6 +21,24 @@ export interface StoredCloudSession {
   refreshToken: string;
   expiresAt: number;
   user: CloudIdentity;
+}
+
+/** Legacy credentials remain readable and are upgraded through one token refresh. */
+export interface LegacyStoredCloudSession extends CloudSessionFields {
+  schema: "sinter.cloud.credentials.v2";
+}
+
+export interface StoredCloudSession extends CloudSessionFields {
+  schema: "sinter.cloud.credentials.v3";
+  idToken: string;
+}
+
+export type AnyStoredCloudSession = StoredCloudSession | LegacyStoredCloudSession;
+
+export interface CloudApiSession {
+  baseUrl: string;
+  accessToken: string;
+  idToken: string;
 }
 
 export interface CloudLoginOptions {
@@ -36,12 +53,14 @@ export interface CloudAuthService {
   login(options?: CloudLoginOptions): Promise<{ user: CloudIdentity; storage: string }>;
   whoami(): Promise<{ user: CloudIdentity; storage: string } | undefined>;
   logout(): Promise<{ hadSession: boolean; revoked: boolean }>;
+  /** Returns fresh API credentials without exposing them through command output. */
+  apiSession(): Promise<CloudApiSession | undefined>;
 }
 
 export interface CredentialStore {
   readonly description: string;
-  load(): Promise<StoredCloudSession | undefined>;
-  save(session: StoredCloudSession): Promise<void>;
+  load(): Promise<AnyStoredCloudSession | undefined>;
+  save(session: AnyStoredCloudSession): Promise<void>;
   delete(): Promise<void>;
 }
 
@@ -58,10 +77,12 @@ async function runCommand(argv: string[]): Promise<CommandResult> {
   return { code, stdout, stderr };
 }
 
-function validSession(value: unknown): value is StoredCloudSession {
+function validSession(value: unknown): value is AnyStoredCloudSession {
   if (!value || typeof value !== "object") return false;
-  const session = value as Partial<StoredCloudSession>;
-  return session.schema === "sinter.cloud.credentials.v2" && session.provider === "auth0" &&
+  const session = value as Partial<CloudSessionFields> & { schema?: string; idToken?: unknown };
+  const validSchema = session.schema === "sinter.cloud.credentials.v2" ||
+    (session.schema === "sinter.cloud.credentials.v3" && typeof session.idToken === "string" && session.idToken.length > 0);
+  return validSchema && session.provider === "auth0" &&
     typeof session.baseUrl === "string" &&
     typeof session.issuer === "string" &&
     typeof session.clientId === "string" &&
@@ -146,8 +167,11 @@ function normalizeBaseUrl(value: string) {
   return url.toString().replace(/\/$/, "");
 }
 
+const AUTH0_SCOPE = "openid profile email offline_access";
+
 interface Auth0Session {
   accessToken: string;
+  idToken: string;
   refreshToken: string;
   expiresAt: number;
 }
@@ -217,7 +241,7 @@ export function createCloudAuthService(options: {
     return { id: user.id, email: user.email };
   }
 
-  async function refresh(session: StoredCloudSession): Promise<StoredCloudSession> {
+  async function refresh(session: AnyStoredCloudSession): Promise<StoredCloudSession> {
     const response = await request(auth0Endpoint(session.issuer, "/oauth/token"), {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -225,6 +249,7 @@ export function createCloudAuthService(options: {
         grant_type: "refresh_token",
         client_id: session.clientId,
         refresh_token: session.refreshToken,
+        scope: AUTH0_SCOPE,
       }),
     });
     if (!response.ok) throw new Error("Cloud session expired; run `sinter login` again");
@@ -232,14 +257,37 @@ export function createCloudAuthService(options: {
     if (typeof body?.access_token !== "string" || typeof body.expires_in !== "number") {
       throw new Error("Auth0 returned an invalid refresh response");
     }
-    const updated: StoredCloudSession = {
-      ...session,
+    const common = {
+      provider: "auth0" as const,
+      baseUrl: session.baseUrl,
+      issuer: session.issuer,
+      clientId: session.clientId,
       accessToken: body.access_token,
       refreshToken: typeof body.refresh_token === "string" ? body.refresh_token : session.refreshToken,
       expiresAt: Math.floor(now() / 1000) + body.expires_in,
+      user: session.user,
+    };
+    if (typeof body.id_token !== "string" || body.id_token.length === 0) {
+      // Preserve a rotated refresh token even though this session now requires one relogin.
+      await store.save({ schema: "sinter.cloud.credentials.v2", ...common });
+      throw new Error("Auth0 did not return a fresh ID token; run `sinter login` again");
+    }
+    const updated: StoredCloudSession = {
+      schema: "sinter.cloud.credentials.v3",
+      ...common,
+      idToken: body.id_token,
     };
     await store.save(updated);
     return updated;
+  }
+
+  async function currentSession(): Promise<StoredCloudSession | undefined> {
+    const stored = await store.load();
+    if (!stored) return undefined;
+    if (stored.schema === "sinter.cloud.credentials.v2" || stored.expiresAt * 1000 <= now() + 60_000) {
+      return refresh(stored);
+    }
+    return stored;
   }
 
   return {
@@ -257,7 +305,7 @@ export function createCloudAuthService(options: {
       const codeResponse = await request(auth0Endpoint(config.issuer, "/oauth/device/code"), {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ client_id: config.clientId, audience: config.audience, scope: config.scope }),
+        body: new URLSearchParams({ client_id: config.clientId, audience: config.audience, scope: AUTH0_SCOPE }),
       });
       const code = await jsonResponse(codeResponse) as Partial<DeviceCode> | undefined;
       if (!codeResponse.ok || typeof code?.device_code !== "string" || typeof code.user_code !== "string" ||
@@ -297,18 +345,20 @@ export function createCloudAuthService(options: {
       } finally {
         clearTimeout(timeout);
       }
-      if (typeof tokenBody?.access_token !== "string" || typeof tokenBody.refresh_token !== "string" || typeof tokenBody.expires_in !== "number") {
+      if (typeof tokenBody?.access_token !== "string" || typeof tokenBody.id_token !== "string" ||
+        typeof tokenBody.refresh_token !== "string" || typeof tokenBody.expires_in !== "number") {
         throw controller.signal.reason instanceof Error ? controller.signal.reason : new Error("Auth0 returned an invalid device session");
       }
       const callbackSession: Auth0Session = {
         accessToken: tokenBody.access_token,
+        idToken: tokenBody.id_token,
         refreshToken: tokenBody.refresh_token,
         expiresAt: Math.floor(now() / 1000) + tokenBody.expires_in,
       };
       const user = await identity(baseUrl, callbackSession.accessToken);
       if (!user) throw new Error("Sinter Cloud rejected the returned login session");
       const session: StoredCloudSession = {
-        schema: "sinter.cloud.credentials.v2", provider: "auth0", baseUrl,
+        schema: "sinter.cloud.credentials.v3", provider: "auth0", baseUrl,
         issuer: config.issuer, clientId: config.clientId,
         ...callbackSession, user,
       };
@@ -317,9 +367,8 @@ export function createCloudAuthService(options: {
     },
 
     async whoami() {
-      let session = await store.load();
+      let session = await currentSession();
       if (!session) return undefined;
-      if (session.expiresAt * 1000 <= now() + 60_000) session = await refresh(session);
       let user = await identity(session.baseUrl, session.accessToken);
       if (!user) {
         session = await refresh(session);
@@ -327,6 +376,11 @@ export function createCloudAuthService(options: {
       }
       if (!user) throw new Error("Cloud session expired; run `sinter login` again");
       return { user, storage: store.description };
+    },
+
+    async apiSession() {
+      const session = await currentSession();
+      return session ? { baseUrl: session.baseUrl, accessToken: session.accessToken, idToken: session.idToken } : undefined;
     },
 
     async logout() {

@@ -91,6 +91,10 @@ describe("Supabase Auth0 dashboard boundary", () => {
         calls.push(`devices:${accountId}`);
         return { data: [], error: null };
       },
+      loadEnrollments: async (accountId) => {
+        calls.push(`enrollments:${accountId}`);
+        return { data: [], error: null };
+      },
     };
 
     const result = await loadDashboardData(token(), (received) => {
@@ -103,6 +107,7 @@ describe("Supabase Auth0 dashboard boundary", () => {
       "claim",
       `profile:${ACCOUNT_ID}`,
       `devices:${ACCOUNT_ID}`,
+      `enrollments:${ACCOUNT_ID}`,
     ]);
   });
 
@@ -120,6 +125,10 @@ describe("Supabase Auth0 dashboard boundary", () => {
       },
       loadDevices: async () => {
         calls.push("devices");
+        return { data: [], error: null };
+      },
+      loadEnrollments: async () => {
+        calls.push("enrollments");
         return { data: [], error: null };
       },
     };

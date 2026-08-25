@@ -5,6 +5,7 @@ import {
   DashboardDataError,
   loadDashboardData,
   type CloudDevice,
+  type CloudDeviceEnrollment,
   type DashboardData,
 } from "@/lib/supabase/auth0";
 import { AccountLifecycle } from "./account-lifecycle";
@@ -52,12 +53,36 @@ function DeviceCard({ device }: { device: CloudDevice }) {
         <div className="device-heading">
           <h3>{device.name}</h3>
           <span className={`state-pill ${revoked ? "state-muted" : "state-good"}`}>
-            {revoked ? "Revoked" : "Registered"}
+            {revoked ? "Revoked" : "Active"}
           </span>
         </div>
         <dl className="device-meta">
           <div><dt>Added</dt><dd>{formatDate(device.created_at)}</dd></div>
           <div><dt>Last seen</dt><dd>{device.last_seen_at ? formatDate(device.last_seen_at) : "Not yet reported"}</dd></div>
+          <div><dt>Fingerprint</dt><dd><code>{device.fingerprint.slice(0, 12)}…</code></dd></div>
+        </dl>
+      </div>
+    </article>
+  );
+}
+
+function EnrollmentCard({ enrollment }: { enrollment: CloudDeviceEnrollment }) {
+  return (
+    <article className="device-card enrollment-card">
+      <div className="device-icon pending-device-icon" aria-hidden="true">
+        <span />
+      </div>
+      <div className="device-details">
+        <div className="device-heading">
+          <h3>{enrollment.name}</h3>
+          <span className="state-pill state-warning">
+            {enrollment.status === "approved" ? "Completing approval" : "Pending approval"}
+          </span>
+        </div>
+        <dl className="device-meta">
+          <div><dt>Requested</dt><dd>{formatDate(enrollment.created_at)}</dd></div>
+          <div><dt>Expires</dt><dd>{formatTimestamp(enrollment.expires_at)}</dd></div>
+          <div><dt>Fingerprint</dt><dd><code>{enrollment.fingerprint.slice(0, 12)}…</code></dd></div>
         </dl>
       </div>
     </article>
@@ -150,7 +175,7 @@ function Portal({ viewer, data }: { viewer: Viewer; data: DashboardData }) {
           <article className="metric-card featured">
             <span className="metric-label">Registered devices</span>
             <strong>{data.devices.length}</strong>
-            <p>{activeDevices === 1 ? "1 active registration" : `${activeDevices} active registrations`}</p>
+            <p>{activeDevices === 1 ? "1 active registration" : `${activeDevices} active registrations`}{data.enrollments.length > 0 ? ` · ${data.enrollments.length} pending` : ""}</p>
           </article>
           <article className="metric-card">
             <span className="metric-label">Session uploads</span>
@@ -203,18 +228,28 @@ function Portal({ viewer, data }: { viewer: Viewer; data: DashboardData }) {
         <section className="portal-section devices-section" id="devices">
           <div className="section-heading">
             <div><p className="section-kicker">DEVICES</p><h2>Registered endpoints</h2></div>
-            <span className="section-count">{data.devices.length} total</span>
+            <span className="section-count">{data.devices.length} registered · {data.enrollments.length} pending</span>
           </div>
+          {data.enrollments.length > 0 && (
+            <div className="pending-device-group">
+              <p className="device-group-label">Awaiting cryptographic approval</p>
+              <div className="device-list">{data.enrollments.map((enrollment) => <EnrollmentCard enrollment={enrollment} key={enrollment.id} />)}</div>
+              <p className="device-boundary-note">Approve from an active Sinter CLI device that holds its signing key. The portal does not generate, receive, or store device private keys.</p>
+            </div>
+          )}
           {data.devices.length > 0 ? (
-            <div className="device-list">{data.devices.map((device) => <DeviceCard device={device} key={device.id} />)}</div>
-          ) : (
+            <div className="registered-device-group">
+              {data.enrollments.length > 0 && <p className="device-group-label">Active and revoked registrations</p>}
+              <div className="device-list">{data.devices.map((device) => <DeviceCard device={device} key={device.id} />)}</div>
+            </div>
+          ) : data.enrollments.length === 0 ? (
             <div className="empty-state">
               <div className="empty-device" aria-hidden="true"><span /></div>
               <h3>No devices registered</h3>
-              <p>Device registration will appear here after a supported CLI enrollment flow is available. This preview does not offer manual enrollment.</p>
-              <code>sinter whoami</code>
+              <p>Register the first device from the Sinter CLI. Browser key generation and manual portal enrollment remain intentionally unavailable.</p>
+              <code>sinter devices</code>
             </div>
-          )}
+          ) : null}
         </section>
 
         <footer className="portal-footer">

@@ -6,24 +6,27 @@ import {
   cloudCredentialPath,
   createCloudAuthService,
   createCredentialStore,
+  type AnyStoredCloudSession,
   type CredentialStore,
+  type LegacyStoredCloudSession,
   type StoredCloudSession,
 } from "../src/cloud-auth";
 
 const USER = { id: "user-1", email: "jensen@example.test" };
 const SESSION: StoredCloudSession = {
-  schema: "sinter.cloud.credentials.v2",
+  schema: "sinter.cloud.credentials.v3",
   provider: "auth0",
   baseUrl: "https://cloud.example.test",
   issuer: "https://tenant.example.test/",
   clientId: "cli-client",
   accessToken: "access-one",
+  idToken: "id-one",
   refreshToken: "refresh-one",
   expiresAt: 2_000_000_000,
   user: USER,
 };
 
-function memoryStore(initial?: StoredCloudSession): CredentialStore & { current?: StoredCloudSession; deleted: boolean } {
+function memoryStore(initial?: AnyStoredCloudSession): CredentialStore & { current?: AnyStoredCloudSession; deleted: boolean } {
   return {
     description: "test keychain",
     current: initial,
@@ -94,7 +97,7 @@ describe("Cloud auth service", () => {
           expires_in: 300, interval: 1,
         });
         if (url.endsWith("/oauth/token")) return Response.json({
-          access_token: "access-one", refresh_token: "refresh-one", expires_in: 3600,
+          access_token: "access-one", id_token: "id-one", refresh_token: "refresh-one", expires_in: 3600,
         });
         if (url.endsWith("/api/cli/session")) return Response.json({ ok: true, user: USER });
         throw new Error(`unexpected request: ${url}`);
@@ -106,29 +109,65 @@ describe("Cloud auth service", () => {
     });
     expect(result.user).toEqual(USER);
     expect(store.current?.refreshToken).toBe("refresh-one");
+    expect(store.current?.schema).toBe("sinter.cloud.credentials.v3");
+    expect((store.current as StoredCloudSession).idToken).toBe("id-one");
     expect(store.current?.provider).toBe("auth0");
     expect(deviceCodes).toEqual(["STONE-RIVER"]);
     expect(opened).toEqual(["https://tenant.example.test/activate?user_code=STONE-RIVER"]);
   });
 
-  test("refreshes an expiring session before verifying whoami", async () => {
+  test("refreshes access and ID tokens with the explicit OIDC/offline scope", async () => {
     const store = memoryStore({ ...SESSION, expiresAt: 100 });
     const endpoints: string[] = [];
+    let refreshBody = "";
     const service = createCloudAuthService({
       store,
       now: () => 200_000,
-      fetch: async (input) => {
+      fetch: async (input, init) => {
         const url = String(input);
         endpoints.push(url);
-        if (url.endsWith("/oauth/token")) return Response.json({
-          access_token: "access-two", refresh_token: "refresh-two", expires_in: 3000,
-        });
+        if (url.endsWith("/oauth/token")) {
+          refreshBody = String(init?.body);
+          return Response.json({
+            access_token: "access-two", id_token: "id-two", refresh_token: "refresh-two", expires_in: 3000,
+          });
+        }
         return Response.json({ user: USER });
       },
     });
     expect((await service.whoami())?.user).toEqual(USER);
     expect(store.current?.accessToken).toBe("access-two");
+    expect((store.current as StoredCloudSession).idToken).toBe("id-two");
+    expect(new URLSearchParams(refreshBody).get("scope")).toBe("openid profile email offline_access");
     expect(endpoints.map((url) => url.split("/").at(-1))).toEqual(["token", "session"]);
+  });
+
+  test("migrates a valid v2 credential through refresh without a relogin", async () => {
+    const { idToken: _discardedIdToken, schema: _discardedSchema, ...legacyFields } = SESSION;
+    const legacy: LegacyStoredCloudSession = { ...legacyFields, schema: "sinter.cloud.credentials.v2" };
+    const store = memoryStore(legacy);
+    const service = createCloudAuthService({
+      store,
+      now: () => 200_000,
+      fetch: async (input) => String(input).endsWith("/oauth/token")
+        ? Response.json({ access_token: "migrated-access", id_token: "migrated-id", refresh_token: "migrated-refresh", expires_in: 3000 })
+        : Response.json({ user: USER }),
+    });
+    expect((await service.apiSession())?.idToken).toBe("migrated-id");
+    expect(store.current?.schema).toBe("sinter.cloud.credentials.v3");
+    expect(store.current?.refreshToken).toBe("migrated-refresh");
+  });
+
+  test("preserves a rotated refresh token when Auth0 omits the required fresh ID token", async () => {
+    const store = memoryStore({ ...SESSION, expiresAt: 100 });
+    const service = createCloudAuthService({
+      store,
+      now: () => 200_000,
+      fetch: async () => Response.json({ access_token: "access-two", refresh_token: "refresh-two", expires_in: 3000 }),
+    });
+    await expect(service.apiSession()).rejects.toThrow(/fresh ID token.*sinter login/);
+    expect(store.current?.schema).toBe("sinter.cloud.credentials.v2");
+    expect(store.current?.refreshToken).toBe("refresh-two");
   });
 
   test("logout removes the local credential even when revocation fails", async () => {

@@ -58,9 +58,18 @@ the Auth0 tenant in Supabase Authentication > Third-Party Auth before applying
 the provider-neutral identity migration.
 
 Required server-only Vercel variables are `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`,
-`AUTH0_CLIENT_SECRET`, `AUTH0_SECRET`, `AUTH0_AUDIENCE`, and
-`AUTH0_CLI_CLIENT_ID`. `APP_BASE_URL` is the production site URL. Never commit
-the web client secret, cookie secret, refresh tokens, or management token.
+`AUTH0_CLIENT_SECRET`, `AUTH0_SECRET`, `AUTH0_AUDIENCE`,
+`AUTH0_CLI_CLIENT_ID`, and `SUPABASE_SECRET_KEY`. `APP_BASE_URL` is the
+production site URL. The Supabase secret is used only by paired-token,
+cryptographically verified device APIs and must never reach browser code.
+Never commit the web client secret, cookie secret, Supabase secret, refresh
+tokens, or management token.
+
+CLI device registration sends paired Auth0 access/ID tokens and public P-256
+keys. The first-ever device bootstraps; subsequent devices require a signed,
+15-minute approval from an active existing device. Private keys stay in the
+CLI credential store. Revocation is irreversible, and the initial design has no
+recovery after every device is lost or revoked.
 
 ## Deployment boundary
 

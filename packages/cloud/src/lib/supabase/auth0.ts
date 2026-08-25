@@ -5,6 +5,7 @@ import {
   type AccountDeletionOperation,
 } from "../account-lifecycle";
 import { auth0Issuer } from "../auth0";
+import { DEVICE_DATABASE } from "../device-data-source";
 
 export interface CloudProfile {
   id: string;
@@ -16,15 +17,32 @@ export interface CloudProfile {
 export interface CloudDevice {
   id: string;
   name: string;
+  suite: string;
+  encryption_public_key: string;
+  signing_public_key: string;
+  fingerprint: string;
   created_at: string;
   last_seen_at: string | null;
   revoked_at: string | null;
+}
+
+export interface CloudDeviceEnrollment {
+  id: string;
+  name: string;
+  suite: string;
+  encryption_public_key: string;
+  signing_public_key: string;
+  fingerprint: string;
+  status: "pending" | "approved";
+  created_at: string;
+  expires_at: string;
 }
 
 export interface DashboardData {
   accountId: string;
   profile: CloudProfile;
   devices: CloudDevice[];
+  enrollments: CloudDeviceEnrollment[];
   tokenExpiresAt: number;
 }
 
@@ -37,6 +55,7 @@ export interface DashboardDataSource {
   claimAccount(): Promise<DataResult<string | null>>;
   loadProfile(accountId: string): Promise<DataResult<CloudProfile | null>>;
   loadDevices(accountId: string): Promise<DataResult<CloudDevice[] | null>>;
+  loadEnrollments(accountId: string): Promise<DataResult<CloudDeviceEnrollment[] | null>>;
 }
 
 export interface AccountDeletionDataSource {
@@ -56,6 +75,7 @@ export type DashboardFailureCode =
   | "account-claim"
   | "profile-load"
   | "device-load"
+  | "enrollment-load"
   | "account-confirmation"
   | "account-update"
   | "account-state"
@@ -69,6 +89,7 @@ const failureMessages: Record<DashboardFailureCode, string> = {
   "account-claim": "Your cloud account could not be opened safely.",
   "profile-load": "Your account details could not be loaded.",
   "device-load": "Your devices could not be loaded.",
+  "enrollment-load": "Your pending device approvals could not be loaded.",
   "account-confirmation": "Confirm that you understand this creates a deletion request before continuing.",
   "account-update": "Your deletion request could not be changed.",
   "account-state": "No account change was made. Refresh the page and check the current request status.",
@@ -156,11 +177,22 @@ export function createDashboardDataSource(idToken: string): DashboardDataSource 
     },
     loadDevices: async (accountId) => {
       const result = await supabase
-        .from("devices")
-        .select("id,name,created_at,last_seen_at,revoked_at")
+        .from(DEVICE_DATABASE.devicesTable)
+        .select("id,name,suite:key_suite,encryption_public_key,signing_public_key,fingerprint,created_at,last_seen_at,revoked_at")
         .eq("user_id", accountId)
+        .not("key_suite", "is", null)
         .order("created_at", { ascending: false });
       return result as DataResult<CloudDevice[] | null>;
+    },
+    loadEnrollments: async (accountId) => {
+      const result = await supabase
+        .from(DEVICE_DATABASE.enrollmentsTable)
+        .select("id,name:requested_name,suite:key_suite,encryption_public_key,signing_public_key,fingerprint,status,created_at,expires_at")
+        .eq("account_id", accountId)
+        .in("status", ["pending", "approved"])
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false });
+      return result as DataResult<CloudDeviceEnrollment[] | null>;
     },
   };
 }
@@ -211,10 +243,14 @@ export async function loadDashboardData(
   const devicesResult = await source.loadDevices(claimed.data);
   if (devicesResult.error) return fail("device-load", devicesResult.error.message);
 
+  const enrollmentsResult = await source.loadEnrollments(claimed.data);
+  if (enrollmentsResult.error) return fail("enrollment-load", enrollmentsResult.error.message);
+
   return {
     accountId: claimed.data,
     profile: profileResult.data,
     devices: devicesResult.data ?? [],
+    enrollments: enrollmentsResult.data ?? [],
     tokenExpiresAt: token.expiresAt,
   };
 }

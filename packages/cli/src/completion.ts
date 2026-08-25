@@ -5,6 +5,7 @@ const COMMANDS = [
   ["login", "sign in to Sinter Cloud"],
   ["whoami", "show the current Cloud identity"],
   ["logout", "remove the current Cloud login"],
+  ["devices", "manage Cloud device identities"],
   ["config", "inspect and validate profile configuration"],
   ["ls", "list sessions"],
   ["recent", "list recent resumable sessions"],
@@ -79,6 +80,7 @@ ${commands}
     config) _arguments $global_args '1:action:(show path validate example)' '--json' ;;
     login) _arguments $global_args '--no-open' '--timeout=[callback lifetime]:duration' '--json' ;;
     whoami|logout) _arguments $global_args '--json' ;;
+    devices) _arguments $global_args '1:action:(register list rename revoke pending approve)' '2:device or request id' '3:device name' '--name=[device name]:name' '--yes[confirm permanent revocation]' '--json' ;;
     ls) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
     recent) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' ;;
     watch) _arguments $global_args '1:view:(recent projects)' '--interval=[refresh interval]:duration' '--count=[snapshot count]:count' '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-clear' ;;
@@ -147,6 +149,10 @@ function bash(): string {
     COMPREPLY=( $(compgen -W 'show path validate example --json' -- "$current") )
     return
   fi
+  if [[ $command == devices ]]; then
+    COMPREPLY=( $(compgen -W 'register list rename revoke pending approve --name --yes --json' -- "$current") )
+    return
+  fi
   COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --all-harnesses --cwd --all-cwd --since --all-time --older-than --interval --count --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open --yes --ghosts --no-ghosts --subagents --no-subagents --force --all --clear --no-clear' -- "$current") )
 }
 complete -F _sinter_completion sinter
@@ -169,6 +175,10 @@ function fish(): string {
     `complete -c sinter -n '__fish_seen_subcommand_from resume' -l in -xa '${HARNESSES.join(" ")}' -d 'Target harness'`,
     `complete -c sinter -n '__fish_seen_subcommand_from port menu' -l mode -xa '${MODES.join(" ")}' -d 'Transfer mode'`,
     "complete -c sinter -n '__fish_seen_subcommand_from config' -a 'show path validate example' -d 'Action'",
+    "complete -c sinter -n '__fish_seen_subcommand_from devices' -a 'register list rename revoke pending approve' -d 'Action'",
+    "complete -c sinter -n '__fish_seen_subcommand_from devices' -l name -r -d 'Device name'",
+    "complete -c sinter -n '__fish_seen_subcommand_from devices' -l yes -d 'Confirm permanent revocation'",
+    "complete -c sinter -n '__fish_seen_subcommand_from devices' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from completion' -a 'zsh bash fish' -d 'Shell'",
     "complete -c sinter -n '__fish_seen_subcommand_from port' -l preview -d 'Preview without writing'",
     "complete -c sinter -n '__fish_seen_subcommand_from doctor' -l report -d 'Generate a privacy-safe report'",

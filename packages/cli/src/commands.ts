@@ -45,6 +45,7 @@ import { renderSupportReport, supportPlatform, type SupportHarnessStatus } from 
 import { applyTransfer, fmtBytes, TRANSFER_MODES, type TransferMode } from "./transfer";
 import { sendTransfer, startTransferReceiver, type ReceivedTransfer } from "./network";
 import { createCloudAuthService, type CloudAuthService } from "./cloud-auth";
+import { createCloudDeviceService, type CloudDeviceService } from "./cloud-devices";
 
 export interface Ctx {
   registry: AdapterRegistry;
@@ -76,6 +77,8 @@ export interface Ctx {
   sleep?: (ms: number) => Promise<void>;
   /** Cloud auth is injectable so command tests never open browsers or touch OS credentials. */
   cloudAuth?: CloudAuthService;
+  /** Device identity/API operations are separately injectable and never touch the session ledger. */
+  cloudDevices?: CloudDeviceService;
 }
 
 // ------------------------------------------------------------------ helpers
@@ -1995,6 +1998,106 @@ function cloudLoginTimeout(value: string | undefined) {
 
 function cloudAuth(ctx: Ctx) {
   return ctx.cloudAuth ?? createCloudAuthService();
+}
+
+function cloudDevices(ctx: Ctx) {
+  return ctx.cloudDevices ?? createCloudDeviceService();
+}
+
+export async function cmdDevices(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { strings: ["name"], booleans: ["json", "yes"] });
+  const action = args._[0] ?? "list";
+  const positional = args._.slice(1);
+  const json = flagBool(args, "json");
+  const service = cloudDevices(ctx);
+
+  if (action === "register") {
+    if (positional.length) throw new CliError("usage: sinter devices register [--name name] [--json]");
+    const result = await service.register(flagString(args, "name"));
+    if (json) {
+      ctx.out(JSON.stringify({ schema: "sinter.cloud.device-registration-result.v1", ok: true, ...result }));
+    } else if (result.status === "approval_required") {
+      ctx.out("Approval required before this device can be registered.");
+      if (result.enrollment?.id) ctx.out(`request: ${result.enrollment.id}`);
+      ctx.out("Run `sinter devices pending` and approve this request from an existing registered device.");
+      ctx.out(ctx.pal.dim(`private keys: ${result.keyStorage}`));
+    } else {
+      ctx.out(`Registered device ${result.device?.name ?? result.name} (${result.device?.id ?? result.deviceId}).`);
+      ctx.out(ctx.pal.dim(`private keys: ${result.keyStorage}`));
+    }
+    return EXIT.OK;
+  }
+
+  if (action === "list") {
+    if (positional.length || flagString(args, "name")) throw new CliError("usage: sinter devices list [--json]");
+    const devices = await service.list();
+    if (json) {
+      ctx.out(JSON.stringify({ schema: "sinter.cloud.devices.v1", ok: true, devices }));
+    } else if (!devices.length) {
+      ctx.out("No registered Cloud devices.");
+    } else {
+      ctx.out(renderTable(
+        [
+          { header: "ID", max: 24 },
+          { header: "NAME", flex: true },
+          { header: "STATUS", max: 12 },
+          { header: "FINGERPRINT", max: 16 },
+        ],
+        devices.map((device) => [device.id, device.name, device.status ?? (device.revokedAt ? "revoked" : "active"), device.fingerprint.slice(0, 16)]),
+        { width: ctx.width, pal: ctx.pal },
+      ));
+    }
+    return EXIT.OK;
+  }
+
+  if (action === "rename") {
+    if (positional.length !== 2 || flagString(args, "name")) throw new CliError("usage: sinter devices rename <id> <name> [--json]");
+    await service.rename(positional[0]!, positional[1]!);
+    if (json) ctx.out(JSON.stringify({ schema: "sinter.cloud.device-rename.v1", ok: true, deviceId: positional[0], name: positional[1] }));
+    else ctx.out(`Renamed device ${positional[0]} to ${positional[1]}.`);
+    return EXIT.OK;
+  }
+
+  if (action === "revoke") {
+    if (positional.length !== 1 || flagString(args, "name")) throw new CliError("usage: sinter devices revoke <id> --yes [--json]");
+    if (!flagBool(args, "yes")) throw new CliError("refusing to revoke a device without --yes; revocation is permanent and may make Cloud data unrecoverable");
+    await service.revoke(positional[0]!);
+    if (json) ctx.out(JSON.stringify({ schema: "sinter.cloud.device-revoke.v1", ok: true, deviceId: positional[0] }));
+    else ctx.out(`Revoked device ${positional[0]}.`);
+    return EXIT.OK;
+  }
+
+  if (action === "pending") {
+    if (positional.length || flagString(args, "name")) throw new CliError("usage: sinter devices pending [--json]");
+    const enrollments = await service.pending();
+    if (json) {
+      ctx.out(JSON.stringify({ schema: "sinter.cloud.device-enrollments.v1", ok: true, enrollments }));
+    } else if (!enrollments.length) {
+      ctx.out("No pending device enrollment requests.");
+    } else {
+      ctx.out(renderTable(
+        [
+          { header: "REQUEST", max: 24 },
+          { header: "NAME", flex: true },
+          { header: "FINGERPRINT", max: 16 },
+          { header: "EXPIRES", max: 24 },
+        ],
+        enrollments.map((request) => [request.id, request.name ?? "-", request.requestFingerprint.slice(0, 16), request.expiresAt]),
+        { width: ctx.width, pal: ctx.pal },
+      ));
+    }
+    return EXIT.OK;
+  }
+
+  if (action === "approve") {
+    if (positional.length !== 1 || flagString(args, "name")) throw new CliError("usage: sinter devices approve <request-id> [--json]");
+    const result = await service.approve(positional[0]!);
+    if (json) ctx.out(JSON.stringify({ schema: "sinter.cloud.device-approval-result.v1", ok: true, ...result }));
+    else ctx.out(`Approved device enrollment ${result.requestId}.`);
+    return EXIT.OK;
+  }
+
+  throw new CliError("usage: sinter devices <register|list|rename|revoke|pending|approve> ...");
 }
 
 export async function cmdLogin(argv: string[], ctx: Ctx): Promise<number> {
