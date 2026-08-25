@@ -317,6 +317,7 @@ h1 {
 }
 .state-pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .state-good { border-color: rgba(201, 244, 92, .22); background: var(--acid-soft); color: var(--acid); }
+.state-warning { border-color: rgba(242, 184, 112, .3); background: var(--danger-soft); color: #f2b870; }
 .state-muted { color: #8e948c; }
 .detail-list { margin: 27px 0 0; }
 .detail-list > div { min-height: 43px; padding: 12px 0; display: grid; grid-template-columns: 145px minmax(0, 1fr); align-items: center; gap: 20px; border-top: 1px solid var(--line); }
@@ -331,6 +332,28 @@ code { padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; back
 .security-list strong { display: block; font-size: 11px; }
 .security-list p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.48; }
 .token-expiry { margin: 10px 0 0; color: #6d746c; font-size: 9px; }
+.lifecycle-section { margin-top: 18px; padding: 30px; }
+.lifecycle-pending { border-color: rgba(242, 184, 112, .2); }
+.lifecycle-body { margin-top: 25px; padding-top: 23px; border-top: 1px solid var(--line); }
+.lifecycle-summary { max-width: 750px; margin: 0; color: var(--muted-bright); font-size: 11px; line-height: 1.65; }
+.lifecycle-details { max-width: 750px; margin: 20px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.lifecycle-details > div { padding: 16px; background: #0e110f; }
+.lifecycle-details > div + div { border-left: 1px solid var(--line); }
+.lifecycle-details dd { margin-top: 7px; text-align: left; }
+.lifecycle-form { max-width: 750px; margin-top: 20px; padding: 18px; display: grid; gap: 14px; border: 1px solid var(--line); border-radius: 9px; background: rgba(10, 12, 11, .52); }
+.lifecycle-form.compact-form { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.lifecycle-form p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.confirmation-row { display: flex; align-items: flex-start; gap: 11px; color: var(--muted-bright); line-height: 1.5; cursor: pointer; }
+.confirmation-row input[type="checkbox"] { width: 16px; height: 16px; margin: 0; padding: 0; flex: 0 0 auto; accent-color: var(--acid); }
+.lifecycle-button { width: max-content; min-height: 39px; padding: 10px 14px; border-radius: 7px; font-family: inherit; font-size: 11px; font-weight: 750; line-height: 1.2; cursor: pointer; transition: border-color .16s ease, background .16s ease, color .16s ease; }
+.lifecycle-button:disabled { cursor: wait; opacity: .58; }
+.danger-button { border: 1px solid rgba(242, 184, 112, .45); background: var(--danger-soft); color: #f2b870; }
+.danger-button:hover:not(:disabled) { border-color: #f2b870; background: rgba(242, 184, 112, .16); }
+.secondary-button { border: 1px solid var(--line-bright); background: var(--surface-raised); color: var(--muted-bright); }
+.secondary-button:hover:not(:disabled) { border-color: #70786f; color: var(--ink); }
+.lifecycle-message { grid-column: 1 / -1; margin: 0; padding-top: 2px; font-size: 10px; }
+.message-error { color: #f2b870; }
+.message-success { color: var(--acid); }
 .devices-section { margin-top: 18px; padding: 30px; }
 .section-count { color: var(--muted); font-size: 10px; }
 .device-list { margin-top: 26px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
@@ -409,8 +432,11 @@ input { width: 100%; padding: 13px; border: 1px solid var(--line-bright); border
   .metric-card { min-height: 145px; }
   .metric-card + .metric-card { border-top: 1px solid var(--line); border-left: 0; }
   .metric-card > strong { margin-top: 20px; }
-  .account-section, .security-section, .devices-section { padding: 23px; }
+  .account-section, .security-section, .lifecycle-section, .devices-section { padding: 23px; }
   .detail-list > div { grid-template-columns: 115px minmax(0, 1fr); }
+  .lifecycle-form.compact-form { grid-template-columns: 1fr; }
+  .lifecycle-details { grid-template-columns: 1fr; }
+  .lifecycle-details > div + div { border-top: 1px solid var(--line); border-left: 0; }
   .device-meta { flex-direction: column; gap: 10px; }
   .error-layout { grid-template-columns: 1fr; padding: 42px 0; }
 }
@@ -431,5 +457,5 @@ input { width: 100%; padding: 13px; border: 1px solid var(--line-bright); border
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .loading-mark span { animation: none; }
-  .auth-button { transition: none; }
+  .auth-button, .lifecycle-button { transition: none; }
 }

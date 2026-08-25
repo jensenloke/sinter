@@ -7,6 +7,7 @@ import {
   type CloudDevice,
   type DashboardData,
 } from "@/lib/supabase/auth0";
+import { AccountLifecycle } from "./account-lifecycle";
 import { SignOut } from "./sign-out";
 import { Brand } from "../brand";
 
@@ -25,6 +26,19 @@ function formatDate(value: string | number) {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(typeof value === "number" ? value * 1000 : value));
+}
+
+function formatTimestamp(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
+  }).format(new Date(value));
 }
 
 function DeviceCard({ device }: { device: CloudDevice }) {
@@ -172,12 +186,19 @@ function Portal({ viewer, data }: { viewer: Viewer; data: DashboardData }) {
             </div>
             <div className="security-list">
               <div><span className="check" aria-hidden="true">✓</span><div><strong>Provider-signed identity</strong><p>Supabase receives the Auth0 ID token from this server session.</p></div></div>
-              <div><span className="check" aria-hidden="true">✓</span><div><strong>Row-level account scope</strong><p>Profile and device reads are filtered to the claimed account.</p></div></div>
+              <div><span className="check" aria-hidden="true">✓</span><div><strong>Row-level account scope</strong><p>Profile changes and account reads are restricted to the claimed account.</p></div></div>
               <div><span className="lock" aria-hidden="true">—</span><div><strong>Session data remains local</strong><p>Uploads, Storage, and Realtime are intentionally unavailable.</p></div></div>
             </div>
             <p className="token-expiry">Current identity token expires {formatDate(data.tokenExpiresAt)}.</p>
           </section>
         </div>
+
+        <AccountLifecycle
+          deletionRequestedAt={data.profile.deletion_requested_at}
+          deletionRequestedAtLabel={data.profile.deletion_requested_at
+            ? formatTimestamp(data.profile.deletion_requested_at)
+            : null}
+        />
 
         <section className="portal-section devices-section" id="devices">
           <div className="section-heading">

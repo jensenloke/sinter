@@ -1,5 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import { decodeJwt, decodeProtectedHeader } from "jose";
+import {
+  ACCOUNT_DELETION_CONFIRMATION,
+  type AccountDeletionOperation,
+} from "../account-lifecycle";
 import { auth0Issuer } from "../auth0";
 
 export interface CloudProfile {
@@ -35,6 +39,15 @@ export interface DashboardDataSource {
   loadDevices(accountId: string): Promise<DataResult<CloudDevice[] | null>>;
 }
 
+export interface AccountDeletionDataSource {
+  claimAccount(): Promise<DataResult<string | null>>;
+  setDeletionRequestedAt(
+    accountId: string,
+    deletionRequestedAt: string | null,
+    expectedCurrentState: "clear" | "pending",
+  ): Promise<DataResult<CloudProfile | null>>;
+}
+
 export type DashboardFailureCode =
   | "configuration"
   | "identity-token"
@@ -42,7 +55,11 @@ export type DashboardFailureCode =
   | "identity-expired"
   | "account-claim"
   | "profile-load"
-  | "device-load";
+  | "device-load"
+  | "account-confirmation"
+  | "account-update"
+  | "account-state"
+  | "account-scope";
 
 const failureMessages: Record<DashboardFailureCode, string> = {
   configuration: "The cloud data connection is not configured for this environment.",
@@ -52,6 +69,10 @@ const failureMessages: Record<DashboardFailureCode, string> = {
   "account-claim": "Your cloud account could not be opened safely.",
   "profile-load": "Your account details could not be loaded.",
   "device-load": "Your devices could not be loaded.",
+  "account-confirmation": "Confirm that you understand this creates a deletion request before continuing.",
+  "account-update": "Your deletion request could not be changed.",
+  "account-state": "No account change was made. Refresh the page and check the current request status.",
+  "account-scope": "Your account change could not be verified safely.",
 };
 
 export class DashboardDataError extends Error {
@@ -144,6 +165,29 @@ export function createDashboardDataSource(idToken: string): DashboardDataSource 
   };
 }
 
+export function createAccountDeletionDataSource(idToken: string): AccountDeletionDataSource {
+  const supabase = createAuth0Client(idToken);
+  return {
+    claimAccount: async () => {
+      const result = await supabase.rpc("claim_account");
+      return result as DataResult<string | null>;
+    },
+    setDeletionRequestedAt: async (accountId, deletionRequestedAt, expectedCurrentState) => {
+      const update = supabase
+        .from("profiles")
+        .update({ deletion_requested_at: deletionRequestedAt })
+        .eq("id", accountId);
+      const guardedUpdate = expectedCurrentState === "pending"
+        ? update.not("deletion_requested_at", "is", null)
+        : update.is("deletion_requested_at", null);
+      const result = await guardedUpdate
+        .select("id,email,created_at,deletion_requested_at")
+        .maybeSingle();
+      return result as DataResult<CloudProfile | null>;
+    },
+  };
+}
+
 export async function loadDashboardData(
   idToken: string,
   sourceFactory: (token: string) => DashboardDataSource = createDashboardDataSource,
@@ -173,4 +217,50 @@ export async function loadDashboardData(
     devices: devicesResult.data ?? [],
     tokenExpiresAt: token.expiresAt,
   };
+}
+
+export async function changeAccountDeletionRequest(
+  idToken: string,
+  operation: AccountDeletionOperation,
+  confirmation: string | null,
+  sourceFactory: (token: string) => AccountDeletionDataSource = createAccountDeletionDataSource,
+  requestedAt = new Date().toISOString(),
+): Promise<CloudProfile> {
+  validateSupabaseIdToken(idToken);
+  if (operation === "request" && confirmation !== ACCOUNT_DELETION_CONFIRMATION) {
+    return fail("account-confirmation", "The request confirmation was absent or invalid");
+  }
+
+  const source = sourceFactory(idToken);
+  const claimed = await source.claimAccount();
+  if (claimed.error || typeof claimed.data !== "string" || !claimed.data) {
+    return fail("account-claim", claimed.error?.message ?? "claim_account returned no account ID");
+  }
+
+  const deletionRequestedAt = operation === "request" ? requestedAt : null;
+  const result = await source.setDeletionRequestedAt(
+    claimed.data,
+    deletionRequestedAt,
+    operation === "request" ? "clear" : "pending",
+  );
+  if (result.error) return fail("account-update", result.error.message);
+  if (!result.data) {
+    return fail("account-state", "The guarded profile update did not select a row");
+  }
+  if (result.data.id !== claimed.data) {
+    return fail("account-scope", "The updated profile did not match the claimed account ID");
+  }
+
+  const requestTimestampMatches = operation === "request"
+    && result.data.deletion_requested_at !== null
+    && Number.isFinite(Date.parse(result.data.deletion_requested_at))
+    && Date.parse(result.data.deletion_requested_at) === Date.parse(requestedAt);
+  const stateMatches = operation === "cancel"
+    ? result.data.deletion_requested_at === null
+    : requestTimestampMatches;
+  if (!stateMatches) {
+    return fail("account-state", "The updated profile did not contain the requested lifecycle state");
+  }
+
+  return result.data;
 }

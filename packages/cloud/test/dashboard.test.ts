@@ -1,5 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import type { CloudProfile, DashboardDataSource } from "../src/lib/supabase/auth0";
+import { ACCOUNT_DELETION_CONFIRMATION } from "../src/lib/account-lifecycle";
+import type {
+  AccountDeletionDataSource,
+  CloudProfile,
+  DashboardDataSource,
+} from "../src/lib/supabase/auth0";
 
 const originalAuth0Env = {
   domain: process.env.AUTH0_DOMAIN,
@@ -14,6 +19,7 @@ process.env.AUTH0_SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef0123
 const {
   DashboardDataError,
   auth0SupabaseClientOptions,
+  changeAccountDeletionRequest,
   loadDashboardData,
   validateSupabaseIdToken,
 } = await import("../src/lib/supabase/auth0");
@@ -26,6 +32,7 @@ const PROFILE: CloudProfile = {
   created_at: "2026-08-25T00:00:00.000Z",
   deletion_requested_at: null,
 };
+const REQUESTED_AT = "2026-08-25T08:30:00.000Z";
 function encode(value: object) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
@@ -125,5 +132,217 @@ describe("Supabase Auth0 dashboard boundary", () => {
       expect((error as { code: string }).code).toBe("account-claim");
     }
     expect(calls).toEqual(["claim"]);
+  });
+});
+
+describe("Supabase Auth0 account deletion boundary", () => {
+  test("authorizes the ID token before constructing a data source", async () => {
+    let sourceConstructed = false;
+    try {
+      await changeAccountDeletionRequest(
+        token({ alg: "HS256", kid: "key-one" }),
+        "request",
+        ACCOUNT_DELETION_CONFIRMATION,
+        () => {
+          sourceConstructed = true;
+          throw new Error("must not construct source");
+        },
+        REQUESTED_AT,
+      );
+      throw new Error("expected identity-token failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DashboardDataError);
+      expect((error as { code: string }).code).toBe("identity-token");
+    }
+    expect(sourceConstructed).toBe(false);
+  });
+
+  test("requires explicit request confirmation before account claiming", async () => {
+    let sourceConstructed = false;
+    try {
+      await changeAccountDeletionRequest(
+        token(),
+        "request",
+        null,
+        () => {
+          sourceConstructed = true;
+          throw new Error("must not construct source");
+        },
+        REQUESTED_AT,
+      );
+      throw new Error("expected account-confirmation failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DashboardDataError);
+      expect((error as { code: string }).code).toBe("account-confirmation");
+    }
+    expect(sourceConstructed).toBe(false);
+  });
+
+  test("claims first and scopes a deletion request to the claimed account", async () => {
+    const calls: string[] = [];
+    const source: AccountDeletionDataSource = {
+      claimAccount: async () => {
+        calls.push("claim");
+        return { data: ACCOUNT_ID, error: null };
+      },
+      setDeletionRequestedAt: async (accountId, deletionRequestedAt, expectedCurrentState) => {
+        calls.push(`update:${accountId}:${expectedCurrentState}`);
+        expect(deletionRequestedAt).toBe(REQUESTED_AT);
+        return {
+          data: { ...PROFILE, deletion_requested_at: REQUESTED_AT },
+          error: null,
+        };
+      },
+    };
+
+    const result = await changeAccountDeletionRequest(
+      token(),
+      "request",
+      ACCOUNT_DELETION_CONFIRMATION,
+      (received) => {
+        expect(received).toBe(token());
+        return source;
+      },
+      REQUESTED_AT,
+    );
+
+    expect(result.deletion_requested_at).toBe(REQUESTED_AT);
+    expect(calls).toEqual([
+      "claim",
+      `update:${ACCOUNT_ID}:clear`,
+    ]);
+  });
+
+  test("cancels only a pending request on the claimed account", async () => {
+    const calls: string[] = [];
+    const source: AccountDeletionDataSource = {
+      claimAccount: async () => {
+        calls.push("claim");
+        return { data: ACCOUNT_ID, error: null };
+      },
+      setDeletionRequestedAt: async (accountId, deletionRequestedAt, expectedCurrentState) => {
+        calls.push(`update:${accountId}:${expectedCurrentState}`);
+        expect(deletionRequestedAt).toBeNull();
+        return { data: PROFILE, error: null };
+      },
+    };
+
+    const result = await changeAccountDeletionRequest(
+      token(),
+      "cancel",
+      null,
+      () => source,
+      REQUESTED_AT,
+    );
+
+    expect(result.deletion_requested_at).toBeNull();
+    expect(calls).toEqual([
+      "claim",
+      `update:${ACCOUNT_ID}:pending`,
+    ]);
+  });
+
+  test("does not update when account claiming fails", async () => {
+    const calls: string[] = [];
+    const source: AccountDeletionDataSource = {
+      claimAccount: async () => {
+        calls.push("claim");
+        return { data: null, error: { message: "claim detail" } };
+      },
+      setDeletionRequestedAt: async () => {
+        calls.push("update");
+        return { data: PROFILE, error: null };
+      },
+    };
+
+    try {
+      await changeAccountDeletionRequest(
+        token(),
+        "request",
+        ACCOUNT_DELETION_CONFIRMATION,
+        () => source,
+        REQUESTED_AT,
+      );
+      throw new Error("expected account-claim failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DashboardDataError);
+      expect((error as { code: string }).code).toBe("account-claim");
+    }
+    expect(calls).toEqual(["claim"]);
+  });
+
+  test("rejects replayed or stale guarded updates that select no row", async () => {
+    const source: AccountDeletionDataSource = {
+      claimAccount: async () => ({ data: ACCOUNT_ID, error: null }),
+      setDeletionRequestedAt: async () => ({ data: null, error: null }),
+    };
+
+    try {
+      await changeAccountDeletionRequest(
+        token(),
+        "request",
+        ACCOUNT_DELETION_CONFIRMATION,
+        () => source,
+        REQUESTED_AT,
+      );
+      throw new Error("expected account-state failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DashboardDataError);
+      expect((error as { code: string }).code).toBe("account-state");
+    }
+  });
+
+  test("fails closed when an update returns a different account", async () => {
+    const source: AccountDeletionDataSource = {
+      claimAccount: async () => ({ data: ACCOUNT_ID, error: null }),
+      setDeletionRequestedAt: async () => ({
+        data: {
+          ...PROFILE,
+          id: "22222222-2222-2222-2222-222222222222",
+          deletion_requested_at: REQUESTED_AT,
+        },
+        error: null,
+      }),
+    };
+
+    try {
+      await changeAccountDeletionRequest(
+        token(),
+        "request",
+        ACCOUNT_DELETION_CONFIRMATION,
+        () => source,
+        REQUESTED_AT,
+      );
+      throw new Error("expected account-scope failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DashboardDataError);
+      expect((error as { code: string }).code).toBe("account-scope");
+    }
+  });
+
+  test("sanitizes database update failures", async () => {
+    const source: AccountDeletionDataSource = {
+      claimAccount: async () => ({ data: ACCOUNT_ID, error: null }),
+      setDeletionRequestedAt: async () => ({
+        data: null,
+        error: { message: "sensitive database policy detail" },
+      }),
+    };
+
+    try {
+      await changeAccountDeletionRequest(
+        token(),
+        "cancel",
+        null,
+        () => source,
+        REQUESTED_AT,
+      );
+      throw new Error("expected account-update failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DashboardDataError);
+      expect((error as { code: string }).code).toBe("account-update");
+      expect((error as Error).message).toBe("Your deletion request could not be changed.");
+      expect((error as Error).message).not.toContain("database policy");
+    }
   });
 });
