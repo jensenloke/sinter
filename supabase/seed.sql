@@ -1,0 +1,1 @@
+-- Intentionally empty. Sinter Cloud development uses synthetic test users only.

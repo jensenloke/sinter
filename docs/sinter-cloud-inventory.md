@@ -1,6 +1,6 @@
 # Sinter Cloud inventory
 
-Status: proposed implementation inventory, not a production commitment  
+Status: C0 complete; C1 authentication and policy skeleton in progress
 Last reviewed: 2026-08-25 (Asia/Singapore)
 
 This document turns the Sinter Cloud direction in [ROADMAP.md](../ROADMAP.md)
@@ -136,9 +136,9 @@ supabase/tests/             positive and negative RLS tests
 docs/                       threat model, privacy, retention, operations
 ```
 
-The Cloud package currently exists as an empty directory. Do not add it to the
-CLI release artifact or make the CLI import hosted code directly. Define a
-small, versioned HTTP/data contract instead.
+The Cloud package is a private Next.js workspace and is not part of the CLI
+release artifact. The CLI must not import hosted application code directly;
+define a small, versioned HTTP/data contract instead.
 
 ## Deployment ladder
 
@@ -240,19 +240,22 @@ undeleted test objects have a real cost.
 
 ### C0 — architecture and empty deployment
 
-- [ ] Confirm `packages/cloud` framework and add a minimal health page.
-- [ ] Create one development Supabase project and commit reproducible config.
-- [ ] Link one Vercel project and deploy to its generated URL.
-- [ ] Record project IDs/URLs outside source; commit no credentials.
-- [ ] CI builds the web app independently of the CLI package.
+- [x] Use a private Next.js workspace and add a versioned health endpoint.
+- [x] Create one free development Supabase project and commit reproducible config.
+- [x] Link one Vercel Hobby project and deploy to
+  `https://sinter-cloud.vercel.app`.
+- [x] Keep project identifiers, linked state, and credentials out of source.
+- [x] Build and type-check the web app independently of the CLI package.
 
 ### C1 — authentication and policy skeleton
 
-- [ ] Sign in/out on the generated URL.
+- [x] Add email magic-link sign-in, callback exchange, protected dashboard, and
+  sign-out on the generated URL.
 - [ ] Register, rename, list, and revoke a synthetic device.
-- [ ] Apply migrations for `profiles` and `devices`.
-- [ ] RLS tests prove user A cannot read or mutate user B.
-- [ ] No session or capsule upload exists yet.
+- [x] Apply migrations for `profiles` and `devices` locally and to hosted
+  development.
+- [x] RLS tests prove user A cannot read or mutate user B.
+- [x] Keep all session and capsule upload paths absent and disabled.
 
 ### C2 — encrypted synthetic capsule
 
@@ -287,30 +290,29 @@ undeleted test objects have a real cost.
 - [ ] Enforce entitlements server-side with a grace path for data export and
   deletion after downgrade or payment failure.
 
-Cloud execution remains a separate research track after these milestones.
+Cloud execution remains a separate research track after these milestones. The
+current deployment stores no session content and cannot run agents.
 
 ## Open decisions
 
-1. Which web framework should live in `packages/cloud`? A minimal Next.js app
-   is the natural Vercel default, but the decision should be confirmed before
-   scaffolding.
-2. Which first sign-in methods: GitHub plus magic link, or magic link only?
-3. Loopback PKCE only for the CLI prototype, or implement headless device
+1. Loopback PKCE only for the CLI prototype, or implement headless device
    approval in C1?
-4. No-recovery alpha, or a user-held printable recovery key before real data?
-5. Maximum synthetic capsule size for C2 and the initial free allowance?
-6. Supabase project region and documented data residency.
-7. When should a second Supabase project be created for production?
+2. No-recovery alpha, or a user-held printable recovery key before real data?
+3. Maximum synthetic capsule size for C2 and the initial free allowance?
+4. When should a separate production project be created?
+
+Resolved for the development foundation: Next.js on Vercel, email magic link
+first, and a Singapore Supabase region. Additional providers are intentionally
+deferred.
 
 ## Recommended immediate checkpoint
 
-Build only C0 and the non-data portion of C1:
+Finish the remaining non-data portion of C1:
 
-1. scaffold the web app in `packages/cloud`;
-2. create reproducible Supabase config and the `profiles`/`devices` migration;
-3. add RLS tests with two synthetic users;
-4. deploy the health/login shell to the default Vercel project URL;
-5. stop before capsule upload and review the threat model and auth flow.
+1. add authenticated device registration, rename, and revoke actions;
+2. test the full magic-link flow with a named development account;
+3. add browser-level auth and cross-user policy checks;
+4. stop before capsule upload and review the threat model and CLI auth flow.
 
 This proves the deployment, auth, schema, and isolation foundation without
 placing a real coding-agent transcript in the cloud.

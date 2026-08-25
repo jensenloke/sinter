@@ -21,7 +21,8 @@ operations.
 
 ## Git state at handoff
 
-- Working branch: `feat/multi-instance-lan`.
+- CLI release work remains on `feat/multi-instance-lan`. Cloud foundation work
+  is isolated on `docs/sinter-cloud-inventory`.
 - The feature branch is pushed as `origin/feat/multi-instance-lan` and tracks
   that remote branch. It has not yet been merged into `origin/main`.
 - GitHub PR #24 targets `main`:
@@ -34,10 +35,27 @@ operations.
 - Sinter Cloud implementation remains isolated from CLI release commits. Do
   not mix hosted application code into the CLI release line without an
   explicit product decision.
-- Cloud planning continues on `docs/sinter-cloud-inventory`; its inventory is
-  documented in [sinter-cloud-inventory.md](sinter-cloud-inventory.md). The
-  recommended first hosted checkpoint is an auth/policy shell on a generated
-  Vercel URL with one development Supabase project and no transcript uploads.
+- Cloud planning and implementation continue on `docs/sinter-cloud-inventory`;
+  its inventory is documented in
+  [sinter-cloud-inventory.md](sinter-cloud-inventory.md).
+
+## Cloud development foundation
+
+- The private Next.js shell is live at `https://sinter-cloud.vercel.app` on a
+  Vercel Hobby project.
+- One free Supabase development project runs in Singapore. It uses the
+  publishable-key model, and legacy JWT API keys are disabled.
+- Supabase Auth accepts the stable Vercel callback and the explicit localhost
+  development callback. Email magic-link login, callback exchange, protected
+  dashboard, and sign-out are implemented.
+- The `profiles` and `devices` migrations are applied to hosted development.
+  Nine local pgTAP assertions prove own-row access and cross-user denial.
+- `/api/health` reports configuration state without exposing credentials.
+- Real session/capsule uploads, Storage, Realtime, Edge Runtime, Analytics,
+  billing, and cloud agent execution remain disabled or absent. No real session
+  content has been uploaded.
+- Linked-provider state and `.env` files are ignored. The database password is
+  held in the maintainer machine's credential store, not in the repository.
 
 Before continuing, run:
 
