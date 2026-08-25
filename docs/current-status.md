@@ -12,8 +12,7 @@ operations.
 - Current CLI version: `0.3.0`.
 - npm package: `@jensenloke/sinter@0.3.0`.
 - npm `latest`: `0.3.0`, publicly verified after publication.
-- The globally resolved executable was verified as
-  `/Users/jensen/.bun/bin/sinter`, version `0.3.0`.
+- The globally resolved Bun executable was verified at version `0.3.0`.
 - Release notes: [releases/v0.3.0.md](releases/v0.3.0.md).
 - Release preparation commit: `42c32e3 release: prepare v0.3.0`.
 - npm `0.3.0` is already published and cannot be republished. Any correction
@@ -24,6 +23,10 @@ operations.
 - Working branch: `feat/multi-instance-lan`.
 - The feature branch and `v0.3.0` release commit are local at this handoff; they
   have not been pushed to GitHub or merged into `origin/main`.
+- The sibling `sinter-public` checkout currently uses the same GitHub upstream,
+  `jensenloke/sinter`, and was clean at `origin/main`/`v0.2.0` before this
+  branch was pushed. Follow the public-clone parity protocol in `AGENTS.md`;
+  update that checkout by clean fast-forward after merge, not by copying files.
 - Sinter Cloud experiments remain isolated from this CLI branch. Do not mix
   them into this release line without an explicit product decision.
 
@@ -187,4 +190,3 @@ bunx @jensenloke/sinter@0.3.0 --version
 5. Choose the next CLI checkpoint from [../ROADMAP.md](../ROADMAP.md). The most
    natural follow-ups are peer discovery, inspect-before-send UX, and explicit
    ledger backup/repair—not Sinter Cloud implementation yet.
-
