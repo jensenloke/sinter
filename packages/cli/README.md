@@ -19,7 +19,10 @@ the current user.
 
 Sinter also supports named instances of the same harness and direct encrypted
 context transfer over LAN or Tailscale. Run `sinter receive --help` and
-`sinter send --help` for the one-use transfer workflow.
+`sinter send --help` for the one-use transfer workflow. When multiple
+`~/.claude*` stores are present, the first operational run creates and selects
+a default multi-instance config without overwriting existing configuration.
+Run `sinter help instances` for the agent-safe porting workflow.
 
 Documentation, source, roadmap, and issue tracker:
 https://github.com/jensenloke/sinter

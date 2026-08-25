@@ -112,6 +112,19 @@ describe("CLI conventions", () => {
       expect(h.out()).toContain(`\n${heading}\n`);
   });
 
+  test("documents an agent-safe named-instance workflow on stdout", async () => {
+    expect(await run(["help", "instances"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("claude@personal:<id>");
+    expect(h.out()).toContain("stdout contains requested results");
+    expect(h.err()).toBe("");
+  });
+
+  test("reports unknown help topics on stderr with a non-zero exit", async () => {
+    expect(await run(["help", "unknown-topic"], h.ctx)).toBe(1);
+    expect(h.out()).toBe("");
+    expect(h.err()).toContain("unknown help topic");
+  });
+
   test("explains local-only storage and unsupported desktop surfaces", async () => {
     expect(await run(["privacy"], h.ctx)).toBe(0);
     expect(h.out()).toContain("does not upload transcripts");
@@ -543,6 +556,14 @@ describe("config", () => {
   test("prints the resolved path even before a config file exists", async () => {
     expect(await run(["config", "path", "--config", "/tmp/not-created-sinter.toml"], h.ctx)).toBe(0);
     expect(h.out()).toBe("/tmp/not-created-sinter.toml");
+  });
+
+  test("prints an editable example without requiring or touching a config file", async () => {
+    const missing = "/tmp/not-created-sinter-example.toml";
+    expect(await run(["config", "example", "--config", missing], h.ctx)).toBe(0);
+    expect(h.out()).toContain("[profiles.default]");
+    expect(h.out()).toContain("include_defaults = true");
+    expect(h.err()).toBe("");
   });
 
   test("validation catches an unknown harness", async () => {

@@ -62,3 +62,7 @@ or an independent source of truth.
 - Direct transfer moves sanitized conversation context, not credentials or an
   implicit workspace snapshot.
 - Use `rg` for repository search and `apply_patch` for manual file edits.
+- For same-harness movement, run `sinter help instances` and follow its
+  validate, scan, qualified-ID, preview, port, and resume workflow. Do not edit
+  native harness stores directly. Automatic config discovery is create-only;
+  never overwrite a maintainer's existing `config.toml`.

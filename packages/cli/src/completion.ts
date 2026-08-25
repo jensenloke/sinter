@@ -73,7 +73,7 @@ ${commands}
 
   case $words[2] in
     scan) _arguments $global_args '--harness=[comma-separated harnesses]:harnesses' '--json' ;;
-    config) _arguments $global_args '1:action:(show path validate)' '--json' ;;
+    config) _arguments $global_args '1:action:(show path validate example)' '--json' ;;
     ls) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
     recent) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' ;;
     watch) _arguments $global_args '1:view:(recent projects)' '--interval=[refresh interval]:duration' '--count=[snapshot count]:count' '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-clear' ;;
@@ -139,7 +139,7 @@ function bash(): string {
     return
   fi
   if [[ $command == config ]]; then
-    COMPREPLY=( $(compgen -W 'show path validate --json' -- "$current") )
+    COMPREPLY=( $(compgen -W 'show path validate example --json' -- "$current") )
     return
   fi
   COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --all-harnesses --cwd --all-cwd --since --all-time --older-than --interval --count --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open --yes --ghosts --no-ghosts --subagents --no-subagents --force --all --clear --no-clear' -- "$current") )
@@ -163,7 +163,7 @@ function fish(): string {
     "complete -c sinter -n '__fish_seen_subcommand_from receive' -l yes -d 'Accept without prompting'",
     `complete -c sinter -n '__fish_seen_subcommand_from resume' -l in -xa '${HARNESSES.join(" ")}' -d 'Target harness'`,
     `complete -c sinter -n '__fish_seen_subcommand_from port menu' -l mode -xa '${MODES.join(" ")}' -d 'Transfer mode'`,
-    "complete -c sinter -n '__fish_seen_subcommand_from config' -a 'show path validate' -d 'Action'",
+    "complete -c sinter -n '__fish_seen_subcommand_from config' -a 'show path validate example' -d 'Action'",
     "complete -c sinter -n '__fish_seen_subcommand_from completion' -a 'zsh bash fish' -d 'Shell'",
     "complete -c sinter -n '__fish_seen_subcommand_from port' -l preview -d 'Preview without writing'",
     "complete -c sinter -n '__fish_seen_subcommand_from doctor' -l report -d 'Generate a privacy-safe report'",

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { inspectConfig, loadProfileByName } from "../src/config";
+import { bootstrapDefaultConfig, inspectConfig, loadProfile, loadProfileByName } from "../src/config";
 
 const dirs: string[] = [];
 
@@ -108,5 +108,60 @@ instances = ["work"]
   test("rejects an empty profile rather than silently scanning defaults", () => {
     const path = configFile(`[profiles.work]\n`);
     expect(() => loadProfileByName("work", path)).toThrow(/needs instances/);
+  });
+
+  test("allows an include-defaults profile and selects default automatically", () => {
+    const path = configFile(`[profiles.default]\ninclude_defaults = true\n`);
+    expect(loadProfile(["scan", "--config", path])).toEqual({
+      name: "default",
+      configPath: path,
+      stores: {},
+      includeDefaults: true,
+    });
+  });
+
+  test("rejects a non-boolean include_defaults value", () => {
+    const path = configFile(`[profiles.default]\ninclude_defaults = "yes"\n`);
+    expect(() => loadProfileByName("default", path)).toThrow(/include_defaults must be true or false/);
+  });
+});
+
+describe("automatic multi-instance bootstrap", () => {
+  test("creates a private default config for multiple Claude stores", () => {
+    const home = mkdtempSync(join(tmpdir(), "sinter-bootstrap-home-"));
+    dirs.push(home);
+    for (const directory of [".claude", ".claude-addvita", ".claude-kimi"])
+      mkdirSync(join(home, directory, "projects"), { recursive: true });
+    const path = join(home, ".config", "sinter", "config.toml");
+
+    expect(bootstrapDefaultConfig(path, home)).toEqual({
+      created: true,
+      configPath: path,
+      instances: ["personal", "addvita", "kimi"],
+    });
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(readFileSync(path, "utf8")).toContain(`command = ["env", "CLAUDE_CONFIG_DIR=${home}/.claude-addvita", "claude"]`);
+    expect(loadProfile(["scan", "--config", path])).toMatchObject({
+      name: "default",
+      includeDefaults: true,
+      instances: [
+        { id: "personal", harness: "claude" },
+        { id: "addvita", harness: "claude" },
+        { id: "kimi", harness: "claude" },
+      ],
+    });
+  });
+
+  test("does not create for one store or overwrite an existing file", () => {
+    const home = mkdtempSync(join(tmpdir(), "sinter-bootstrap-safe-"));
+    dirs.push(home);
+    mkdirSync(join(home, ".claude", "projects"), { recursive: true });
+    const path = join(home, "config.toml");
+    expect(bootstrapDefaultConfig(path, home).created).toBe(false);
+
+    mkdirSync(join(home, ".claude-work", "projects"), { recursive: true });
+    writeFileSync(path, "# user-owned\n");
+    expect(bootstrapDefaultConfig(path, home).created).toBe(false);
+    expect(readFileSync(path, "utf8")).toBe("# user-owned\n");
   });
 });

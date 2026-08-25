@@ -23,7 +23,7 @@ sinter --help
 
 Interactive runs check npm at most once per day and offer to install a newer release. Use `--no-update-check` or set `SINTER_NO_UPDATE_CHECK=1` to disable this; scripts, CI, and non-interactive output never prompt.
 
-See the [v0.3.0 release notes](docs/releases/v0.3.0.md) for the latest changes.
+See the [v0.3.1 release notes](docs/releases/v0.3.1.md) for the latest changes.
 
 ## Quick start
 
@@ -140,29 +140,38 @@ Inspect profile configuration without starting a scan:
 sinter config path
 sinter config show
 sinter config validate
+sinter config example
+sinter help instances
 ```
 
-Named instances let one profile use several stores for the same harness, such
-as personal Claude Code and a work wrapper:
+On the first operational run, Sinter checks for `~/.claude/projects` and
+`~/.claude-*/projects`. When it finds multiple stores and no config exists, it
+creates a private `config.toml` with a `default` profile and uses it
+automatically. Sinter never overwrites an existing config. Other harnesses keep
+their normal default discovery.
+
+The generated shape is equivalent to:
 
 ```toml
-[instances.claude-personal]
+[instances.personal]
 harness = "claude"
 store = "/Users/me/.claude/projects"
 command = ["claude"]
 
-[instances.claude-work]
+[instances.work]
 harness = "claude"
 store = "/Users/me/.claude-work/projects"
-command = ["claude-addvita"]
+command = ["env", "CLAUDE_CONFIG_DIR=/Users/me/.claude-work", "claude"]
 
-[profiles.all]
-instances = ["claude-personal", "claude-work"]
+[profiles.default]
+include_defaults = true
+instances = ["personal", "work"]
 ```
 
-Select exact stores with `claude@claude-personal:<id>` and targets with
-`--to claude@claude-work`. Legacy one-store profiles continue to use the
-`default` instance.
+Select exact stores with `claude@personal:<id>` and targets with
+`--to claude@work`. Legacy one-store profiles continue to use the `default`
+instance. Requested results and machine data are written to stdout; notices
+and errors use stderr, and failures return a non-zero exit code.
 
 ## Direct device transfer
 

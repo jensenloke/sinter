@@ -287,12 +287,17 @@ async function readSessionForPort(ctx: Ctx, row: LedgerRow): Promise<SifSession>
 export async function cmdConfig(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv, { strings: ["config"], booleans: ["json"] });
   const action = args._[0] ?? "show";
-  if (args._.length > 1 || !["show", "path", "validate"].includes(action))
-    throw new CliError("usage: sinter config [show|path|validate] [--config file] [--json]");
+  if (args._.length > 1 || !["show", "path", "validate", "example"].includes(action))
+    throw new CliError("usage: sinter config [show|path|validate|example] [--config file] [--json]");
   const configPath = flagString(args, "config") ?? defaultConfigPath();
   if (action === "path") {
     if (flagBool(args, "json")) ctx.out(JSON.stringify({ configPath }, null, 2));
     else ctx.out(configPath);
+    return EXIT.OK;
+  }
+  if (action === "example") {
+    if (flagBool(args, "json")) ctx.out(JSON.stringify({ configPath, example: PROFILE_EXAMPLE }, null, 2));
+    else ctx.out(PROFILE_EXAMPLE.trimEnd());
     return EXIT.OK;
   }
 

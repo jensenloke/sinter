@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { HarnessId, InstanceId } from "@sinter/core";
 import { CliError } from "./args";
 
@@ -21,6 +21,8 @@ export interface SinterProfile {
   stores: Partial<Record<HarnessId, string>>;
   /** Named instances selected by `[profiles.<name>] instances = [...]`. */
   instances?: SinterInstanceConfig[];
+  /** Keep default discovery enabled for harnesses not represented above. */
+  includeDefaults?: boolean;
 }
 
 export interface SinterConfigSummary {
@@ -29,7 +31,14 @@ export interface SinterConfigSummary {
     name: string;
     stores: Partial<Record<HarnessId, string>>;
     instances?: SinterInstanceConfig[];
+    includeDefaults?: boolean;
   }>;
+}
+
+export interface ConfigBootstrapResult {
+  created: boolean;
+  configPath: string;
+  instances: string[];
 }
 
 const HARNESSES = new Set<HarnessId>(["claude", "codex", "devin", "opencode", "zcode", "omp", "pi"]);
@@ -104,6 +113,9 @@ function parseProfile(
   if (!profileRecord) throw new CliError(`profile "${name}" is not defined in ${configPath}`);
 
   const stores: Partial<Record<HarnessId, string>> = {};
+  const includeDefaults = profileRecord.include_defaults ?? false;
+  if (typeof includeDefaults !== "boolean")
+    throw new CliError(`profile "${name}" include_defaults must be true or false`);
   const rawStores = profileRecord.stores === undefined ? undefined : record(profileRecord.stores);
   if (profileRecord.stores !== undefined && !rawStores)
     throw new CliError(`profile "${name}" [profiles.${name}.stores] must be a table`);
@@ -126,7 +138,7 @@ function parseProfile(
     });
   }
 
-  if (!Object.keys(stores).length && !instances?.length)
+  if (!Object.keys(stores).length && !instances?.length && !includeDefaults)
     throw new CliError(`profile "${name}" needs instances = [...] or [profiles.${name}.stores]`);
 
   for (const instance of instances ?? []) {
@@ -136,7 +148,13 @@ function parseProfile(
 
   // Preserve the exact legacy object shape for callers that predate named
   // instances; `instances` is present only when the new syntax is used.
-  return { name, configPath, stores, ...(instances ? { instances } : {}) };
+  return {
+    name,
+    configPath,
+    stores,
+    ...(instances ? { instances } : {}),
+    ...(includeDefaults ? { includeDefaults: true } : {}),
+  };
 }
 
 /** Read a named local-only profile, including any selected named instances. */
@@ -163,6 +181,7 @@ export function inspectConfig(configPath: string): SinterConfigSummary {
           name,
           stores: profile.stores,
           ...(profile.instances ? { instances: profile.instances } : {}),
+          ...(profile.includeDefaults ? { includeDefaults: true } : {}),
         };
       }),
   };
@@ -170,22 +189,87 @@ export function inspectConfig(configPath: string): SinterConfigSummary {
 
 export function loadProfile(argv: string[]): SinterProfile | undefined {
   const name = stringFlag(argv, "profile");
-  if (!name) return undefined;
-  return loadProfileByName(name, stringFlag(argv, "config") ?? defaultConfigPath());
+  const configPath = stringFlag(argv, "config") ?? defaultConfigPath();
+  if (name) return loadProfileByName(name, configPath);
+  if (!existsSync(configPath)) return undefined;
+  const parsed = parseFile(configPath);
+  if (!record(parsed.profiles)?.default) return undefined;
+  return parseProfile("default", configPath, parsed, parseInstances(parsed, configPath));
 }
 
-export const PROFILE_EXAMPLE = `[instances.claude-personal]
+function tomlString(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+/**
+ * Create a conservative default config when more than one Claude Code store is
+ * present. This is intentionally create-only: Sinter never rewrites a user's
+ * config during discovery.
+ */
+export function bootstrapDefaultConfig(
+  configPath = defaultConfigPath(),
+  home = homedir(),
+): ConfigBootstrapResult {
+  if (existsSync(configPath)) return { created: false, configPath, instances: [] };
+
+  let directories: string[];
+  try {
+    directories = readdirSync(home, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && (entry.name === ".claude" || entry.name.startsWith(".claude-")))
+      .map((entry) => entry.name)
+      .filter((name) => existsSync(join(home, name, "projects")))
+      .sort((left, right) => {
+        if (left === ".claude") return -1;
+        if (right === ".claude") return 1;
+        return left.localeCompare(right);
+      });
+  } catch {
+    return { created: false, configPath, instances: [] };
+  }
+  if (directories.length < 2) return { created: false, configPath, instances: [] };
+
+  const used = new Set<string>();
+  const discovered = directories.map((directory) => {
+    const base = directory === ".claude" ? "personal" : directory.slice(".claude-".length);
+    const safeBase = base.replace(/[^A-Za-z0-9._-]/g, "-").replace(/^[^A-Za-z0-9]+/, "") || "claude";
+    let id = safeBase;
+    for (let suffix = 2; used.has(id); suffix++) id = `${safeBase}-${suffix}`;
+    used.add(id);
+    return { id, directory, store: join(home, directory, "projects") };
+  });
+
+  const sections = discovered.map(({ id, directory, store }) => {
+    const command =
+      directory === ".claude"
+        ? `["claude"]`
+        : `["env", ${tomlString(`CLAUDE_CONFIG_DIR=${join(home, directory)}`)}, "claude"]`;
+    return `[instances.${id}]\nharness = "claude"\nstore = ${tomlString(store)}\ncommand = ${command}`;
+  });
+  const contents = `# Generated by Sinter after detecting multiple Claude Code stores.\n# Sinter never overwrites this file automatically.\n\n${sections.join("\n\n")}\n\n[profiles.default]\ninclude_defaults = true\ninstances = [${discovered.map(({ id }) => tomlString(id)).join(", ")}]\n`;
+
+  try {
+    mkdirSync(dirname(configPath), { recursive: true });
+    writeFileSync(configPath, contents, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    return { created: true, configPath, instances: discovered.map(({ id }) => id) };
+  } catch (err) {
+    if (existsSync(configPath)) return { created: false, configPath, instances: [] };
+    throw new CliError(`cannot create config ${configPath}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export const PROFILE_EXAMPLE = `[instances.personal]
 harness = "claude"
 store = "/Users/me/.claude/projects"
 command = ["claude"]
 
-[instances.claude-work]
+[instances.work]
 harness = "claude"
 store = "/Users/me/.claude-work/projects"
-command = ["claude-addvita"]
+command = ["env", "CLAUDE_CONFIG_DIR=/Users/me/.claude-work", "claude"]
 
-[profiles.work]
-instances = ["claude-personal", "claude-work"]
+[profiles.default]
+include_defaults = true
+instances = ["personal", "work"]
 
 # Legacy one-store-per-harness profiles remain supported:
 [profiles.legacy.stores]

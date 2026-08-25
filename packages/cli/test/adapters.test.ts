@@ -68,6 +68,29 @@ describe("DynamicAdapterRegistry", () => {
     await expect(reg.get("codex")).rejects.toThrow(/not selected/);
   });
 
+  test("includeDefaults preserves other harness discovery without duplicating a named harness", async () => {
+    const reg = new DynamicAdapterRegistry(SPECS, {
+      name: "default",
+      configPath: "/tmp/config.toml",
+      stores: {},
+      includeDefaults: true,
+      instances: [
+        { id: "personal", harness: "claude", store: "/tmp/personal" },
+        { id: "work", harness: "claude", store: "/tmp/work" },
+      ],
+    });
+    expect((await reg.load()).map((load) => `${load.harness}@${load.instanceId}`).sort()).toEqual([
+      "claude@personal",
+      "claude@work",
+      "codex@default",
+      "devin@default",
+      "omp@default",
+      "opencode@default",
+      "pi@default",
+      "zcode@default",
+    ]);
+  });
+
   test("loads two named instances of the same harness and rejects ambiguous compatibility lookup", async () => {
     const reg = new DynamicAdapterRegistry(SPECS, {
       name: "all",

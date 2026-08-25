@@ -234,6 +234,15 @@ function requestsFor(specs: AdapterSpec[], profile?: SinterProfile): BindingRequ
 
   const specByHarness = new Map(specs.map((spec) => [spec.id, spec]));
   const requests: BindingRequest[] = [];
+  if (profile.includeDefaults) {
+    const represented = new Set<HarnessId>([
+      ...(Object.keys(profile.stores) as HarnessId[]),
+      ...(profile.instances ?? []).map((instance) => instance.harness),
+    ]);
+    for (const spec of specs) {
+      if (!represented.has(spec.id)) requests.push({ spec, instanceId: DEFAULT_INSTANCE_ID });
+    }
+  }
   for (const [harness, store] of Object.entries(profile.stores)) {
     const spec = specByHarness.get(harness as HarnessId);
     if (spec && store) requests.push({ spec, instanceId: DEFAULT_INSTANCE_ID, store });
