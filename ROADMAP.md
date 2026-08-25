@@ -176,6 +176,12 @@ transfers remain distinct.
 
 ## Phase 3: Sinter Cloud
 
+The implementation inventory, recommended Vercel/Supabase architecture,
+security gates, data model, deployment ladder, and monetization checkpoints are
+tracked in [docs/sinter-cloud-inventory.md](docs/sinter-cloud-inventory.md).
+The first hosted test should use the generated Vercel project URL and a single
+development Supabase project, with real transcript uploads disabled.
+
 Build the relay into a zero-knowledge personal session library:
 
 - encrypted sync and backup across registered devices;

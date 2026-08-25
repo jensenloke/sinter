@@ -31,8 +31,13 @@ operations.
   `jensenloke/sinter`, and was clean at `origin/main`/`v0.2.0` before this
   branch was pushed. Follow the public-clone parity protocol in `AGENTS.md`;
   update that checkout by clean fast-forward after merge, not by copying files.
-- Sinter Cloud experiments remain isolated from this CLI branch. Do not mix
-  them into this release line without an explicit product decision.
+- Sinter Cloud implementation remains isolated from CLI release commits. Do
+  not mix hosted application code into the CLI release line without an
+  explicit product decision.
+- Cloud planning continues on `docs/sinter-cloud-inventory`; its inventory is
+  documented in [sinter-cloud-inventory.md](sinter-cloud-inventory.md). The
+  recommended first hosted checkpoint is an auth/policy shell on a generated
+  Vercel URL with one development Supabase project and no transcript uploads.
 
 Before continuing, run:
 
