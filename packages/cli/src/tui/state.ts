@@ -111,7 +111,7 @@ export function initialState(init: {
     scroll: 0,
     pageSize: 10,
     actionCursor: 0,
-    mode: init.mode ?? "full",
+    mode: init.mode ?? "auto",
   };
 }
 

@@ -12,6 +12,7 @@ export interface AdapterCapability {
   store: StoreCapability;
   read: boolean;
   write: boolean;
+  contextPlanning: boolean;
   resume: ResumeCapability;
   resumeBinary?: string;
   limitations: string[];
@@ -51,6 +52,7 @@ export async function adapterCapabilities(
           store: "not-checked",
           read: false,
           write: false,
+          contextPlanning: false,
           resume: "unavailable",
           limitations: ["adapter package unavailable"],
         };
@@ -93,6 +95,7 @@ export async function adapterCapabilities(
         store,
         read: true,
         write,
+        contextPlanning: typeof adapter.planWrite === "function",
         resume,
         ...(binary ? { resumeBinary: binary } : {}),
         limitations,

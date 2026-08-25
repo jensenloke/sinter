@@ -142,7 +142,7 @@ usage: sinter [command] [args]
 interactive
   (no command)                           interactive menu: pick a session, pick
                                          a harness, launch it right here
-  menu [--all] [--mode full|slim|compact]
+  menu [--all] [--mode auto|full|slim|compact]
                                          the same menu, explicitly
 
 find and inspect
@@ -175,7 +175,7 @@ move and continue
   export <id-prefix> [-o file] [--slim]  write the session as SIF JSON
   import <file> --to <harness> [...]     synthesize a new native session from SIF
   port <id-prefix> --to <harness> [...]  create a new target-native session
-  resume <id-prefix> [--in <harness>] [--exec]
+  resume <id-prefix> [--in <harness>] [--mode auto|full|slim|compact] [--exec]
                                          print (or run) the native resume command
 
 setup and maintenance
@@ -234,9 +234,9 @@ const COMMAND_HELP: Record<string, string> = {
   show: "usage: sinter show <id-prefix> [--tail n|--json|--ndjson] [--tool-chars n] [--no-sub]\n\n--tail renders only the latest n entries from each session. It cannot be combined with machine output because the result would not be a complete SIF document.\n--ndjson emits a versioned session record followed by one record per entry, then nested sessions.",
   compare: "usage: sinter compare <left-id> <right-id> [--json]\n\nCompares structural counts without printing transcript content. Matching counts do not prove semantic equivalence.",
   export: "usage: sinter export <id-prefix> [-o file] [--slim]\n\nWithout -o, writes SIF JSON to stdout.",
-  import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",
-  port: "usage: sinter port <id-prefix> --to <harness> [--mode full|slim|compact] [--preview [--json]] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.\n--preview reports target readiness and transfer impact without invoking the target writer.\n--dry-run asks the target writer to validate and describe its planned native output.\nHistorical tool calls are inert unless --live-tools is explicit.",
-  resume: "usage: sinter resume <id-prefix> [--in <harness>] [--exec]\n\n--exec hands this terminal to the target harness.",
+  import: "usage: sinter import <file.sif.json> --to <harness> [--mode auto|full|slim|compact] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source. Auto preserves the least destructive representation that fits a target-reported context budget.",
+  port: "usage: sinter port <id-prefix> --to <harness> [--mode auto|full|slim|compact] [--preview [--json]] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source. Auto preserves the least destructive representation that fits a target-reported context budget.\n--preview reports target readiness, automatic mode selection, and transfer impact without invoking the target writer.\n--dry-run asks the target writer to validate and describe its planned native output.\nHistorical tool calls are inert unless --live-tools is explicit.",
+  resume: "usage: sinter resume <id-prefix> [--in <harness>] [--mode auto|full|slim|compact] [--exec]\n\nCross-harness resumes use automatic target-aware fitting by default. --exec hands this terminal to the target harness.",
   doctor: "usage: sinter doctor [--json|--report [-o file]]\n\nNormal output shows resolved local store paths. --json emits safe structured health. --report emits a reviewable support report that excludes paths, prompts, titles, session IDs, transcripts, and raw errors.",
   capabilities: "usage: sinter capabilities [--harness x] [--json]\n\nChecks adapter loading, local-store detection, write support, and native resume availability without reading transcripts or touching the ledger.",
   setup: "usage: sinter setup [--yes] [--no-menu]\n\nShows detected local stores. Interactive setup asks before scanning and opening the menu; --yes scans without opening it.",
@@ -246,7 +246,7 @@ const COMMAND_HELP: Record<string, string> = {
   gui: "usage: sinter gui [--port n] [--no-open]\n\nRuns a token-protected workspace on 127.0.0.1; transcripts never leave this machine.",
   completion: "usage: sinter completion <zsh|bash|fish>\n\nPrints a native completion script to stdout; does not modify shell configuration.",
   relink: "usage: sinter relink [--harness x] [--limit n] [--quiet]\n\nRebuilds the disposable lineage cache from target stores.",
-  menu: "usage: sinter menu [--all] [--mode full|slim|compact]\n\nRequires an interactive terminal.",
+  menu: "usage: sinter menu [--all] [--mode auto|full|slim|compact]\n\nRequires an interactive terminal. Auto preserves the least destructive representation that fits a target-reported context budget.",
 };
 
 function helpFor(command: string): string {

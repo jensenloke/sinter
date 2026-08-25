@@ -14,19 +14,25 @@
 import type {
   AssistantContentPart,
   AssistantEntry,
+  HarnessAdapter,
   SifEntry,
   SifSession,
   TextPart,
   ToolCallPart,
   ToolResultEntry,
+  WriteContextPlan,
+  WriteOpts,
+  WritePlan,
 } from "@sinter/core";
 import { slimSession } from "./render";
 
-export type TransferMode = "full" | "slim" | "compact";
+export type AppliedTransferMode = "full" | "slim" | "compact";
+export type TransferMode = "auto" | AppliedTransferMode;
 
-export const TRANSFER_MODES: TransferMode[] = ["full", "slim", "compact"];
+export const TRANSFER_MODES: TransferMode[] = ["auto", "full", "slim", "compact"];
 
 export const MODE_HINT: Record<TransferMode, string> = {
+  auto: "least destructive target-safe mode",
   full: "everything, lossless",
   slim: "drop source records",
   compact: "drop tool noise + thinking",
@@ -40,7 +46,7 @@ export interface CompactOpts {
 }
 
 export interface TransferStats {
-  mode: TransferMode;
+  mode: AppliedTransferMode;
   bytesBefore: number;
   bytesAfter: number;
   /** Tool results whose payload was replaced by a marker. */
@@ -53,6 +59,16 @@ export interface TransferStats {
 export interface TransferResult {
   session: SifSession;
   stats: TransferStats;
+}
+
+export type TransferSelection = "requested" | "fits" | "target-bounded" | "target-unknown";
+
+export interface PlannedTransfer extends TransferResult {
+  requestedMode: TransferMode;
+  mode: AppliedTransferMode;
+  selection: TransferSelection;
+  targetPlan?: WritePlan;
+  evaluatedModes: AppliedTransferMode[];
 }
 
 // ---------------------------------------------------------------- arg targets
@@ -276,7 +292,7 @@ export function estimateTokens(bytes: number): number {
 
 export function applyTransfer(
   session: SifSession,
-  mode: TransferMode,
+  mode: AppliedTransferMode,
   opts: CompactOpts = {},
 ): TransferResult {
   const bytesBefore = JSON.stringify(session).length;
@@ -288,4 +304,85 @@ export function applyTransfer(
     session: out,
     stats: { mode, bytesBefore, bytesAfter, resultsCollapsed: 0, thinkingDropped: 0, targets: [] },
   };
+}
+
+function planned(
+  result: TransferResult,
+  requestedMode: TransferMode,
+  selection: TransferSelection,
+  targetPlan: WritePlan | undefined,
+  evaluatedModes: AppliedTransferMode[],
+): PlannedTransfer {
+  return { ...result, requestedMode, mode: result.stats.mode, selection, targetPlan, evaluatedModes };
+}
+
+function cannotFit(adapter: HarnessAdapter, plan: WritePlan | undefined): Error {
+  const context = plan?.context;
+  const detail = context
+    ? ` (${context.after} ${context.unit} after reduction, ${context.limit} limit)`
+    : "";
+  return new Error(`${adapter.id} cannot fit the session safely${detail}`);
+}
+
+function checkedContext(adapter: HarnessAdapter, plan: WritePlan | undefined): WriteContextPlan | undefined {
+  const context = plan?.context;
+  if (!context) return undefined;
+  const validNumbers = [context.limit, context.before, context.after].every(Number.isFinite);
+  const valid =
+    validNumbers &&
+    context.limit > 0 &&
+    context.before >= 0 &&
+    context.after >= 0 &&
+    context.after <= context.before &&
+    Number.isInteger(context.omittedEntries) &&
+    context.omittedEntries >= 0 &&
+    (context.unit === "bytes" || context.unit === "tokens") &&
+    (context.strategy === "none" || context.strategy === "opening-and-tail") &&
+    (context.before > context.limit || context.strategy === "none") &&
+    (context.strategy !== "none" || (context.after === context.before && context.omittedEntries === 0));
+  if (!valid) throw new Error(`${adapter.id} reported an invalid target context plan`);
+  return context;
+}
+
+export async function planTransfer(
+  session: SifSession,
+  requestedMode: TransferMode,
+  adapter: HarnessAdapter,
+  writeOpts: WriteOpts = {},
+  compactOpts: CompactOpts = {},
+): Promise<PlannedTransfer> {
+  if (requestedMode !== "auto") {
+    const result = applyTransfer(session, requestedMode, compactOpts);
+    const targetPlan = await adapter.planWrite?.(result.session, { ...writeOpts, mode: requestedMode });
+    const context = checkedContext(adapter, targetPlan);
+    if (context && context.after > context.limit) throw cannotFit(adapter, targetPlan);
+    const selection = context && context.before > context.limit ? "target-bounded" : "requested";
+    return planned(result, requestedMode, selection, targetPlan, [requestedMode]);
+  }
+
+  if (!adapter.planWrite) {
+    return planned(applyTransfer(session, "full", compactOpts), requestedMode, "target-unknown", undefined, ["full"]);
+  }
+
+  const evaluatedModes: AppliedTransferMode[] = [];
+  let compactResult: TransferResult | undefined;
+  let compactPlan: WritePlan | undefined;
+  for (const mode of ["full", "slim", "compact"] as const) {
+    const result = applyTransfer(session, mode, compactOpts);
+    const targetPlan = await adapter.planWrite(result.session, { ...writeOpts, mode });
+    evaluatedModes.push(mode);
+    if (mode === "compact") {
+      compactResult = result;
+      compactPlan = targetPlan;
+    }
+    const context = checkedContext(adapter, targetPlan);
+    if (!context) return planned(result, requestedMode, "target-unknown", targetPlan, evaluatedModes);
+    if (context.before <= context.limit) return planned(result, requestedMode, "fits", targetPlan, evaluatedModes);
+  }
+
+  const context = checkedContext(adapter, compactPlan);
+  if (compactResult && context && context.after <= context.limit && context.strategy !== "none") {
+    return planned(compactResult, requestedMode, "target-bounded", compactPlan, evaluatedModes);
+  }
+  throw cannotFit(adapter, compactPlan);
 }

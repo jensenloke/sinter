@@ -215,6 +215,15 @@ describe("DevinAdapter", () => {
       parentId = id;
     }
     session.entries.push({ kind: "user", id: "latest", parentId, content: [{ type: "text", text: "Latest question" }] });
+    const plan = await adapter.planWrite(session);
+    expect(plan.context).toMatchObject({
+      unit: "bytes",
+      limit: 200_000,
+      strategy: "opening-and-tail",
+    });
+    expect(plan.context!.before).toBeGreaterThan(plan.context!.limit);
+    expect(plan.context!.after).toBeLessThanOrEqual(plan.context!.limit);
+    expect(plan.context!.omittedEntries).toBeGreaterThan(0);
     const ref = await adapter.write(session);
     const db = new Database(dbPath, { readonly: true });
     const stats = db.query<{ nodes: number; bytes: number; main_chain_id: number }, [string]>(`
@@ -226,6 +235,7 @@ describe("DevinAdapter", () => {
     ).all(ref.nativeId).map((row) => row.content);
     db.close();
     expect(stats.nodes).toBeLessThan(session.entries.length);
+    expect(stats.bytes).toBe(plan.context!.after);
     expect(stats.bytes).toBeLessThan(210_000);
     expect(stats.main_chain_id).toBe(stats.nodes - 1);
     expect(contents[0]).toBe("Original objective");

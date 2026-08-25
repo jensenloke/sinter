@@ -39,7 +39,7 @@ const COMMANDS = [
 ] as const;
 
 const HARNESSES = ["claude", "codex", "devin", "opencode", "zcode", "omp", "pi"];
-const MODES = ["full", "slim", "compact"];
+const MODES = ["auto", "full", "slim", "compact"];
 const GLOBAL_FLAGS = ["--profile", "--config", "--ledger", "--no-color", "--no-scan", "--no-update-check", "--help", "--version"];
 
 function zsh(): string {
@@ -92,9 +92,9 @@ ${commands}
     show) _arguments $global_args '1:session id' '--json' '--ndjson' '--tail=[latest entries to render]:count' '--tool-chars=[tool result limit]:characters' '--no-sub' ;;
     compare) _arguments $global_args '1:left session id' '2:right session id' '--json' ;;
     export) _arguments $global_args '1:session id' '(-o --output)'{-o,--output}'=[output file]:file:_files' '--slim' ;;
-    import) _arguments $global_args '1:SIF file:_files' '--to=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--dry-run' '--live-tools' ;;
+    import) _arguments $global_args '1:SIF file:_files' '--to=[target harness]:harness:($harnesses)' '--mode=[transfer mode]:mode:($modes)' '--cwd=[target directory]:directory:_directories' '--dry-run' '--live-tools' ;;
     port) _arguments $global_args '1:session id' '--to=[target harness]:harness:($harnesses)' '--mode=[transfer mode]:mode:($modes)' '--cwd=[target directory]:directory:_directories' '--preview' '--json' '--dry-run' '--live-tools' ;;
-    resume) _arguments $global_args '1:session id' '--in=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--exec' '--dry-run' '--live-tools' ;;
+    resume) _arguments $global_args '1:session id' '--in=[target harness]:harness:($harnesses)' '--mode=[transfer mode]:mode:($modes)' '--cwd=[target directory]:directory:_directories' '--exec' '--dry-run' '--live-tools' ;;
     setup) _arguments $global_args '--yes' '--no-menu' ;;
     doctor) _arguments $global_args '--json' '--report' '(-o --output)'{-o,--output}'=[diagnostic report file]:file:_files' ;;
     capabilities) _arguments $global_args '--harness=[filter by harness]:harness:($harnesses)' '--json' ;;
@@ -151,7 +151,7 @@ function fish(): string {
   lines.push(
     `complete -c sinter -n '__fish_seen_subcommand_from port import' -l to -xa '${HARNESSES.join(" ")}' -d 'Target harness'`,
     `complete -c sinter -n '__fish_seen_subcommand_from resume' -l in -xa '${HARNESSES.join(" ")}' -d 'Target harness'`,
-    `complete -c sinter -n '__fish_seen_subcommand_from port menu' -l mode -xa '${MODES.join(" ")}' -d 'Transfer mode'`,
+    `complete -c sinter -n '__fish_seen_subcommand_from port import resume menu' -l mode -xa '${MODES.join(" ")}' -d 'Transfer mode'`,
     "complete -c sinter -n '__fish_seen_subcommand_from config' -a 'show path validate' -d 'Action'",
     "complete -c sinter -n '__fish_seen_subcommand_from completion' -a 'zsh bash fish' -d 'Shell'",
     "complete -c sinter -n '__fish_seen_subcommand_from port' -l preview -d 'Preview without writing'",

@@ -55,6 +55,7 @@ describe("OpenCode → Codex port fidelity (issue #1)", () => {
     stdout.length = 0;
     stderr.length = 0;
     expect(await run(["port", SOURCE_ID, "--to", "codex"], ctx)).toBe(0);
+    expect(stderr.join("\n")).toContain("auto → full (target unknown)");
     expect(stderr.join("\n").toLowerCase()).not.toContain("error");
 
     const targetRow = ledger.list({ harness: "codex", includeGhost: true })[0];

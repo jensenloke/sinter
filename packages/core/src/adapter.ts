@@ -33,6 +33,19 @@ export interface WriteOpts {
   dryRun?: boolean;
 }
 
+export interface WriteContextPlan {
+  unit: "bytes" | "tokens";
+  limit: number;
+  before: number;
+  after: number;
+  omittedEntries: number;
+  strategy: "none" | "opening-and-tail";
+}
+
+export interface WritePlan {
+  context?: WriteContextPlan;
+}
+
 export interface NativeRef extends SessionRef {
   /** Files/rows created, for reporting. */
   created: string[];
@@ -63,6 +76,7 @@ export interface HarnessAdapter {
   /** Cheap enumeration — use native indexes / head windows, not full parses. */
   list(): AsyncIterable<SessionSummary>;
   read(ref: SessionRef): Promise<SifSession>;
+  planWrite?(session: SifSession, opts?: WriteOpts): Promise<WritePlan>;
   write?(session: SifSession, opts?: WriteOpts): Promise<NativeRef>;
   /** argv to natively resume the given session, e.g. ["claude","--resume",id]. */
   resumeCommand(ref: SessionRef): string[];

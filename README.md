@@ -57,6 +57,16 @@ sinter feedback
 sinter gui
 ```
 
+Ports, imports, and cross-harness resumes default to `--mode auto`. When a
+target adapter reports a context budget, Sinter tries `full`, then `slim`, then
+`compact`, selecting the least destructive representation that fits. A target's
+bounded opening-and-tail fallback is used only when compact still cannot fit.
+Devin currently reports its established cross-harness admission budget; other
+targets preserve the full session until their adapters can report a verified
+limit. Planning is side-effect-free and uses the same adapter logic as the
+actual write. Use `--preview` to inspect the selected mode and expected
+target-side omissions before writing.
+
 Commands with `--json` or `--ndjson` keep stdout machine-readable and return
 errors on stderr using the versioned `sinter.error.v1` envelope. Transcript
 streams use `sinter.transcript.ndjson.v1`: session metadata first, then ordered
