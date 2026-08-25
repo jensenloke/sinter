@@ -23,6 +23,8 @@ operations.
 - Working branch: `feat/multi-instance-lan`.
 - The feature branch is pushed as `origin/feat/multi-instance-lan` and tracks
   that remote branch. It has not yet been merged into `origin/main`.
+- GitHub PR #24 targets `main`:
+  `https://github.com/jensenloke/sinter/pull/24`.
 - The sibling `sinter-public` checkout currently uses the same GitHub upstream,
   `jensenloke/sinter`, and was clean at `origin/main`/`v0.2.0` before this
   branch was pushed. Follow the public-clone parity protocol in `AGENTS.md`;
@@ -178,8 +180,8 @@ bunx @jensenloke/sinter@0.3.0 --version
 
 ## Recommended next actions
 
-1. Open/review the pushed `feat/multi-instance-lan` branch as a PR into `main`
-   so GitHub catches up with the already-published npm package.
+1. Review and merge GitHub PR #24 so the public default branch catches up with
+   the already-published npm package.
 2. After merge, create the Git tag/GitHub release for `v0.3.0`; do not publish
    `0.3.0` to npm again.
 3. Test two real Claude instances (`claude` and `claude-addvita`) using a named
