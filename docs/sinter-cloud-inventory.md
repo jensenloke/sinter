@@ -1,6 +1,6 @@
 # Sinter Cloud inventory
 
-Status: C0-C1 complete; C2 envelope and metadata control plane verified locally
+Status: C0-C1 and metadata control plane deployed; C2 envelope remains local-only
 Last reviewed: 2026-08-25 (Asia/Singapore)
 
 This document turns the Sinter Cloud direction in [ROADMAP.md](../ROADMAP.md)
@@ -292,7 +292,7 @@ availability guarantee.
 - [x] Add own quota display and a cryptographically protected metadata-only
   `/admin` portal; uploads stay hard-disabled and role management stays
   service-only.
-- [ ] Apply the migration, bootstrap the owner as unmetered super-admin, deploy,
+- [x] Apply the migration, bootstrap the owner as unmetered super-admin, deploy,
   and verify the portal without enabling uploads.
 
 ### C3 — CLI private alpha
@@ -343,15 +343,14 @@ time-bounded support access instead of an administrative master key.
 
 Review C2 before enabling any upload path:
 
-1. apply the control-plane migration, bootstrap the owner once, deploy the
-   metadata-only admin portal, and verify uploads remain disabled;
-2. obtain an external review of the canonical header/AAD, AES-GCM part
+1. obtain an external review of the canonical header/AAD, AES-GCM part
    encryption, HPKE recipient wrapping, strict parser, limits, and replay split;
-3. keep deterministic test hooks and the synthetic-only schema out of all
+2. keep deterministic test hooks and the synthetic-only schema out of all
    production transport APIs;
-4. enroll and approve a second device, then decrypt only the synthetic fixture;
-5. design quota reservations and private Storage begin/finalize/delete for
-   synthetic ciphertext only;
+3. enroll and approve a second device, then decrypt only the synthetic fixture;
+4. extend the deployed entitlement/usage control plane with atomic upload quota
+   reservations while keeping uploads globally disabled;
+5. design private Storage begin/finalize/delete for synthetic ciphertext only;
 6. keep real-session integration blocked until deletion and two-device tests.
 
 C1 proves authentication, local key custody, cryptographic approval, hosted

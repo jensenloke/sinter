@@ -41,10 +41,9 @@ operations.
   its inventory is documented in
   [sinter-cloud-inventory.md](sinter-cloud-inventory.md).
 - The Cloud branch is ahead of `origin/docs/sinter-cloud-inventory` with
-  reviewed, unpushed commits. Phase 1 device identity is deployed and active;
-  the C2 local-only envelope is disconnected from transport; the metadata-only
-  control plane is committed locally but not yet deployed. Keep all of this
-  work off the CLI release line.
+  reviewed, unpushed commits. Phase 1 device identity and the metadata-only
+  control plane are deployed; the C2 local-only envelope remains disconnected
+  from transport. Keep all of this work off the CLI release line.
 
 ## Cloud development foundation
 
@@ -93,12 +92,13 @@ operations.
   AAD. It has a clearly labeled project vector plus RFC Appendix A.3 dependency
   interoperability, multi-recipient, tamper, wrong-key, size/version, and replay
   tests. No CLI/TUI/Storage/network or real-session path uses it.
-- The metadata-only control plane is verified locally: default disabled/zero
-  development entitlements, own quota/usage RLS, unmetered owner semantics with
-  retained safety caps, service-only first-admin/role/entitlement RPCs,
-  immutable content-free audit events, and a cryptographically protected
-  `/admin` portal. Upload enablement is hard-locked false; role management stays
-  service-only and no account/session content enters the admin surface.
+- The metadata-only control plane is deployed: default disabled/zero development
+  entitlements, own quota/usage RLS, unmetered owner semantics with retained
+  safety caps, service-only first-admin/role/entitlement RPCs, immutable
+  content-free audit events, and a cryptographically protected `/admin` portal.
+  The one owner role and audit event are present. Upload enablement is hard-
+  locked false; role management stays service-only and no account/session
+  content enters the admin surface.
 - The Cloud UI uses an original five-cell sintered-mineral mark with transparent
   512, 192, and 32 px assets. The raster concept should be traced and optically
   refined before final trademark use.
@@ -106,9 +106,10 @@ operations.
   assertions, schema lint, both TypeScript checks, both production builds, npm
   package inspection, isolated Bun/npm installs, authoritative RFC HPKE
   interoperability, and independent adversarial device/capsule/admin reviews.
-  Hosted migration/deployment, unauthenticated rejection, credential refresh,
-  first-device bootstrap, list, and empty-enrollment checks completed successfully
-  with real uploads still disabled.
+  Hosted migrations/deployments, unauthenticated rejection, credential refresh,
+  first-device bootstrap, list, empty enrollment, one-time owner bootstrap,
+  own-entitlement RLS, and authenticated admin-route checks completed
+  successfully with real uploads still disabled.
 - Linked-provider state and `.env` files are ignored. The database password is
   held in the maintainer machine's credential store, not in the repository.
 
