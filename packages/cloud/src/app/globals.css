@@ -36,7 +36,7 @@ body::before {
   background-size: auto, 56px 56px, 56px 56px;
 }
 a { color: inherit; }
-a:focus-visible, button:focus-visible, input:focus-visible {
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
   outline: 2px solid var(--acid);
   outline-offset: 3px;
 }
@@ -400,9 +400,40 @@ code { padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; back
 .boundary-card p, .boundary-card li { color: var(--muted); font-size: 10px; line-height: 1.6; }
 .boundary-card ul { margin: 20px 0 0; padding: 18px 0 0 17px; border-top: 1px solid var(--line); }
 
+.quota-section { margin-top: 18px; padding: 30px; }
+.quota-heading { align-items: center; }
+.quota-state { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.quota-boundary { max-width: 780px; margin: 16px 0 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+.quota-grid { margin-top: 25px; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.quota-grid article { min-width: 0; padding: 22px; background: #0e110f; }
+.quota-grid article + article { border-left: 1px solid var(--line); }
+.quota-grid article > strong { display: block; margin-top: 16px; font-size: 25px; letter-spacing: -.04em; }
+.quota-grid dl { margin: 20px 0 0; }
+.quota-grid dl div { padding: 9px 0; display: flex; justify-content: space-between; gap: 15px; border-top: 1px solid var(--line); }
+.quota-authority { margin: 16px 0 0; color: #6d746c; font-size: 9px; line-height: 1.55; }
+.admin-intro h1 { max-width: none; }
+.admin-account-list { scroll-margin-top: 92px; display: grid; gap: 18px; }
+.admin-account-card { padding: 30px; }
+.admin-account-heading h2 { margin-bottom: 12px; }
+.admin-account-heading code { display: inline-block; }
+.admin-metadata-grid { margin-top: 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 30px; border-top: 1px solid var(--line); }
+.admin-metadata-grid .detail-list { margin-top: 0; }
+.admin-update-panel { margin-top: 25px; padding-top: 20px; border-top: 1px solid var(--line); }
+.admin-update-panel summary { width: max-content; color: var(--muted-bright); font-size: 11px; font-weight: 700; cursor: pointer; }
+.admin-update-panel summary:hover { color: var(--ink); }
+.admin-entitlement-form { padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: rgba(10, 12, 11, .52); }
+.admin-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.admin-entitlement-form label:not(.confirmation-row) { display: grid; gap: 7px; }
+.admin-control-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.admin-control-row .confirmation-row { padding: 13px; border: 1px solid var(--line); border-radius: 8px; background: #0d100e; }
+.locked-control { cursor: not-allowed; opacity: .7; }
+.admin-submit-row { display: flex; align-items: center; gap: 16px; }
+.admin-submit-row .lifecycle-message { padding: 0; }
+.admin-error-layout { grid-template-columns: minmax(0, 850px); justify-content: center; }
+
 form { display: grid; gap: 10px; margin-top: 28px; }
 label { color: var(--muted-bright); font-size: 11px; }
-input { width: 100%; padding: 13px; border: 1px solid var(--line-bright); border-radius: 8px; outline: none; background: #0d100e; color: var(--ink); font: inherit; }
+input, select { width: 100%; padding: 13px; border: 1px solid var(--line-bright); border-radius: 8px; outline: none; background: #0d100e; color: var(--ink); font: inherit; }
 .authorize-body { flex: 1; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(330px, .7fr); gap: 90px; align-items: center; padding: 70px 0; }
 .authorize-copy h1 { font-size: clamp(44px, 5vw, 72px); }
 .authorize-body .card > p:not(.card-label) { margin-top: 12px; }
@@ -413,6 +444,8 @@ input { width: 100%; padding: 13px; border: 1px solid var(--line-bright); border
   .portal-header { grid-template-columns: 1fr auto; }
   .section-nav { display: none; }
   .portal-grid { grid-template-columns: 1fr; }
+  .quota-grid { grid-template-columns: 1fr; }
+  .quota-grid article + article { border-top: 1px solid var(--line); border-left: 0; }
   .device-list { grid-template-columns: 1fr; }
 }
 
@@ -438,7 +471,11 @@ input { width: 100%; padding: 13px; border: 1px solid var(--line-bright); border
   .metric-card { min-height: 145px; }
   .metric-card + .metric-card { border-top: 1px solid var(--line); border-left: 0; }
   .metric-card > strong { margin-top: 20px; }
-  .account-section, .security-section, .lifecycle-section, .devices-section { padding: 23px; }
+  .account-section, .security-section, .lifecycle-section, .devices-section, .quota-section, .admin-account-card { padding: 23px; }
+  .quota-heading, .admin-account-heading { align-items: flex-start; flex-direction: column; }
+  .quota-state { justify-content: flex-start; }
+  .admin-metadata-grid, .admin-form-grid, .admin-control-row { grid-template-columns: 1fr; }
+  .admin-submit-row { align-items: flex-start; flex-direction: column; }
   .detail-list > div { grid-template-columns: 115px minmax(0, 1fr); }
   .lifecycle-form.compact-form { grid-template-columns: 1fr; }
   .lifecycle-details { grid-template-columns: 1fr; }

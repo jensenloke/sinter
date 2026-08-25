@@ -71,6 +71,21 @@ keys. The first-ever device bootstraps; subsequent devices require a signed,
 CLI credential store. Revocation is irreversible, and the initial design has no
 recovery after every device is lost or revoked.
 
+## Metadata control plane
+
+`account_entitlements` and `account_usage` are user-readable through own-row
+RLS and never browser-writable. Development accounts start with zero Cloud
+storage/sessions and uploads disabled. The `/admin` route cryptographically
+verifies the Auth0 web ID token, resolves the provider-neutral account, and uses
+server-only RPCs only after `admin_is_super_admin` succeeds.
+
+The first owner is granted once through the service-only
+`bootstrap_super_admin(account_id, reason)` RPC. Role grant/revoke remains a
+service-only operational action and is intentionally absent from the browser
+portal. The owner may be unmetered for product storage/session limits while
+per-capsule and device safety caps remain enforced. Admin listings and audit
+events contain metadata only; no session content or cryptographic material.
+
 ## Deployment boundary
 
 - Deploy `packages/cloud` as the Vercel project root.

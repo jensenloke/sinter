@@ -1,5 +1,11 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { ACCOUNT_DELETION_CONFIRMATION } from "../src/lib/account-lifecycle";
+import {
+  CLOUD_DEVELOPMENT_LIMITS,
+  developmentEntitlement,
+  developmentUsage,
+  quotaDisplayData,
+} from "../src/lib/cloud-quota";
 import type {
   AccountDeletionDataSource,
   CloudProfile,
@@ -87,6 +93,14 @@ describe("Supabase Auth0 dashboard boundary", () => {
         calls.push(`profile:${accountId}`);
         return { data: PROFILE, error: null };
       },
+      loadEntitlement: async (accountId) => {
+        calls.push(`entitlement:${accountId}`);
+        return { data: null, error: null };
+      },
+      loadUsage: async (accountId) => {
+        calls.push(`usage:${accountId}`);
+        return { data: null, error: null };
+      },
       loadDevices: async (accountId) => {
         calls.push(`devices:${accountId}`);
         return { data: [], error: null };
@@ -103,9 +117,23 @@ describe("Supabase Auth0 dashboard boundary", () => {
     });
 
     expect(result.accountId).toBe(ACCOUNT_ID);
+    expect(result.entitlement).toMatchObject({
+      account_id: ACCOUNT_ID,
+      plan_code: "development",
+      uploads_enabled: false,
+      storage_limit_bytes: 0,
+      session_limit: 0,
+    });
+    expect(result.usage).toMatchObject({
+      account_id: ACCOUNT_ID,
+      retained_storage_bytes: 0,
+      capsule_count: 0,
+    });
     expect(calls).toEqual([
       "claim",
       `profile:${ACCOUNT_ID}`,
+      `entitlement:${ACCOUNT_ID}`,
+      `usage:${ACCOUNT_ID}`,
       `devices:${ACCOUNT_ID}`,
       `enrollments:${ACCOUNT_ID}`,
     ]);
@@ -122,6 +150,14 @@ describe("Supabase Auth0 dashboard boundary", () => {
       loadProfile: async () => {
         calls.push("profile");
         return { data: PROFILE, error: null };
+      },
+      loadEntitlement: async () => {
+        calls.push("entitlement");
+        return { data: null, error: null };
+      },
+      loadUsage: async () => {
+        calls.push("usage");
+        return { data: null, error: null };
       },
       loadDevices: async () => {
         calls.push("devices");
@@ -141,6 +177,62 @@ describe("Supabase Auth0 dashboard boundary", () => {
       expect((error as { code: string }).code).toBe("account-claim");
     }
     expect(calls).toEqual(["claim"]);
+  });
+
+  test("fails closed when quota metadata does not match the claimed account", async () => {
+    const otherAccountId = "22222222-2222-2222-2222-222222222222";
+    const calls: string[] = [];
+    const source: DashboardDataSource = {
+      claimAccount: async () => ({ data: ACCOUNT_ID, error: null }),
+      loadProfile: async () => ({ data: PROFILE, error: null }),
+      loadEntitlement: async (accountId) => {
+        calls.push(`entitlement:${accountId}`);
+        return { data: developmentEntitlement(accountId), error: null };
+      },
+      loadUsage: async (accountId) => {
+        calls.push(`usage:${accountId}`);
+        return { data: developmentUsage(otherAccountId), error: null };
+      },
+      loadDevices: async () => {
+        calls.push("devices");
+        return { data: [], error: null };
+      },
+      loadEnrollments: async () => ({ data: [], error: null }),
+    };
+
+    await expect(loadDashboardData(token(), () => source)).rejects.toMatchObject({
+      code: "quota-scope",
+      message: "Your cloud quota could not be verified safely.",
+    });
+    expect(calls).toEqual([
+      `entitlement:${ACCOUNT_ID}`,
+      `usage:${ACCOUNT_ID}`,
+    ]);
+  });
+
+  test("keeps per-capsule and device safety caps visible for unmetered administrators", () => {
+    const entitlement = {
+      ...developmentEntitlement(ACCOUNT_ID),
+      plan_code: "administrator",
+      status: "active",
+      unmetered: true,
+      storage_limit_bytes: null,
+      session_limit: null,
+      capsule_size_limit_bytes: null,
+      device_limit: null,
+    };
+    const display = quotaDisplayData(entitlement, developmentUsage(ACCOUNT_ID));
+
+    expect(display).toMatchObject({
+      planLabel: "Unmetered administrator",
+      retainedStorageLabel: "0 bytes",
+      sessionUsageLabel: "0",
+      storageLimitLabel: "Unmetered",
+      sessionLimitLabel: "Unmetered",
+      capsuleSafetyLabel: "16 MiB",
+      deviceSafetyLabel: CLOUD_DEVELOPMENT_LIMITS.devices.toLocaleString("en"),
+      uploadsLabel: "Disabled",
+    });
   });
 });
 

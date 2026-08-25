@@ -1,6 +1,6 @@
 # Sinter Cloud inventory
 
-Status: C0-C1 complete; C2 synthetic envelope verified locally, external review pending
+Status: C0-C1 complete; C2 envelope and metadata control plane verified locally
 Last reviewed: 2026-08-25 (Asia/Singapore)
 
 This document turns the Sinter Cloud direction in [ROADMAP.md](../ROADMAP.md)
@@ -282,6 +282,19 @@ availability guarantee.
   parts/envelopes, malformed data, and unsupported versions fail locally.
 - [ ] Permanent deletion removes metadata, wrapped keys, and Storage object.
 
+### Metadata control-plane foundation
+
+- [x] Add disabled-by-default development entitlements and content-free usage
+  counters with own-row RLS and no browser writes.
+- [x] Add one-time super-admin bootstrap, metadata-only account listing,
+  service-only entitlement/role RPCs, immutable audit events, and retained
+  capsule/device safety caps.
+- [x] Add own quota display and a cryptographically protected metadata-only
+  `/admin` portal; uploads stay hard-disabled and role management stays
+  service-only.
+- [ ] Apply the migration, bootstrap the owner as unmetered super-admin, deploy,
+  and verify the portal without enabling uploads.
+
 ### C3 — CLI private alpha
 
 - [x] Add Auth0 device-code `sinter login`, verified `whoami`, rotating refresh,
@@ -330,14 +343,15 @@ time-bounded support access instead of an administrative master key.
 
 Review C2 before enabling any upload path:
 
-1. obtain an external review of the canonical header/AAD, AES-GCM part
+1. apply the control-plane migration, bootstrap the owner once, deploy the
+   metadata-only admin portal, and verify uploads remain disabled;
+2. obtain an external review of the canonical header/AAD, AES-GCM part
    encryption, HPKE recipient wrapping, strict parser, limits, and replay split;
-2. keep deterministic test hooks and the synthetic-only schema out of all
+3. keep deterministic test hooks and the synthetic-only schema out of all
    production transport APIs;
-3. enroll and approve a second device, then decrypt only the synthetic fixture;
-4. design account entitlements, quota reservations, usage counters, and
-   metadata-only super-admin controls without adding billing yet;
-5. design private Storage begin/finalize/delete for synthetic ciphertext only;
+4. enroll and approve a second device, then decrypt only the synthetic fixture;
+5. design quota reservations and private Storage begin/finalize/delete for
+   synthetic ciphertext only;
 6. keep real-session integration blocked until deletion and two-device tests.
 
 C1 proves authentication, local key custody, cryptographic approval, hosted

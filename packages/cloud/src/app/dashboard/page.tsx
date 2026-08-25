@@ -1,6 +1,8 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { auth0 } from "@/lib/auth0";
+import { hasSuperAdminAccess } from "@/lib/admin";
+import { quotaDisplayData } from "@/lib/cloud-quota";
 import {
   DashboardDataError,
   loadDashboardData,
@@ -89,16 +91,18 @@ function EnrollmentCard({ enrollment }: { enrollment: CloudDeviceEnrollment }) {
   );
 }
 
-function DashboardNavigation({ viewer }: { viewer: Viewer }) {
+function DashboardNavigation({ viewer, adminAccess }: { viewer: Viewer; adminAccess: boolean }) {
   const initial = (viewer.name ?? viewer.email ?? "S").trim().charAt(0).toUpperCase() || "S";
   return (
     <header className="portal-header">
       <Brand />
       <nav className="section-nav" aria-label="Dashboard sections">
         <a href="#overview">Overview</a>
+        <a href="#usage">Usage</a>
         <a href="#account">Account</a>
         <a href="#security">Security</a>
         <a href="#devices">Devices</a>
+        {adminAccess && <a href="/admin">Admin</a>}
       </nav>
       <div className="viewer-actions">
         <span className="avatar" aria-hidden="true">{initial}</span>
@@ -108,10 +112,10 @@ function DashboardNavigation({ viewer }: { viewer: Viewer }) {
   );
 }
 
-function DashboardLoading({ viewer }: { viewer: Viewer }) {
+function DashboardLoading({ viewer, adminAccess }: { viewer: Viewer; adminAccess: boolean }) {
   return (
     <main className="portal-shell">
-      <DashboardNavigation viewer={viewer} />
+      <DashboardNavigation viewer={viewer} adminAccess={adminAccess} />
       <div className="portal-loading" role="status" aria-live="polite">
         <div className="loading-mark"><span /><span /><span /></div>
         <p>Opening your private development portal…</p>
@@ -120,10 +124,10 @@ function DashboardLoading({ viewer }: { viewer: Viewer }) {
   );
 }
 
-function ConnectionError({ viewer, error }: { viewer: Viewer; error: DashboardDataError }) {
+function ConnectionError({ viewer, error, adminAccess }: { viewer: Viewer; error: DashboardDataError; adminAccess: boolean }) {
   return (
     <main className="portal-shell">
-      <DashboardNavigation viewer={viewer} />
+      <DashboardNavigation viewer={viewer} adminAccess={adminAccess} />
       <section className="portal-content error-layout">
         <div className="error-panel">
           <p className="eyebrow">DATA CONNECTION UNAVAILABLE</p>
@@ -150,14 +154,15 @@ function ConnectionError({ viewer, error }: { viewer: Viewer; error: DashboardDa
   );
 }
 
-function Portal({ viewer, data }: { viewer: Viewer; data: DashboardData }) {
+function Portal({ viewer, data, adminAccess }: { viewer: Viewer; data: DashboardData; adminAccess: boolean }) {
   const activeDevices = data.devices.filter((device) => !device.revoked_at).length;
   const accountLabel = data.accountId.slice(0, 8);
   const displayName = viewer.name?.trim() || viewer.email?.split("@")[0] || "there";
+  const quota = quotaDisplayData(data.entitlement, data.usage);
 
   return (
     <main className="portal-shell">
-      <DashboardNavigation viewer={viewer} />
+      <DashboardNavigation viewer={viewer} adminAccess={adminAccess} />
       <div className="portal-content">
         <section className="portal-intro" id="overview">
           <div>
@@ -187,6 +192,44 @@ function Portal({ viewer, data }: { viewer: Viewer; data: DashboardData }) {
             <strong className="word-value">Unavailable</strong>
             <p>This portal does not run agents or workspaces.</p>
           </article>
+        </section>
+
+        <section className="portal-section quota-section" id="usage">
+          <div className="section-heading quota-heading">
+            <div><p className="section-kicker">PLAN &amp; USAGE</p><h2>{quota.planLabel}</h2></div>
+            <div className="quota-state">
+              <span className="state-pill state-muted">{quota.statusLabel}</span>
+              <span className="state-pill state-muted">Uploads {quota.uploadsLabel}</span>
+            </div>
+          </div>
+          <p className="quota-boundary">Cloud storage and session uploads remain unavailable. These counters describe account metadata only and do not imply sync.</p>
+          <div className="quota-grid">
+            <article>
+              <span className="metric-label">Retained storage</span>
+              <strong>{quota.retainedStorageLabel}</strong>
+              <dl>
+                <div><dt>Reserved</dt><dd>{quota.reservedStorageLabel}</dd></div>
+                <div><dt>Plan limit</dt><dd>{quota.storageLimitLabel}</dd></div>
+              </dl>
+            </article>
+            <article>
+              <span className="metric-label">Cloud sessions</span>
+              <strong>{quota.sessionUsageLabel}</strong>
+              <dl>
+                <div><dt>Reserved</dt><dd>{quota.reservedSessionLabel}</dd></div>
+                <div><dt>Plan limit</dt><dd>{quota.sessionLimitLabel}</dd></div>
+              </dl>
+            </article>
+            <article>
+              <span className="metric-label">Safety caps</span>
+              <strong>{quota.capsuleSafetyLabel}</strong>
+              <dl>
+                <div><dt>Per capsule</dt><dd>{quota.capsuleSafetyLabel}</dd></div>
+                <div><dt>Devices</dt><dd>{quota.deviceSafetyLabel}</dd></div>
+              </dl>
+            </article>
+          </div>
+          <p className="quota-authority">Displayed safety caps are mirrored for clarity; database enforcement remains authoritative.</p>
         </section>
 
         <div className="portal-grid">
@@ -261,19 +304,16 @@ function Portal({ viewer, data }: { viewer: Viewer; data: DashboardData }) {
   );
 }
 
-async function DashboardContent({ viewer, idToken }: { viewer: Viewer; idToken: string }) {
+async function DashboardContent({ viewer, idToken, adminAccess }: { viewer: Viewer; idToken: string; adminAccess: boolean }) {
   try {
     const data = await loadDashboardData(idToken);
-    return <Portal viewer={viewer} data={data} />;
+    return <Portal viewer={viewer} data={data} adminAccess={adminAccess} />;
   } catch (error) {
     const dashboardError = error instanceof DashboardDataError
       ? error
       : new DashboardDataError("configuration", error instanceof Error ? error.message : "Unexpected data error");
-    console.error("Sinter dashboard data boundary", {
-      code: dashboardError.code,
-      detail: dashboardError.detail,
-    });
-    return <ConnectionError viewer={viewer} error={dashboardError} />;
+    console.error("Sinter dashboard data boundary", { code: dashboardError.code });
+    return <ConnectionError viewer={viewer} error={dashboardError} adminAccess={adminAccess} />;
   }
 }
 
@@ -285,10 +325,11 @@ export default async function Dashboard() {
     emailVerified: session.user.email_verified === true,
     name: typeof session.user.name === "string" ? session.user.name : null,
   };
+  const adminAccess = await hasSuperAdminAccess(session.tokenSet.idToken);
 
   return (
-    <Suspense fallback={<DashboardLoading viewer={viewer} />}>
-      <DashboardContent viewer={viewer} idToken={session.tokenSet.idToken} />
+    <Suspense fallback={<DashboardLoading viewer={viewer} adminAccess={adminAccess} />}>
+      <DashboardContent viewer={viewer} idToken={session.tokenSet.idToken} adminAccess={adminAccess} />
     </Suspense>
   );
 }

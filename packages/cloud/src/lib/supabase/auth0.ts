@@ -6,6 +6,12 @@ import {
 } from "../account-lifecycle";
 import { auth0Issuer } from "../auth0";
 import { DEVICE_DATABASE } from "../device-data-source";
+import {
+  developmentEntitlement,
+  developmentUsage,
+  type CloudEntitlement,
+  type CloudUsage,
+} from "../cloud-quota";
 
 export interface CloudProfile {
   id: string;
@@ -41,6 +47,8 @@ export interface CloudDeviceEnrollment {
 export interface DashboardData {
   accountId: string;
   profile: CloudProfile;
+  entitlement: CloudEntitlement;
+  usage: CloudUsage;
   devices: CloudDevice[];
   enrollments: CloudDeviceEnrollment[];
   tokenExpiresAt: number;
@@ -54,6 +62,8 @@ interface DataResult<T> {
 export interface DashboardDataSource {
   claimAccount(): Promise<DataResult<string | null>>;
   loadProfile(accountId: string): Promise<DataResult<CloudProfile | null>>;
+  loadEntitlement(accountId: string): Promise<DataResult<CloudEntitlement | null>>;
+  loadUsage(accountId: string): Promise<DataResult<CloudUsage | null>>;
   loadDevices(accountId: string): Promise<DataResult<CloudDevice[] | null>>;
   loadEnrollments(accountId: string): Promise<DataResult<CloudDeviceEnrollment[] | null>>;
 }
@@ -74,6 +84,9 @@ export type DashboardFailureCode =
   | "identity-expired"
   | "account-claim"
   | "profile-load"
+  | "entitlement-load"
+  | "usage-load"
+  | "quota-scope"
   | "device-load"
   | "enrollment-load"
   | "account-confirmation"
@@ -88,6 +101,9 @@ const failureMessages: Record<DashboardFailureCode, string> = {
   "identity-expired": "Your identity token has expired. Sign out, then sign in again.",
   "account-claim": "Your cloud account could not be opened safely.",
   "profile-load": "Your account details could not be loaded.",
+  "entitlement-load": "Your cloud plan could not be loaded.",
+  "usage-load": "Your cloud usage could not be loaded.",
+  "quota-scope": "Your cloud quota could not be verified safely.",
   "device-load": "Your devices could not be loaded.",
   "enrollment-load": "Your pending device approvals could not be loaded.",
   "account-confirmation": "Confirm that you understand this creates a deletion request before continuing.",
@@ -175,6 +191,22 @@ export function createDashboardDataSource(idToken: string): DashboardDataSource 
         .maybeSingle();
       return result as DataResult<CloudProfile | null>;
     },
+    loadEntitlement: async (accountId) => {
+      const result = await supabase
+        .from("account_entitlements")
+        .select("account_id,plan_code,status,uploads_enabled,unmetered,storage_limit_bytes,session_limit,capsule_size_limit_bytes,device_limit,updated_at")
+        .eq("account_id", accountId)
+        .maybeSingle();
+      return result as DataResult<CloudEntitlement | null>;
+    },
+    loadUsage: async (accountId) => {
+      const result = await supabase
+        .from("account_usage")
+        .select("account_id,retained_storage_bytes,capsule_count,reserved_storage_bytes,reserved_capsule_count,monthly_egress_bytes,period_started_at,updated_at")
+        .eq("account_id", accountId)
+        .maybeSingle();
+      return result as DataResult<CloudUsage | null>;
+    },
     loadDevices: async (accountId) => {
       const result = await supabase
         .from(DEVICE_DATABASE.devicesTable)
@@ -240,6 +272,18 @@ export async function loadDashboardData(
     );
   }
 
+  const entitlementResult = await source.loadEntitlement(claimed.data);
+  if (entitlementResult.error) return fail("entitlement-load", entitlementResult.error.message);
+  if (entitlementResult.data && entitlementResult.data.account_id !== claimed.data) {
+    return fail("quota-scope", "Entitlement row did not match the claimed account");
+  }
+
+  const usageResult = await source.loadUsage(claimed.data);
+  if (usageResult.error) return fail("usage-load", usageResult.error.message);
+  if (usageResult.data && usageResult.data.account_id !== claimed.data) {
+    return fail("quota-scope", "Usage row did not match the claimed account");
+  }
+
   const devicesResult = await source.loadDevices(claimed.data);
   if (devicesResult.error) return fail("device-load", devicesResult.error.message);
 
@@ -249,6 +293,8 @@ export async function loadDashboardData(
   return {
     accountId: claimed.data,
     profile: profileResult.data,
+    entitlement: entitlementResult.data ?? developmentEntitlement(claimed.data),
+    usage: usageResult.data ?? developmentUsage(claimed.data),
     devices: devicesResult.data ?? [],
     enrollments: enrollmentsResult.data ?? [],
     tokenExpiresAt: token.expiresAt,
