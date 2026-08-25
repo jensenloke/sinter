@@ -1,6 +1,6 @@
 # Sinter Cloud inventory
 
-Status: C0 complete; C1 device identity verified locally, hosted rollout pending
+Status: C0-C1 complete; C2 synthetic envelope verified locally, external review pending
 Last reviewed: 2026-08-25 (Asia/Singapore)
 
 This document turns the Sinter Cloud direction in [ROADMAP.md](../ROADMAP.md)
@@ -265,18 +265,21 @@ availability guarantee.
   rotating refresh, and sign-out/logout.
 - [x] Implement device key custody, first-device bootstrap, signed subsequent-
   device approval, list, rename, revoke, pending, and approval flows locally.
-- [ ] Apply the device identity migration and server-only secret to hosted
-  development, then register the first real device.
+- [x] Apply the device identity migration and server-only secret to hosted
+  development, deploy the APIs, and register the first real device.
 - [x] RLS/service-boundary tests prove user A cannot read or mutate user B and
   authenticated SQL cannot bypass cryptographic approval.
 - [x] Keep all session and capsule upload paths absent and disabled.
 
 ### C2 — encrypted synthetic capsule
 
-- [ ] Freeze a versioned capsule/envelope format with test vectors.
-- [ ] Encrypt in the client and upload only ciphertext.
-- [ ] A second enrolled device downloads and decrypts the fixture.
-- [ ] Tampering, wrong-device keys, replay, oversize, and partial upload fail.
+- [x] Implement a versioned local-only synthetic envelope with a project AES-256
+  vector and authoritative RFC Appendix A.3 dependency interoperability.
+- [ ] Freeze the Sinter format only after external cryptographic review.
+- [x] Encrypt/decrypt synthetic manifest and SIF locally; no upload path exists.
+- [ ] A second enrolled device decrypts the synthetic fixture.
+- [x] Tampering, wrong-device keys, replay guard, oversize, truncation, swapped
+  parts/envelopes, malformed data, and unsupported versions fail locally.
 - [ ] Permanent deletion removes metadata, wrapped keys, and Storage object.
 
 ### C3 — CLI private alpha
@@ -312,10 +315,10 @@ current deployment stores no session content and cannot run agents.
 
 ## Open decisions
 
-1. Maximum synthetic capsule size for C2 and the initial alpha allowance?
+1. Validate or revise the provisional 16 MiB combined ciphertext cap and initial
+   alpha allowance from synthetic and later consented measurements.
 2. When should a separate production project be created?
-3. Which reviewed HPKE implementation and vector source should freeze the C2
-   P-256/HKDF-SHA256/AES-256-GCM envelope?
+3. Who should perform the external review before the Sinter envelope is frozen?
 
 Resolved: Next.js on Vercel, a Singapore Supabase region, Auth0 web plus native
 Device Authorization, explicit immutable Cloud snapshots rather than automatic
@@ -325,21 +328,26 @@ time-bounded support access instead of an administrative master key.
 
 ## Recommended immediate checkpoint
 
-Activate the verified non-data C1 checkpoint without enabling uploads:
+Review C2 before enabling any upload path:
 
-1. review the committed local device identity checkpoint;
-2. dry-run and apply the migration to hosted development;
-3. configure the server-only Supabase secret key and deploy the device APIs;
-4. install the development CLI and bootstrap the first device;
-5. complete one signed second-device approval, rename, list, and safe revocation
-   test without revoking the only remaining active device;
-6. stop before capsule upload and freeze C2 test vectors and threat cases.
+1. obtain an external review of the canonical header/AAD, AES-GCM part
+   encryption, HPKE recipient wrapping, strict parser, limits, and replay split;
+2. keep deterministic test hooks and the synthetic-only schema out of all
+   production transport APIs;
+3. enroll and approve a second device, then decrypt only the synthetic fixture;
+4. design account entitlements, quota reservations, usage counters, and
+   metadata-only super-admin controls without adding billing yet;
+5. design private Storage begin/finalize/delete for synthetic ciphertext only;
+6. keep real-session integration blocked until deletion and two-device tests.
 
-This proves authentication, local key custody, cryptographic approval, schema,
-and account isolation without placing a real coding-agent transcript in Cloud.
+C1 proves authentication, local key custody, cryptographic approval, hosted
+schema, and account isolation. The local C2 draft proves envelope behavior
+without placing a real coding-agent transcript in Cloud.
 
 ## Official references
 
+- [RFC 9180 Hybrid Public Key Encryption](https://www.rfc-editor.org/rfc/rfc9180)
+- [hpke-js WebCrypto implementation](https://github.com/dajiaji/hpke-js)
 - [Vercel environments and generated preview deployments](https://vercel.com/docs/deployments/environments)
 - [Vercel generated deployment URLs](https://vercel.com/docs/deployments/generated-urls)
 - [Supabase PKCE authentication flow](https://supabase.com/docs/guides/auth/sessions/pkce-flow)
