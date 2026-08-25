@@ -23,6 +23,18 @@ Supabase URL and publishable key are provided through Vercel environment
 variables. Never add a secret or legacy service-role key to this app unless a
 reviewed server-only operation genuinely requires it.
 
+## Free-tier keepalive
+
+Vercel invokes `/api/cron/keepalive` once daily. Vercel supplies the
+`Authorization: Bearer <CRON_SECRET>` header, and the route performs one
+content-free Supabase database RPC using the publishable key. The RPC returns
+only the database timestamp and cannot read or write application rows.
+
+Set `CRON_SECRET` in the Vercel Production environment to a random value of at
+least 16 characters. Never commit it. An unauthenticated request must return
+HTTP 401. This automation reduces idle-pausing risk on the free tier but is not
+an uptime guarantee; production availability still requires a paid plan.
+
 ## Deployment boundary
 
 - Deploy `packages/cloud` as the Vercel project root.

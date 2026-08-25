@@ -236,6 +236,14 @@ Storage bytes plus egress. Supabase bills each project for its dedicated
 compute and measures Storage consumption over time, so unnecessary projects and
 undeleted test objects have a real cost.
 
+The free development project uses one daily Vercel Hobby cron to make a
+content-free database RPC. Supabase currently considers Free projects for
+pausing after a low-activity seven-day window and says a few daily user queries
+are typically enough to avoid it. The cron is protected by `CRON_SECRET`, uses
+only the publishable Supabase key, and cannot read or write application rows.
+It reduces idle-pausing risk without adding a paid service, but it is not an
+availability guarantee.
+
 ## Milestones and acceptance gates
 
 ### C0 — architecture and empty deployment
@@ -246,6 +254,8 @@ undeleted test objects have a real cost.
   `https://sinter-cloud.vercel.app`.
 - [x] Keep project identifiers, linked state, and credentials out of source.
 - [x] Build and type-check the web app independently of the CLI package.
+- [x] Add a free daily, secret-protected database keepalive with no application
+  data access.
 
 ### C1 — authentication and policy skeleton
 
@@ -327,6 +337,8 @@ placing a real coding-agent transcript in the cloud.
 - [Supabase resumable uploads](https://supabase.com/docs/guides/storage/uploads/resumable-uploads)
 - [Supabase Storage schema guidance](https://supabase.com/docs/guides/storage/schema/design)
 - [Supabase billing model](https://supabase.com/docs/guides/platform/billing-on-supabase)
+- [Supabase Free project pausing](https://supabase.com/docs/guides/platform/free-project-pausing)
+- [Vercel cron usage and pricing](https://vercel.com/docs/cron-jobs/usage-and-pricing)
 
 Platform facts and links were checked against official documentation on
 2026-08-25. Pricing and limits are mutable and must be rechecked before a paid

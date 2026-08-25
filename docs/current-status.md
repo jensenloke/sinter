@@ -49,8 +49,12 @@ operations.
   development callback. Email magic-link login, callback exchange, protected
   dashboard, and sign-out are implemented.
 - The `profiles` and `devices` migrations are applied to hosted development.
-  Nine local pgTAP assertions prove own-row access and cross-user denial.
+  Nine identity assertions prove own-row access and cross-user denial; three
+  more verify the keepalive RPC's narrow privileges and execution.
 - `/api/health` reports configuration state without exposing credentials.
+- A free Vercel cron invokes a secret-protected, content-free Supabase database
+  RPC once daily to reduce free-project idle-pausing risk. It neither reads nor
+  writes user/session rows and is not an uptime guarantee.
 - Real session/capsule uploads, Storage, Realtime, Edge Runtime, Analytics,
   billing, and cloud agent execution remain disabled or absent. No real session
   content has been uploaded.
