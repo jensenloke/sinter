@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { SignOut } from "./sign-out";
+import { Brand } from "../brand";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export default async function Dashboard() {
 
   return (
     <main className="shell dashboard">
-      <nav className="nav"><div className="brand"><span className="mark">S</span>Sinter Cloud</div><SignOut /></nav>
+      <nav className="nav"><Brand /><SignOut /></nav>
       <section className="panel">
         <p className="eyebrow">PRIVATE DEVELOPMENT PREVIEW</p>
         <h1>Your devices</h1>

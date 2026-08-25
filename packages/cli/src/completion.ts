@@ -2,6 +2,9 @@ export type CompletionShell = "zsh" | "bash" | "fish";
 
 const COMMANDS = [
   ["scan", "refresh the local ledger"],
+  ["login", "sign in to Sinter Cloud"],
+  ["whoami", "show the current Cloud identity"],
+  ["logout", "remove the current Cloud login"],
   ["config", "inspect and validate profile configuration"],
   ["ls", "list sessions"],
   ["recent", "list recent resumable sessions"],
@@ -74,6 +77,8 @@ ${commands}
   case $words[2] in
     scan) _arguments $global_args '--harness=[comma-separated harnesses]:harnesses' '--json' ;;
     config) _arguments $global_args '1:action:(show path validate example)' '--json' ;;
+    login) _arguments $global_args '--no-open' '--timeout=[callback lifetime]:duration' '--json' ;;
+    whoami|logout) _arguments $global_args '--json' ;;
     ls) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
     recent) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' ;;
     watch) _arguments $global_args '1:view:(recent projects)' '--interval=[refresh interval]:duration' '--count=[snapshot count]:count' '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-clear' ;;

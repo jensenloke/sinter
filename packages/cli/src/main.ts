@@ -24,7 +24,9 @@ import {
   cmdGui,
   cmdImport,
   cmdLast,
+  cmdLogin,
   cmdLs,
+  cmdLogout,
   cmdMenu,
   cmdNote,
   cmdPin,
@@ -50,6 +52,7 @@ import {
   cmdUntag,
   cmdView,
   cmdWatch,
+  cmdWhoami,
   type Ctx,
 } from "./commands";
 import { colorEnabled, palette, termWidth } from "./format";
@@ -57,10 +60,10 @@ import { canRunMenu } from "./tui/menu";
 import { maybePromptForUpdate } from "./update";
 import { trackTelemetry, type TelemetryEvent } from "./telemetry";
 
-export const VERSION = "0.3.1";
+export const VERSION = "0.4.0";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
-const AUTO_SCAN_SKIP = new Set(["scan", "watch", "setup", "doctor", "capabilities", "ghosts", "tags", "privacy", "feedback", "telemetry", "completion", "config"]);
+const AUTO_SCAN_SKIP = new Set(["scan", "watch", "setup", "doctor", "capabilities", "ghosts", "tags", "privacy", "feedback", "telemetry", "completion", "config", "login", "whoami", "logout"]);
 
 function skipsAutoScan(command: string, argv: string[]): boolean {
   if (AUTO_SCAN_SKIP.has(command)) return true;
@@ -101,6 +104,9 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   compare: cmdCompare,
   capabilities: cmdCapabilities,
   config: cmdConfig,
+  login: cmdLogin,
+  whoami: cmdWhoami,
+  logout: cmdLogout,
   scan: cmdScan,
   ls: cmdLs,
   list: cmdLs,
@@ -191,6 +197,11 @@ setup and maintenance
   capabilities [--harness x] [--json]   show adapter read, write, and resume support
   ghosts [preview|prune] [...]          preview or prune disposable ghost rows
   relink [--harness x] [--limit n]       rebuild thread lineage from target stores
+
+cloud account (optional)
+  login [--no-open] [--timeout 10m]      sign in through the browser on this device
+  whoami [--json]                        verify and print the current Cloud identity
+  logout [--json]                        revoke and remove this device's Cloud login
 
 support and interfaces
   privacy                                explain local storage and support limits
@@ -285,6 +296,9 @@ const COMMAND_HELP: Record<string, string> = {
   setup: "usage: sinter setup [--yes] [--no-menu]\n\nShows detected local stores. Interactive setup asks before scanning and opening the menu; --yes scans without opening it.",
   privacy: "usage: sinter privacy\n\nExplains local storage, profile limits, and harness support.",
   feedback: "usage: sinter feedback [--title text] [--no-open]\n\nOpens a prefilled GitHub issue with safe diagnostics only.",
+  login: "usage: sinter login [--no-open] [--timeout 10m] [--json]\n\nOpens Sinter Cloud in the browser, waits on a short-lived 127.0.0.1 callback, validates the returned identity, and stores credentials in macOS Keychain (or an owner-only file when no native credential store is available). It does not upload sessions.",
+  whoami: "usage: sinter whoami [--json]\n\nRefreshes the Cloud session when needed and verifies the identity with Sinter Cloud. It never scans local sessions.",
+  logout: "usage: sinter logout [--json]\n\nRevokes the current Cloud session when reachable, then removes the local credential even if the network is unavailable.",
   telemetry: "usage: sinter telemetry [status|enable|disable] [--endpoint https://…]\n\nOpt-in anonymous active-use measurement. CI and non-interactive commands never emit events.",
   gui: "usage: sinter gui [--port n] [--no-open]\n\nRuns a token-protected workspace on 127.0.0.1; transcripts never leave this machine.",
   completion: "usage: sinter completion <zsh|bash|fish>\n\nPrints a native completion script to stdout; does not modify shell configuration.",
@@ -420,7 +434,8 @@ export async function main(argv: string[] = Bun.argv.slice(2)): Promise<number> 
     (["help", "--help", "-h", "--version", "-v", "version", "completion"].includes(command) ||
       (command === "config" && ["path", "example"].includes(argv[1] ?? "show")));
   const helpRequested = argv.includes("--help") || argv.includes("-h");
-  const operational = (!command || Boolean(COMMANDS[command])) && !informational && !helpRequested;
+  const accountOnly = command !== undefined && ["login", "whoami", "logout"].includes(command);
+  const operational = (!command || Boolean(COMMANDS[command])) && !informational && !helpRequested && !accountOnly;
   let bootstrap: ReturnType<typeof bootstrapDefaultConfig> | undefined;
   try {
     if (operational) {

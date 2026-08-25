@@ -55,6 +55,9 @@ sinter port <id-prefix> --to omp
 sinter resume <id-prefix> --in omp --exec
 sinter receive --to claude@work --advertise 100.64.0.12
 sinter send <id-prefix> --to 'sinter://transfer/v1?...'
+sinter login                    # optional Sinter Cloud browser login
+sinter whoami                   # verify the current Cloud identity
+sinter logout                   # revoke and remove this device's login
 sinter feedback
 sinter gui
 ```
@@ -172,6 +175,27 @@ Select exact stores with `claude@personal:<id>` and targets with
 `--to claude@work`. Legacy one-store profiles continue to use the `default`
 instance. Requested results and machine data are written to stdout; notices
 and errors use stderr, and failures return a non-zero exit code.
+
+## Optional Cloud account
+
+The `0.4.0` development CLI can authenticate without changing local-first
+behavior:
+
+```sh
+sinter login
+sinter whoami
+sinter logout
+```
+
+Login opens `sinter-cloud.vercel.app`, waits on a random short-lived
+`127.0.0.1` callback, validates the returned identity, and stores the session
+in macOS Keychain. On platforms without a native credential-store
+implementation, Sinter uses an owner-only file. `--no-open` prints the URL for
+manual browser launch, and `--json` keeps the final result machine-readable.
+
+These commands do not scan local stores, create profile configuration, or
+upload sessions. Encrypted Cloud push/pull and device enrollment remain later
+milestones.
 
 ## Direct device transfer
 

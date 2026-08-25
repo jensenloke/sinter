@@ -3,7 +3,21 @@
 import { useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export function LoginCard() {
+interface LoginCardProps {
+  eyebrow?: string;
+  heading?: string;
+  description?: string;
+  fine?: string;
+  redirectPath?: string;
+}
+
+export function LoginCard({
+  eyebrow = "DEVELOPMENT ACCESS",
+  heading = "Open your private library",
+  description = "Use a one-time email link. No password is stored by Sinter.",
+  fine = "Authentication only. Session upload is intentionally unavailable.",
+  redirectPath = "/auth/callback",
+}: LoginCardProps = {}) {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -14,7 +28,7 @@ export function LoginCard() {
     setMessage("");
     try {
       const supabase = createClient();
-      const redirectTo = `${window.location.origin}/auth/callback`;
+      const redirectTo = `${window.location.origin}${redirectPath}`;
       const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
       if (error) throw error;
       setMessage("Check your email for a one-time sign-in link.");
@@ -27,16 +41,16 @@ export function LoginCard() {
 
   return (
     <aside className="card">
-      <p className="card-label">DEVELOPMENT ACCESS</p>
-      <h2>Open your private library</h2>
-      <p>Use a one-time email link. No password is stored by Sinter.</p>
+      <p className="card-label">{eyebrow}</p>
+      <h2>{heading}</h2>
+      <p>{description}</p>
       <form onSubmit={submit}>
         <label htmlFor="email">Email address</label>
         <input id="email" type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />
         <button disabled={busy}>{busy ? "Sending…" : "Send sign-in link"}</button>
       </form>
       {message && <p className="message" role="status">{message}</p>}
-      <p className="fine">Authentication only. Session upload is intentionally unavailable.</p>
+      <p className="fine">{fine}</p>
     </aside>
   );
 }

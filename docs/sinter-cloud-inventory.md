@@ -277,7 +277,9 @@ availability guarantee.
 
 ### C3 — CLI private alpha
 
-- [ ] Add `sinter login`, `logout`, `whoami`, and `devices`.
+- [x] Add browser-loopback `sinter login`, verified `whoami`, and revoking
+  `logout`, with macOS Keychain storage and an owner-only fallback.
+- [ ] Add device register, rename, list, and revoke commands.
 - [ ] Add explicit `cloud push`, `cloud ls`, `cloud inspect`, and `cloud pull`;
   do not overload local `scan` or silently sync.
 - [ ] Preserve qualified `(harness, instance, native-id)` provenance locally
@@ -305,15 +307,16 @@ current deployment stores no session content and cannot run agents.
 
 ## Open decisions
 
-1. Loopback PKCE only for the CLI prototype, or implement headless device
-   approval in C1?
+1. When should headless device approval supplement the implemented browser
+   loopback flow?
 2. No-recovery alpha, or a user-held printable recovery key before real data?
 3. Maximum synthetic capsule size for C2 and the initial free allowance?
 4. When should a separate production project be created?
 
 Resolved for the development foundation: Next.js on Vercel, email magic link
-first, and a Singapore Supabase region. Additional providers are intentionally
-deferred.
+first, a Singapore Supabase region, and browser-to-`127.0.0.1` CLI login with a
+signed ten-minute flow cookie and state-bound POST. Additional providers and
+headless approval are intentionally deferred.
 
 ## Recommended immediate checkpoint
 

@@ -9,6 +9,9 @@ describe("shell completions", () => {
     expect(script).toContain("port");
     expect(script).toContain("compare");
     expect(script).toContain("feedback");
+    expect(script).toContain("login");
+    expect(script).toContain("whoami");
+    expect(script).toContain("logout");
     expect(script).toContain("gui");
     expect(script).toContain("recent");
     expect(script).toContain("watch");

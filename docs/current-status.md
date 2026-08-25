@@ -9,11 +9,13 @@ operations.
 
 ## Release state
 
-- Current CLI version: `0.3.1`.
+- Development CLI version on `docs/sinter-cloud-inventory`: `0.4.0`.
+- Latest published CLI version: `0.3.1`.
 - npm package: `@jensenloke/sinter@0.3.1`.
 - npm `latest`: `0.3.1`, publicly verified after publication.
-- Both the globally resolved npm executable and Bun's global executable were
-  verified at version `0.3.1`.
+- The executable currently resolved on `PATH` is the locally installed,
+  unpublished `0.4.0` development build at `/opt/homebrew/bin/sinter`. Bun's
+  separate global executable remains the published `0.3.1` build.
 - Release notes: [releases/v0.3.1.md](releases/v0.3.1.md).
 - Release commit: `f805f3e feat: bootstrap multi-instance profiles`.
 - npm `0.3.1` is already published and cannot be republished. Any correction
@@ -45,9 +47,9 @@ operations.
   Vercel Hobby project.
 - One free Supabase development project runs in Singapore. It uses the
   publishable-key model, and legacy JWT API keys are disabled.
-- Supabase Auth accepts the stable Vercel callback and the explicit localhost
-  development callback. Email magic-link login, callback exchange, protected
-  dashboard, and sign-out are implemented.
+- Supabase Auth accepts the stable web callback, the exact CLI-flow callback,
+  and the explicit localhost development callback. Email magic-link login,
+  callback exchange, protected dashboard, and sign-out are implemented.
 - The `profiles` and `devices` migrations are applied to hosted development.
   Nine identity assertions prove own-row access and cross-user denial; three
   more verify the keepalive RPC's narrow privileges and execution.
@@ -58,6 +60,17 @@ operations.
 - Real session/capsule uploads, Storage, Realtime, Edge Runtime, Analytics,
   billing, and cloud agent execution remain disabled or absent. No real session
   content has been uploaded.
+- The `0.4.0` development CLI adds browser-loopback `sinter login`, verified
+  `whoami`, and revoking `logout`. macOS stores the credential in Keychain;
+  other platforms currently use an owner-only file. These account commands do
+  not scan sessions, create profile configuration, or enable uploads.
+- The Cloud UI now uses an original five-cell sintered-mineral mark with
+  transparent 512, 192, and 32 px assets. The raster concept should be traced
+  and optically refined before final trademark use.
+- Development verification: 664 tests, 8,899 assertions, both TypeScript
+  checks, both production builds, npm package inspection, isolated Bun/npm
+  installs, live endpoint rejection checks, and a successful Vercel production
+  deployment. A human magic-link round trip remains the immediate manual test.
 - Linked-provider state and `.env` files are ignored. The database password is
   held in the maintainer machine's credential store, not in the repository.
 

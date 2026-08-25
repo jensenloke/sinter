@@ -44,6 +44,7 @@ import { PROJECTS_SCHEMA, projectSummaries } from "./projects";
 import { renderSupportReport, supportPlatform, type SupportHarnessStatus } from "./support-report";
 import { applyTransfer, fmtBytes, TRANSFER_MODES, type TransferMode } from "./transfer";
 import { sendTransfer, startTransferReceiver, type ReceivedTransfer } from "./network";
+import { createCloudAuthService, type CloudAuthService } from "./cloud-auth";
 
 export interface Ctx {
   registry: AdapterRegistry;
@@ -73,6 +74,8 @@ export interface Ctx {
   /** Terminal capabilities and delay are injectable so long-running commands stay testable. */
   interactive?: boolean;
   sleep?: (ms: number) => Promise<void>;
+  /** Cloud auth is injectable so command tests never open browsers or touch OS credentials. */
+  cloudAuth?: CloudAuthService;
 }
 
 // ------------------------------------------------------------------ helpers
@@ -1772,6 +1775,9 @@ export async function cmdPrivacy(argv: string[], ctx: Ctx): Promise<number> {
   ctx.out("  telemetry: disabled unless you explicitly run `sinter telemetry enable`");
   ctx.out("    events contain a random installation id, version, OS/architecture, event name, and time only");
   ctx.out("    CI and non-interactive commands never emit telemetry; disable with `sinter telemetry disable`");
+  ctx.out("  Cloud login: optional; `sinter login` stores access credentials in macOS Keychain");
+  ctx.out("    other platforms currently use an owner-only file; login does not upload transcripts");
+  ctx.out("    inspect with `sinter whoami`; revoke and remove with `sinter logout`");
   if (ctx.profile) {
     ctx.out(`  profile: ${ctx.profile.name} (${ctx.profile.configPath})`);
     for (const [harness, path] of Object.entries(ctx.profile.stores)) ctx.out(`  ${harness}: ${path}`);
@@ -1974,6 +1980,73 @@ export async function cmdFeedback(argv: string[], ctx: Ctx): Promise<number> {
   }
   ctx.out("Open this URL to send feedback:");
   ctx.out(url);
+  return EXIT.OK;
+}
+
+function cloudLoginTimeout(value: string | undefined) {
+  const input = value ?? "10m";
+  const match = /^(\d+(?:\.\d+)?)\s*(s|m)$/i.exec(input.trim());
+  if (!match) throw new CliError(`bad --timeout: ${input} (try 10m or 90s)`);
+  const ms = Number(match[1]) * (match[2]!.toLowerCase() === "m" ? 60_000 : 1_000);
+  if (!Number.isFinite(ms) || ms < 30_000 || ms > 15 * 60_000)
+    throw new CliError("--timeout must be between 30s and 15m");
+  return Math.floor(ms);
+}
+
+function cloudAuth(ctx: Ctx) {
+  return ctx.cloudAuth ?? createCloudAuthService();
+}
+
+export async function cmdLogin(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { strings: ["timeout"], booleans: ["no-open", "json"] });
+  if (args._.length) throw new CliError("usage: sinter login [--no-open] [--timeout 10m] [--json]");
+  const result = await cloudAuth(ctx).login({
+    timeoutMs: cloudLoginTimeout(flagString(args, "timeout")),
+    openBrowser: !flagBool(args, "no-open"),
+    onUrl: (url) => {
+      ctx.err(flagBool(args, "no-open") ? "Open this URL to sign in:" : "Waiting for browser sign-in. If it did not open, use:");
+      ctx.err(url);
+    },
+  });
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify({ schema: "sinter.cloud.login.v1", ok: true, user: result.user, storage: result.storage }));
+  } else {
+    ctx.out(`Logged in to Sinter Cloud as ${result.user.email ?? result.user.id}.`);
+    ctx.out(ctx.pal.dim(`credentials: ${result.storage}`));
+  }
+  return EXIT.OK;
+}
+
+export async function cmdWhoami(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { booleans: ["json"] });
+  if (args._.length) throw new CliError("usage: sinter whoami [--json]");
+  const result = await cloudAuth(ctx).whoami();
+  if (!result) {
+    if (flagBool(args, "json")) ctx.out(JSON.stringify({ schema: "sinter.cloud.identity.v1", ok: false, loggedIn: false }));
+    else ctx.err("Not logged in. Run `sinter login`.");
+    return EXIT.ERROR;
+  }
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify({ schema: "sinter.cloud.identity.v1", ok: true, loggedIn: true, user: result.user, storage: result.storage }));
+  } else {
+    ctx.out(result.user.email ?? result.user.id);
+    ctx.out(ctx.pal.dim(`credentials: ${result.storage}`));
+  }
+  return EXIT.OK;
+}
+
+export async function cmdLogout(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { booleans: ["json"] });
+  if (args._.length) throw new CliError("usage: sinter logout [--json]");
+  const result = await cloudAuth(ctx).logout();
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify({ schema: "sinter.cloud.logout.v1", ok: true, ...result }));
+  } else if (!result.hadSession) {
+    ctx.out("Already logged out.");
+  } else {
+    ctx.out("Logged out of Sinter Cloud on this device.");
+    if (!result.revoked) ctx.err("The local credential was removed, but remote revocation could not be confirmed.");
+  }
   return EXIT.OK;
 }
 

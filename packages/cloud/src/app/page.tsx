@@ -1,10 +1,11 @@
 import { LoginCard } from "./login-card";
+import { Brand } from "./brand";
 
 export default function Home() {
   return (
     <main className="shell">
       <nav className="nav">
-        <div className="brand"><span className="mark">S</span>Sinter Cloud</div>
+        <Brand />
         <span className="status"><i />Private development preview</span>
       </nav>
       <section className="hero">

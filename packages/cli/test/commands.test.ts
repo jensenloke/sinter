@@ -133,6 +133,27 @@ describe("CLI conventions", () => {
     expect(h.out()).toContain("ChatGPT.app / Codex desktop: future work");
   });
 
+  test("documents optional Cloud account commands", async () => {
+    expect(await run(["login", "--help"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("macOS Keychain");
+    h.stdout.length = 0;
+    expect(await run(["whoami", "--help"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("never scans local sessions");
+  });
+
+  test("reports Cloud identity and logout through an injected credential service", async () => {
+    h.ctx.cloudAuth = {
+      login: async () => ({ user: { id: "user-1", email: "jensen@example.test" }, storage: "test keychain" }),
+      whoami: async () => ({ user: { id: "user-1", email: "jensen@example.test" }, storage: "test keychain" }),
+      logout: async () => ({ hadSession: true, revoked: true }),
+    };
+    expect(await run(["whoami", "--json"], h.ctx)).toBe(0);
+    expect(JSON.parse(h.out())).toMatchObject({ ok: true, loggedIn: true, user: { email: "jensen@example.test" } });
+    h.stdout.length = 0;
+    expect(await run(["logout"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("Logged out");
+  });
+
   test("loads named, harness-root profiles", () => {
     const dir = mkdtempSync(join(tmpdir(), "sinter-profile-"));
     const config = join(dir, "config.toml");
