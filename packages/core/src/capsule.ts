@@ -7,16 +7,22 @@ import {
 import { validateSession } from "./util";
 import type { HarnessId, SifSession } from "./sif";
 
-/** C2 is local-only and synthetic-only. These limits are provisional. */
+/** C2 is local-only and synthetic-only. Payload ciphertext length remains intentionally observable. */
 export const CAPSULE_MAX_COMBINED_CIPHERTEXT_BYTES = 16 * 1024 * 1024;
 export const CAPSULE_MAX_RECIPIENTS = 32;
-export const CAPSULE_MAX_MANIFEST_PLAINTEXT_BYTES = 64 * 1024;
+export const CAPSULE_MANIFEST_PADDED_BYTES = 4 * 1024;
+export const CAPSULE_MANIFEST_CIPHERTEXT_BYTES = CAPSULE_MANIFEST_PADDED_BYTES + 16;
+export const CAPSULE_MAX_MANIFEST_TITLE_BYTES = 1024;
+export const CAPSULE_MAX_LINEAGE_THREAD_ID_BYTES = 1024;
 export const CAPSULE_MAX_SERIALIZED_BYTES = 24 * 1024 * 1024;
+export const CAPSULE_MEMORY_REPLAY_MAX_ENTRIES = 4096;
 
 export const CAPSULE_SCHEMA = "sinter.capsule.v1" as const;
 export const CAPSULE_HEADER_SCHEMA = "sinter.capsule.header.v1" as const;
 export const CAPSULE_PART_SCHEMA = "sinter.capsule.part.v1" as const;
 export const CAPSULE_RECIPIENT_SCHEMA = "sinter.capsule.recipient.v1" as const;
+export const CAPSULE_SENDER_SCHEMA = "sinter.capsule.sender.v1" as const;
+export const CAPSULE_SIGNATURE_INPUT_SCHEMA = "sinter.capsule.signature-input.v1" as const;
 export const CAPSULE_MANIFEST_SCHEMA = "sinter.capsule.manifest.v1" as const;
 export const CAPSULE_LINEAGE_SCHEMA = "sinter.capsule.lineage-hint.v1" as const;
 export const CAPSULE_PAYLOAD_SCHEMA = "sinter.capsule.synthetic-sif.v1" as const;
@@ -72,9 +78,17 @@ export interface CapsuleRecipientEnvelope {
   wrappedKey: string;
 }
 
+export interface CapsuleSenderBlock {
+  schema: typeof CAPSULE_SENDER_SCHEMA;
+  fingerprint: string;
+  encryptionPublicKey: P256PublicJwk;
+  signature: string;
+}
+
 export interface SyntheticCapsule {
   schema: typeof CAPSULE_SCHEMA;
   header: CapsuleStaticHeader;
+  sender: CapsuleSenderBlock;
   manifest: CapsuleCiphertextPart & { kind: "manifest" };
   payload: CapsuleCiphertextPart & { kind: "payload" };
   recipients: CapsuleRecipientEnvelope[];
@@ -106,23 +120,26 @@ export interface CapsuleRecipientIdentity {
   fingerprint?: string;
 }
 
+export interface CapsuleSenderIdentity {
+  encryptionPublicKey: JsonWebKey;
+  signingPublicKey: JsonWebKey;
+  signingPrivateKey: JsonWebKey;
+  /** If supplied, it must match the Phase 1 identity fingerprint. */
+  fingerprint?: string;
+}
+
 export interface CreateSyntheticCapsuleInput {
   manifest: CapsuleManifest;
   payload: SyntheticCapsulePayload;
+  sender: CapsuleSenderIdentity;
   recipients: readonly CapsuleRecipientIdentity[];
-}
-
-/** Explicitly test-only injection points. Normal callers omit this argument. */
-export interface CapsuleTestOverrides {
-  randomBytes?: (length: number) => Uint8Array;
-  now?: () => Date;
-  capsuleId?: string;
-  hpkeEphemeralKeyMaterial?: (fingerprint: string, index: number) => Uint8Array;
 }
 
 export interface CapsuleDecryptionIdentity {
   fingerprint: string;
   encryptionPrivateKey: JsonWebKey;
+  expectedSenderFingerprint: string;
+  senderSigningPublicKey: JsonWebKey;
 }
 
 export interface CapsuleReplayGuard {
@@ -153,11 +170,17 @@ export class CapsuleReplayError extends Error {
   }
 }
 
+/** Process-local, nonpersistent replay protection with bounded FIFO eviction. */
 export class MemoryCapsuleReplayGuard implements CapsuleReplayGuard {
   private readonly accepted = new Set<string>();
 
+  constructor(private readonly maxEntries = CAPSULE_MEMORY_REPLAY_MAX_ENTRIES) {
+    if (!Number.isSafeInteger(maxEntries) || maxEntries < 1) invalid("Replay guard maximum must be a positive safe integer");
+  }
+
   accept(replayKey: string): boolean {
     if (this.accepted.has(replayKey)) return false;
+    if (this.accepted.size >= this.maxEntries) this.accepted.delete(this.accepted.values().next().value!);
     this.accepted.add(replayKey);
     return true;
   }
@@ -187,7 +210,7 @@ function validateUnicode(value: string, label: string): void {
     const unit = value.charCodeAt(i);
     if (unit >= 0xd800 && unit <= 0xdbff) {
       const next = value.charCodeAt(i + 1);
-      if (next < 0xdc00 || next > 0xdfff) invalid(`${label} contains an unpaired surrogate`);
+      if (!Number.isFinite(next) || next < 0xdc00 || next > 0xdfff) invalid(`${label} contains an unpaired surrogate`);
       i += 1;
     } else if (unit >= 0xdc00 && unit <= 0xdfff) {
       invalid(`${label} contains an unpaired surrogate`);
@@ -201,7 +224,8 @@ function stringValue(value: unknown, label: string, min = 1, max = 4096): string
   return value;
 }
 
-function canonicalValue(value: unknown, seen: Set<object>): string {
+function canonicalValue(value: unknown, seen: Set<object>, depth = 0): string {
+  if (depth > 64) invalid("Canonical JSON is nested too deeply");
   if (value === null) return "null";
   if (typeof value === "string") {
     validateUnicode(value, "Canonical JSON string");
@@ -216,11 +240,11 @@ function canonicalValue(value: unknown, seen: Set<object>): string {
   if (seen.has(value)) invalid("Canonical JSON cannot contain a cycle");
   seen.add(value);
   try {
-    if (Array.isArray(value)) return `[${value.map((item) => canonicalValue(item, seen)).join(",")}]`;
+    if (Array.isArray(value)) return `[${value.map((item) => canonicalValue(item, seen, depth + 1)).join(",")}]`;
     const object = objectValue(value, "Canonical JSON value");
     return `{${Object.keys(object).sort().map((key) => {
       validateUnicode(key, "Canonical JSON key");
-      return `${JSON.stringify(key)}:${canonicalValue(object[key], seen)}`;
+      return `${JSON.stringify(key)}:${canonicalValue(object[key], seen, depth + 1)}`;
     }).join(",")}}`;
   } finally {
     seen.delete(value);
@@ -266,7 +290,7 @@ function canonicalTimestamp(value: unknown, label: string): string {
 
 function fingerprintValue(value: unknown): string {
   if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
-    invalid("Recipient fingerprint must be lowercase hexadecimal SHA-256");
+    invalid("Identity fingerprint must be lowercase hexadecimal SHA-256");
   }
   return value;
 }
@@ -298,7 +322,9 @@ function normalizeJwkShape(value: unknown, purpose: "encryption" | "signing", pr
     }
     const operations = jwk.key_ops as string[];
     const valid = privateKey
-      ? purpose === "encryption" && operations.length > 0 && operations.every((op) => op === "deriveBits" || op === "deriveKey") && new Set(operations).size === operations.length
+      ? purpose === "encryption"
+        ? operations.length > 0 && operations.every((op) => op === "deriveBits" || op === "deriveKey") && new Set(operations).size === operations.length
+        : operations.length === 1 && operations[0] === "sign"
       : purpose === "encryption" ? operations.length === 0 : operations.length === 1 && operations[0] === "verify";
     if (!valid) invalid(`${label} has invalid key operations`);
   }
@@ -332,6 +358,20 @@ export async function normalizeP256EncryptionPrivateJwk(value: unknown): Promise
   return normalized;
 }
 
+async function normalizeP256SigningPrivateJwk(value: unknown): Promise<P256PrivateJwk> {
+  const normalized = normalizeJwkShape(value, "signing", true) as P256PrivateJwk;
+  try {
+    await crypto.subtle.importKey("jwk", normalized, { name: "ECDSA", namedCurve: "P-256" }, true, ["sign"]);
+  } catch {
+    invalid("Signing private key is not usable P-256 key material");
+  }
+  return normalized;
+}
+
+function assertDistinctPublicPoints(encryption: P256PublicJwk, signing: P256PublicJwk): void {
+  if (encryption.x === signing.x && encryption.y === signing.y) invalid("Encryption and signing public points must be distinct");
+}
+
 /** Phase 1 contract: SHA-256 lowercase hex over the canonical minimal public identity. */
 export async function capsuleRecipientFingerprint(
   encryptionPublicKey: JsonWebKey,
@@ -339,6 +379,7 @@ export async function capsuleRecipientFingerprint(
 ): Promise<string> {
   const encryption = await normalizeP256PublicJwk(encryptionPublicKey, "encryption");
   const signing = await normalizeP256PublicJwk(signingPublicKey, "signing");
+  assertDistinctPublicPoints(encryption, signing);
   return sha256Hex(encoder.encode(canonicalCapsuleJson({
     encryptionPublicKey: encryption,
     signingPublicKey: signing,
@@ -412,6 +453,12 @@ function validateJsonValue(value: unknown, label: string, seen = new Set<object>
 
 function optionalString(value: unknown, label: string, max = 4096): void {
   if (value !== undefined) stringValue(value, label, 1, max);
+}
+
+function utf8BoundedString(value: unknown, label: string, maxBytes: number): string {
+  const text = stringValue(value, label, 1, maxBytes);
+  if (encoder.encode(text).length > maxBytes) invalid(`${label} exceeds its UTF-8 byte limit`);
+  return text;
 }
 
 function validateUsage(value: unknown, label: string): void {
@@ -576,7 +623,7 @@ function validateManifest(value: unknown): CapsuleManifest {
   exactKeys(manifest, ["schema", "title", "harness", "lineage"], "Capsule manifest");
   if (manifest.schema !== CAPSULE_MANIFEST_SCHEMA) invalid("Unsupported capsule manifest schema");
   const result: CapsuleManifest = { schema: CAPSULE_MANIFEST_SCHEMA };
-  if (manifest.title !== undefined) result.title = stringValue(manifest.title, "Capsule manifest title", 1, 1024);
+  if (manifest.title !== undefined) result.title = utf8BoundedString(manifest.title, "Capsule manifest title", CAPSULE_MAX_MANIFEST_TITLE_BYTES);
   if (manifest.harness !== undefined) {
     if (!harnesses.has(manifest.harness as HarnessId)) invalid("Capsule manifest harness is invalid");
     result.harness = manifest.harness as HarnessId;
@@ -588,7 +635,7 @@ function validateManifest(value: unknown): CapsuleManifest {
     if (!Number.isSafeInteger(lineage.hop) || (lineage.hop as number) < 0) invalid("Capsule manifest lineage hop is invalid");
     result.lineage = {
       schema: CAPSULE_LINEAGE_SCHEMA,
-      threadId: stringValue(lineage.threadId, "Capsule manifest lineage threadId"),
+      threadId: utf8BoundedString(lineage.threadId, "Capsule manifest lineage threadId", CAPSULE_MAX_LINEAGE_THREAD_ID_BYTES),
       hop: lineage.hop as number,
     };
   }
@@ -603,10 +650,8 @@ function validatePayload(value: unknown): SyntheticCapsulePayload {
   return { schema: CAPSULE_PAYLOAD_SCHEMA, synthetic: true, sif: payload.sif };
 }
 
-function secureRandomBytes(length: number, source?: (length: number) => Uint8Array): Uint8Array {
-  const bytes = source ? source(length) : crypto.getRandomValues(new Uint8Array(length));
-  if (!(bytes instanceof Uint8Array) || bytes.length !== length) invalid(`Random byte source must return exactly ${length} bytes`);
-  return new Uint8Array(bytes);
+function secureRandomBytes(length: number): Uint8Array {
+  return crypto.getRandomValues(new Uint8Array(length));
 }
 
 async function preparedRecipients(recipients: readonly CapsuleRecipientIdentity[]): Promise<Array<{
@@ -631,6 +676,28 @@ async function preparedRecipients(recipients: readonly CapsuleRecipientIdentity[
   return prepared;
 }
 
+async function preparedSender(value: CapsuleSenderIdentity): Promise<{
+  fingerprint: string;
+  encryptionPublicKey: P256PublicJwk;
+  signingPublicKey: P256PublicJwk;
+  signingPrivateKey: P256PrivateJwk;
+}> {
+  const sender = objectValue(value, "Sender");
+  exactKeys(sender, ["encryptionPublicKey", "signingPublicKey", "signingPrivateKey", "fingerprint"], "Sender");
+  const encryptionPublicKey = await normalizeP256PublicJwk(sender.encryptionPublicKey, "encryption");
+  const signingPublicKey = await normalizeP256PublicJwk(sender.signingPublicKey, "signing");
+  assertDistinctPublicPoints(encryptionPublicKey, signingPublicKey);
+  const signingPrivateKey = await normalizeP256SigningPrivateJwk(sender.signingPrivateKey);
+  if (signingPrivateKey.x !== signingPublicKey.x || signingPrivateKey.y !== signingPublicKey.y) {
+    invalid("Sender signing private key does not match its signing public key");
+  }
+  const fingerprint = await capsuleRecipientFingerprint(encryptionPublicKey, signingPublicKey);
+  if (sender.fingerprint !== undefined && fingerprintValue(sender.fingerprint) !== fingerprint) {
+    invalid("Sender fingerprint does not match its public identity");
+  }
+  return { fingerprint, encryptionPublicKey, signingPublicKey, signingPrivateKey };
+}
+
 async function encryptPart(
   kind: "manifest" | "payload",
   plaintext: Uint8Array,
@@ -650,30 +717,60 @@ async function encryptPart(
   };
 }
 
-export async function createSyntheticCapsule(
-  input: CreateSyntheticCapsuleInput,
-  unsafeTestOnly: CapsuleTestOverrides = {},
-): Promise<SyntheticCapsule> {
+function signaturePartMetadata(part: CapsuleCiphertextPart): Omit<CapsuleCiphertextPart, "ciphertext"> {
+  return {
+    schema: part.schema,
+    kind: part.kind,
+    nonce: part.nonce,
+    ciphertextBytes: part.ciphertextBytes,
+    ciphertextSha256: part.ciphertextSha256,
+  };
+}
+
+/** Canonical signed bytes bind sender identity, static header, part metadata, and exact sorted membership. */
+export function capsuleSignatureInput(capsule: Pick<SyntheticCapsule, "header" | "sender" | "manifest" | "payload" | "recipients">): Uint8Array {
+  return encoder.encode(canonicalCapsuleJson({
+    schema: CAPSULE_SIGNATURE_INPUT_SCHEMA,
+    sender: {
+      schema: capsule.sender.schema,
+      fingerprint: capsule.sender.fingerprint,
+      encryptionPublicKey: capsule.sender.encryptionPublicKey,
+    },
+    header: capsule.header,
+    manifest: signaturePartMetadata(capsule.manifest),
+    payload: signaturePartMetadata(capsule.payload),
+    recipientFingerprints: capsule.recipients.map((recipient) => recipient.fingerprint),
+  }));
+}
+
+function paddedManifestPlaintext(manifest: CapsuleManifest): Uint8Array {
+  const json = encoder.encode(canonicalCapsuleJson(manifest));
+  if (json.length > CAPSULE_MANIFEST_PADDED_BYTES - 4) invalid("Capsule manifest exceeds its padded envelope");
+  const padded = secureRandomBytes(CAPSULE_MANIFEST_PADDED_BYTES);
+  new DataView(padded.buffer, padded.byteOffset, padded.byteLength).setUint32(0, json.length);
+  padded.set(json, 4);
+  return padded;
+}
+
+export async function createSyntheticCapsule(input: CreateSyntheticCapsuleInput): Promise<SyntheticCapsule> {
   const manifest = validateManifest(input.manifest);
   const payload = validatePayload(input.payload);
-  const recipients = await preparedRecipients(input.recipients);
-  const createdAt = (unsafeTestOnly.now?.() ?? new Date()).toISOString();
+  const [senderIdentity, recipients] = await Promise.all([preparedSender(input.sender), preparedRecipients(input.recipients)]);
+  const createdAt = new Date().toISOString();
   canonicalTimestamp(createdAt, "Capsule creation time");
-  const capsuleId = unsafeTestOnly.capsuleId ?? base64Url(secureRandomBytes(CAPSULE_ID_BYTES, unsafeTestOnly.randomBytes));
-  decodeBase64Url(capsuleId, "Capsule ID", CAPSULE_ID_BYTES, CAPSULE_ID_BYTES);
+  const capsuleId = base64Url(secureRandomBytes(CAPSULE_ID_BYTES));
   const header: CapsuleStaticHeader = { schema: CAPSULE_HEADER_SCHEMA, capsuleId, createdAt, suite: CAPSULE_SUITE };
 
-  const manifestPlaintext = encoder.encode(canonicalCapsuleJson(manifest));
+  const manifestPlaintext = paddedManifestPlaintext(manifest);
   const payloadPlaintext = encoder.encode(canonicalCapsuleJson(payload));
-  if (manifestPlaintext.length > CAPSULE_MAX_MANIFEST_PLAINTEXT_BYTES) invalid("Capsule manifest plaintext is oversized");
-  if (manifestPlaintext.length + payloadPlaintext.length + 32 > CAPSULE_MAX_COMBINED_CIPHERTEXT_BYTES) {
+  if (CAPSULE_MANIFEST_CIPHERTEXT_BYTES + payloadPlaintext.length + 16 > CAPSULE_MAX_COMBINED_CIPHERTEXT_BYTES) {
     invalid("Capsule combined ciphertext would exceed the provisional limit");
   }
 
-  const cek = secureRandomBytes(CEK_BYTES, unsafeTestOnly.randomBytes);
+  const cek = secureRandomBytes(CEK_BYTES);
   try {
-    const manifestNonce = secureRandomBytes(NONCE_BYTES, unsafeTestOnly.randomBytes);
-    const payloadNonce = secureRandomBytes(NONCE_BYTES, unsafeTestOnly.randomBytes);
+    const manifestNonce = secureRandomBytes(NONCE_BYTES);
+    const payloadNonce = secureRandomBytes(NONCE_BYTES);
     if (equalBytes(manifestNonce, payloadNonce)) invalid("Capsule manifest and payload nonces must be distinct");
     const [manifestPart, payloadPart] = await Promise.all([
       encryptPart("manifest", manifestPlaintext, cek, manifestNonce, header),
@@ -681,33 +778,47 @@ export async function createSyntheticCapsule(
     ]);
 
     const envelopes: CapsuleRecipientEnvelope[] = [];
-    for (let index = 0; index < recipients.length; index += 1) {
-      const recipient = recipients[index]!;
+    for (const recipient of recipients) {
       const publicKey = await suite.kem.importKey("jwk", recipient.encryptionPublicKey, true);
       const aad = capsuleRecipientAad(header, recipient.fingerprint);
-      const ekm = unsafeTestOnly.hpkeEphemeralKeyMaterial?.(recipient.fingerprint, index);
-      if (ekm !== undefined && (!(ekm instanceof Uint8Array) || ekm.length !== 32)) invalid("HPKE test ephemeral material must contain exactly 32 bytes");
-      const sender = await suite.createSenderContext({
-        recipientPublicKey: publicKey,
-        info: aad,
-        ...(ekm === undefined ? {} : { ekm }),
-      });
-      const wrappedKey = new Uint8Array(await sender.seal(cek, aad));
+      const context = await suite.createSenderContext({ recipientPublicKey: publicKey, info: aad });
+      const wrappedKey = new Uint8Array(await context.seal(cek, aad));
       envelopes.push({
         schema: CAPSULE_RECIPIENT_SCHEMA,
         fingerprint: recipient.fingerprint,
-        encapsulation: base64Url(new Uint8Array(sender.enc)),
+        encapsulation: base64Url(new Uint8Array(context.enc)),
         wrappedKey: base64Url(wrappedKey),
       });
     }
 
-    return {
+    const capsule: SyntheticCapsule = {
       schema: CAPSULE_SCHEMA,
       header,
+      sender: {
+        schema: CAPSULE_SENDER_SCHEMA,
+        fingerprint: senderIdentity.fingerprint,
+        encryptionPublicKey: senderIdentity.encryptionPublicKey,
+        signature: "",
+      },
       manifest: manifestPart as SyntheticCapsule["manifest"],
       payload: payloadPart as SyntheticCapsule["payload"],
       recipients: envelopes,
     };
+    const signingKey = await crypto.subtle.importKey(
+      "jwk",
+      senderIdentity.signingPrivateKey,
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["sign"],
+    );
+    const signature = new Uint8Array(await crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" },
+      signingKey,
+      new Uint8Array(capsuleSignatureInput(capsule)),
+    ));
+    if (signature.length !== 64) invalid("Sender signature is not IEEE-P1363 P-256 format");
+    capsule.sender.signature = base64Url(signature);
+    return capsule;
   } finally {
     cek.fill(0);
   }
@@ -721,10 +832,14 @@ function validatePart(value: unknown, expectedKind: "manifest" | "payload"): { p
   if (part.kind !== expectedKind) invalid(`Capsule ${expectedKind} part kind is invalid`);
   const nonce = stringValue(part.nonce, `${label} nonce`, 16, 16);
   decodeBase64Url(nonce, `${label} nonce`, NONCE_BYTES, NONCE_BYTES);
-  if (!Number.isSafeInteger(part.ciphertextBytes) || (part.ciphertextBytes as number) < 16 || (part.ciphertextBytes as number) > CAPSULE_MAX_COMBINED_CIPHERTEXT_BYTES) {
+  const maximum = expectedKind === "manifest" ? CAPSULE_MANIFEST_CIPHERTEXT_BYTES : CAPSULE_MAX_COMBINED_CIPHERTEXT_BYTES;
+  if (!Number.isSafeInteger(part.ciphertextBytes) || (part.ciphertextBytes as number) < 16 || (part.ciphertextBytes as number) > maximum) {
     invalid(`${label} byte count is invalid`);
   }
-  const ciphertext = decodeBase64Url(part.ciphertext, `${label} ciphertext`, 16, CAPSULE_MAX_COMBINED_CIPHERTEXT_BYTES);
+  if (expectedKind === "manifest" && part.ciphertextBytes !== CAPSULE_MANIFEST_CIPHERTEXT_BYTES) {
+    invalid("Capsule manifest ciphertext must use the fixed padded size");
+  }
+  const ciphertext = decodeBase64Url(part.ciphertext, `${label} ciphertext`, 16, maximum);
   if (ciphertext.length !== part.ciphertextBytes) invalid(`${label} byte count does not match its ciphertext`);
   return {
     part: {
@@ -756,13 +871,47 @@ function validateEnvelope(value: unknown, index: number): CapsuleRecipientEnvelo
   };
 }
 
-async function parseCapsuleValue(value: unknown): Promise<{ capsule: SyntheticCapsule; manifestBytes: Uint8Array; payloadBytes: Uint8Array }> {
+async function validateSenderBlock(value: unknown): Promise<{ sender: CapsuleSenderBlock; signatureBytes: Uint8Array }> {
+  const sender = objectValue(value, "Capsule sender");
+  exactKeys(sender, ["schema", "fingerprint", "encryptionPublicKey", "signature"], "Capsule sender");
+  if (sender.schema !== CAPSULE_SENDER_SCHEMA) invalid("Unsupported capsule sender schema");
+  const signature = stringValue(sender.signature, "Capsule sender signature", 86, 86);
+  const signatureBytes = decodeBase64Url(signature, "Capsule sender signature", 64, 64);
+  return {
+    sender: {
+      schema: CAPSULE_SENDER_SCHEMA,
+      fingerprint: fingerprintValue(sender.fingerprint),
+      encryptionPublicKey: await normalizeP256PublicJwk(sender.encryptionPublicKey, "encryption"),
+      signature,
+    },
+    signatureBytes,
+  };
+}
+
+type ParsedCapsule = {
+  capsule: SyntheticCapsule;
+  manifestBytes: Uint8Array;
+  payloadBytes: Uint8Array;
+  signatureBytes: Uint8Array;
+};
+
+async function parseCapsuleValue(
+  value: unknown,
+  enforceCanonicalRecipientOrder = true,
+  serializedBudgetChecked = false,
+): Promise<ParsedCapsule> {
+  if (!serializedBudgetChecked) {
+    const serializedEquivalent = encoder.encode(canonicalCapsuleJson(value)).length;
+    if (serializedEquivalent > CAPSULE_MAX_SERIALIZED_BYTES) invalid("Capsule object exceeds its serialized-equivalent budget");
+  }
   const capsule = objectValue(value, "Capsule");
-  exactKeys(capsule, ["schema", "header", "manifest", "payload", "recipients"], "Capsule");
+  exactKeys(capsule, ["schema", "header", "sender", "manifest", "payload", "recipients"], "Capsule");
   if (capsule.schema !== CAPSULE_SCHEMA) invalid("Unsupported capsule schema");
   const header = validateHeader(capsule.header);
+  const sender = await validateSenderBlock(capsule.sender);
   const manifest = validatePart(capsule.manifest, "manifest");
   const payload = validatePart(capsule.payload, "payload");
+  if (manifest.part.nonce === payload.part.nonce) invalid("Capsule manifest and payload nonces must be distinct");
   if (manifest.bytes.length + payload.bytes.length > CAPSULE_MAX_COMBINED_CIPHERTEXT_BYTES) invalid("Capsule combined ciphertext is oversized");
   if (!Array.isArray(capsule.recipients) || capsule.recipients.length < 1) invalid("Capsule has no recipient envelopes");
   if (capsule.recipients.length > CAPSULE_MAX_RECIPIENTS) invalid("Capsule has too many recipient envelopes");
@@ -770,8 +919,11 @@ async function parseCapsuleValue(value: unknown): Promise<{ capsule: SyntheticCa
   for (let index = 1; index < recipients.length; index += 1) {
     const order = compareFingerprints(recipients[index - 1]!.fingerprint, recipients[index]!.fingerprint);
     if (order === 0) invalid("Capsule contains duplicate recipient fingerprints");
-    if (order > 0) invalid("Capsule recipient envelopes are not canonically sorted");
+    if (enforceCanonicalRecipientOrder && order > 0) invalid("Capsule recipient envelopes are not canonically sorted");
   }
+  const decodedBytes = manifest.bytes.length + payload.bytes.length + sender.signatureBytes.length
+    + recipients.length * (HPKE_ENCAPSULATION_BYTES + HPKE_WRAPPED_CEK_BYTES);
+  if (decodedBytes > CAPSULE_MAX_SERIALIZED_BYTES) invalid("Capsule object exceeds its decoded-byte budget");
   const [manifestHash, payloadHash] = await Promise.all([sha256Hex(manifest.bytes), sha256Hex(payload.bytes)]);
   if (manifestHash !== manifest.part.ciphertextSha256) invalid("Capsule manifest ciphertext hash mismatch");
   if (payloadHash !== payload.part.ciphertextSha256) invalid("Capsule payload ciphertext hash mismatch");
@@ -779,26 +931,32 @@ async function parseCapsuleValue(value: unknown): Promise<{ capsule: SyntheticCa
     capsule: {
       schema: CAPSULE_SCHEMA,
       header,
+      sender: sender.sender,
       manifest: manifest.part as SyntheticCapsule["manifest"],
       payload: payload.part as SyntheticCapsule["payload"],
       recipients,
     },
     manifestBytes: manifest.bytes,
     payloadBytes: payload.bytes,
+    signatureBytes: sender.signatureBytes,
   };
 }
 
-export async function parseSyntheticCapsule(value: string | unknown): Promise<SyntheticCapsule> {
-  let parsed = value;
-  if (typeof value === "string") {
-    if (Buffer.byteLength(value, "utf8") > CAPSULE_MAX_SERIALIZED_BYTES) invalid("Serialized capsule is oversized");
-    try {
-      parsed = JSON.parse(value);
-    } catch {
-      invalid("Serialized capsule is malformed JSON");
-    }
+async function parseCapsuleInput(value: string | unknown, enforceCanonicalRecipientOrder = true): Promise<ParsedCapsule> {
+  if (typeof value !== "string") return parseCapsuleValue(value, enforceCanonicalRecipientOrder);
+  if (Buffer.byteLength(value, "utf8") > CAPSULE_MAX_SERIALIZED_BYTES) invalid("Serialized capsule is oversized");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    invalid("Serialized capsule is malformed JSON");
   }
-  return (await parseCapsuleValue(parsed)).capsule;
+  if (canonicalCapsuleJson(parsed) !== value) invalid("Serialized capsule is not canonical JSON");
+  return parseCapsuleValue(parsed, enforceCanonicalRecipientOrder, true);
+}
+
+export async function parseSyntheticCapsule(value: string | unknown): Promise<SyntheticCapsule> {
+  return (await parseCapsuleInput(value)).capsule;
 }
 
 export function serializeSyntheticCapsule(capsule: SyntheticCapsule): string {
@@ -822,8 +980,48 @@ function parseCanonicalPlaintext(bytes: Uint8Array, label: string): unknown {
   return value;
 }
 
-export function capsuleReplayKey(capsule: Pick<SyntheticCapsule, "header" | "payload">): string {
-  return `${capsule.header.capsuleId}:${capsule.payload.ciphertextSha256}`;
+function parsePaddedManifest(bytes: Uint8Array): CapsuleManifest {
+  if (bytes.length !== CAPSULE_MANIFEST_PADDED_BYTES) invalid("Capsule manifest padded plaintext has an invalid size");
+  const length = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0);
+  if (length < 1 || length > CAPSULE_MANIFEST_PADDED_BYTES - 4) invalid("Capsule manifest padding envelope has an invalid length");
+  return validateManifest(parseCanonicalPlaintext(bytes.subarray(4, 4 + length), "Capsule manifest"));
+}
+
+function assertCanonicalRecipientOrder(recipients: readonly CapsuleRecipientEnvelope[]): void {
+  for (let index = 1; index < recipients.length; index += 1) {
+    if (compareFingerprints(recipients[index - 1]!.fingerprint, recipients[index]!.fingerprint) > 0) {
+      invalid("Capsule recipient envelopes are not canonically sorted");
+    }
+  }
+}
+
+async function verifySender(parsed: ParsedCapsule, identity: CapsuleDecryptionIdentity): Promise<void> {
+  const expected = fingerprintValue(identity.expectedSenderFingerprint);
+  if (parsed.capsule.sender.fingerprint !== expected) invalid("Capsule sender fingerprint does not match the expected sender");
+  const signingPublicKey = await normalizeP256PublicJwk(identity.senderSigningPublicKey, "signing");
+  const derived = await capsuleRecipientFingerprint(parsed.capsule.sender.encryptionPublicKey, signingPublicKey);
+  if (derived !== expected) invalid("Capsule sender key does not match the expected sender fingerprint");
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    signingPublicKey,
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["verify"],
+  );
+  const valid = await crypto.subtle.verify(
+    { name: "ECDSA", hash: "SHA-256" },
+    key,
+    new Uint8Array(parsed.signatureBytes),
+    new Uint8Array(capsuleSignatureInput(parsed.capsule)),
+  );
+  if (!valid) invalid("Capsule sender signature verification failed");
+}
+
+export function capsuleReplayKey(
+  capsule: Pick<SyntheticCapsule, "header" | "manifest" | "payload">,
+  openerFingerprint: string,
+): string {
+  return `${fingerprintValue(openerFingerprint)}:${capsule.header.capsuleId}:${capsule.manifest.ciphertextSha256}:${capsule.payload.ciphertextSha256}`;
 }
 
 export async function openSyntheticCapsule(
@@ -831,7 +1029,9 @@ export async function openSyntheticCapsule(
   identity: CapsuleDecryptionIdentity,
   options: OpenSyntheticCapsuleOptions = {},
 ): Promise<OpenedSyntheticCapsule> {
-  const parsed = typeof value === "string" ? await parseSyntheticCapsule(value).then(parseCapsuleValue) : await parseCapsuleValue(value);
+  const parsed = await parseCapsuleInput(value, false);
+  await verifySender(parsed, identity);
+  assertCanonicalRecipientOrder(parsed.capsule.recipients);
   const expectedFingerprint = fingerprintValue(identity.fingerprint);
   const envelope = parsed.capsule.recipients.find((recipient) => recipient.fingerprint === expectedFingerprint);
   if (!envelope) invalid("Capsule has no envelope for the expected recipient");
@@ -875,11 +1075,10 @@ export async function openSyntheticCapsule(
       decryptPart(parsed.capsule.manifest, parsed.manifestBytes),
       decryptPart(parsed.capsule.payload, parsed.payloadBytes),
     ]);
-    if (manifestPlaintext.length > CAPSULE_MAX_MANIFEST_PLAINTEXT_BYTES) invalid("Capsule manifest plaintext is oversized");
-    const manifest = validateManifest(parseCanonicalPlaintext(manifestPlaintext, "Capsule manifest"));
+    const manifest = parsePaddedManifest(manifestPlaintext);
     const payload = validatePayload(parseCanonicalPlaintext(payloadPlaintext, "Capsule payload"));
 
-    if (options.replayGuard && !await options.replayGuard.accept(capsuleReplayKey(parsed.capsule))) {
+    if (options.replayGuard && !await options.replayGuard.accept(capsuleReplayKey(parsed.capsule, expectedFingerprint))) {
       throw new CapsuleReplayError();
     }
     return { manifest, payload };

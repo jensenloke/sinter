@@ -68,7 +68,9 @@ function bytesToBase64Url(bytes: Uint8Array): string {
 }
 
 function base64UrlBytes(value: string): Uint8Array<ArrayBuffer> {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error("Invalid local JWK base64url encoding");
   const decoded = Buffer.from(value, "base64url");
+  if (decoded.toString("base64url") !== value) throw new Error("Invalid local JWK base64url encoding");
   const bytes = new Uint8Array(new ArrayBuffer(decoded.length));
   bytes.set(decoded);
   return bytes;
@@ -108,6 +110,10 @@ export async function validateDeviceKeyMaterial(value: unknown): Promise<DeviceK
   assertEcJwk(keys.encryptionPrivateKey, "private", "encryption");
   assertEcJwk(keys.signingPublicKey, "public", "signing public key");
   assertEcJwk(keys.signingPrivateKey, "private", "signing");
+  if (keys.encryptionPublicKey.x === keys.signingPublicKey.x &&
+    keys.encryptionPublicKey.y === keys.signingPublicKey.y) {
+    throw new Error("Local device encryption and signing public keys must be distinct");
+  }
   if (!matchingPublicAndPrivate(keys.encryptionPublicKey, keys.encryptionPrivateKey) ||
     !matchingPublicAndPrivate(keys.signingPublicKey, keys.signingPrivateKey)) {
     throw new Error("Local device public and private keys do not match");

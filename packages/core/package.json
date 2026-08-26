@@ -4,7 +4,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./*": "./src/*"
+    "./adapter": "./src/adapter.ts",
+    "./jsonl": "./src/jsonl.ts",
+    "./lineage": "./src/lineage.ts",
+    "./sif": "./src/sif.ts",
+    "./util": "./src/util.ts"
   },
   "dependencies": {
     "@hpke/core": "1.9.0"

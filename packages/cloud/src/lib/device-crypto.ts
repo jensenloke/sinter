@@ -235,6 +235,9 @@ export function parseAndVerifyRegistration(value: unknown): DeviceRegistration {
 
   const encryptionPublicKey = validatePublicP256Jwk(body.encryptionPublicKey, "encryption");
   const signingPublicKey = validatePublicP256Jwk(body.signingPublicKey, "signing");
+  if (encryptionPublicKey.x === signingPublicKey.x && encryptionPublicKey.y === signingPublicKey.y) {
+    invalid("Device encryption and signing public keys must be distinct");
+  }
   const fingerprint = body.fingerprint;
   if (!validFingerprint(fingerprint)) invalid("Device fingerprint must be lowercase hexadecimal SHA-256");
   const calculated = deviceFingerprint(encryptionPublicKey, signingPublicKey);

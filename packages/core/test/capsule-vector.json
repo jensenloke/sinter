@@ -1,83 +1,34 @@
 {
   "provenance": {
     "kind": "project-generated",
+    "scope": "stable unsigned input from one project-generated synthetic product capsule and one generated signature",
     "generator": "@sinter/core createSyntheticCapsule",
-    "implementation": "@hpke/core@1.9.0",
-    "standard": "RFC 9180",
+    "implementation": "@hpke/core@1.9.0 and WebCrypto",
+    "standard": "RFC 9180 plus Sinter capsule signature contract",
+    "suite": "P-256/HKDF-SHA256/AES-256-GCM",
     "suiteIds": {
       "mode": 0,
       "kem": 16,
       "kdf": 1,
       "aead": 2
     },
-    "note": "Self-generated deterministic project vector; not an RFC-published test vector."
+    "signature": "ECDSA P-256 SHA-256 IEEE-P1363",
+    "note": "This is a project-generated AES-256 product fixture, not an RFC vector. Its unsigned signature input is pinned and its checked-in signature is verified rather than reproduced because production creation and ECDSA signing are intentionally nondeterministic."
   },
-  "inputs": {
-    "capsuleId": "ABEiM0RVZneImaq7zN3u_w",
-    "createdAt": "2030-01-02T03:04:05.000Z",
-    "recipientEncryptionPublicKey": {
-      "kty": "EC",
-      "crv": "P-256",
-      "x": "49pxiy77_9MJD0KXUVHBhCnIBx8UkYM20ckoBf2LL78",
-      "y": "Mj_WFEsqP5tJKIY1CUqgbX5FcAB_zH8fmyOMoZii1eE"
-    },
-    "recipientEncryptionPrivateKey": {
-      "kty": "EC",
-      "crv": "P-256",
-      "x": "49pxiy77_9MJD0KXUVHBhCnIBx8UkYM20ckoBf2LL78",
-      "y": "Mj_WFEsqP5tJKIY1CUqgbX5FcAB_zH8fmyOMoZii1eE",
-      "d": "BJFWjL7RsUAhnHLEui2U9ZVoBZAS9iv2lR3JGq6_XqY"
-    },
-    "recipientSigningPublicKey": {
-      "kty": "EC",
-      "crv": "P-256",
-      "x": "r9XYRZ-tq5_2vmZFcQjvZ-L9iv7kotKVKg0DLOKGUlA",
-      "y": "LMxQRdEY6sxsKQSMOsKlE28UPSAS5S9ZVCbcScDBtho"
-    },
-    "randomStreamStartHex": "40",
-    "hpkeEphemeralIkmHex": "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf",
-    "manifest": {
-      "schema": "sinter.capsule.manifest.v1",
-      "title": "Deterministic synthetic vector",
-      "harness": "codex",
-      "lineage": {
-        "schema": "sinter.capsule.lineage-hint.v1",
-        "threadId": "synthetic-thread-vector",
-        "hop": 2
-      }
-    },
-    "payload": {
-      "schema": "sinter.capsule.synthetic-sif.v1",
-      "synthetic": true,
-      "sif": {
-        "sif": "sif/0",
-        "id": "synthetic-sif-vector",
-        "origin": {
-          "harness": "codex",
-          "nativeId": "synthetic-native-vector"
-        },
-        "cwd": "/synthetic/vector",
-        "createdAt": "2030-01-02T03:04:05.000Z",
-        "entries": [
-          {
-            "kind": "user",
-            "id": "entry-1",
-            "parentId": null,
-            "ts": "2030-01-02T03:04:05.000Z",
-            "content": [
-              {
-                "type": "text",
-                "text": "Synthetic vector content only."
-              }
-            ],
-            "synthetic": true
-          }
-        ]
-      }
-    }
+  "senderEncryptionPublicKey": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "HVLU3oCz3PH6d_9ZCcTXwL3CRN3JEhz7-hzOf1r7_js",
+    "y": "N7ZyWMB_jGEt260BvB_bE10KOeYNZGQLTfxrAOUZWFA"
   },
-  "expected": {
-    "fingerprint": "2f0d1d031afb81d92c0e36a6a2b6ceaecfe3273bdbc31307d75ca89e140a7ef5",
-    "serializedUtf8Base64Url": "eyJoZWFkZXIiOnsiY2Fwc3VsZUlkIjoiQUJFaU0wUlZabmVJbWFxN3pOM3VfdyIsImNyZWF0ZWRBdCI6IjIwMzAtMDEtMDJUMDM6MDQ6MDUuMDAwWiIsInNjaGVtYSI6InNpbnRlci5jYXBzdWxlLmhlYWRlci52MSIsInN1aXRlIjoiSFBLRS12MS1CYXNlLURIS0VNKFAtMjU2LEhLREYtU0hBMjU2KS1IS0RGLVNIQTI1Ni1BRVMtMjU2LUdDTSJ9LCJtYW5pZmVzdCI6eyJjaXBoZXJ0ZXh0IjoiMXdwaFpIWDY5ZFY2bzBNVVp1azRibmNPd2pON1ZfOXJieDJ1bXBHNUpaTlBuODhrU2VmOS1zdVJ4VVY2RERvSWpVOERPQkEwZzljRVptb2VrT1RpM0MzUHlpOG9Lbkt2SzJmcFY4MG9iVGVfSmo2WERWUDg4RDV6Wm5hNE1SQWdUNkVhakloLUJQUnQ2ZVY5aWlheTJZWnMxanRla25VZm5BLTRveEpSR0lzZmZFb3Foc1ZBRG0xQlplMV9wZ3pWa1U2azhHS0ZxS3VscFNMcE9EaWF0WlZWdFpaejJ1OTM1RGhxc0JTdlpUbFNyTlI0d2xKWW5JMFFhVkdVdzlESG9uWERjSmRfY2lmWExHUkE1UzRWRzBXTGl5U3EiLCJjaXBoZXJ0ZXh0Qnl0ZXMiOjIxMywiY2lwaGVydGV4dFNoYTI1NiI6IjhhMTI1MTMzNjcxZjczNTRjNWQzNjk3MWUxMzYxYjgxMTIxOGQzNTRkNThhMGZmYTE4ZmJhYmQ1Yjg5MWMxNzMiLCJraW5kIjoibWFuaWZlc3QiLCJub25jZSI6IllHRmlZMlJsWm1kb2FXcHIiLCJzY2hlbWEiOiJzaW50ZXIuY2Fwc3VsZS5wYXJ0LnYxIn0sInBheWxvYWQiOnsiY2lwaGVydGV4dCI6Ikt6RzNuQ0pjUURUenRySUdGVUdzbUpTU04wbXNTQ2kxZjYwWE1rYVh6a2FtZEZMLVpkZDlHUGZmZ2lzUkRTMkRRSHh4bzdhYV9xMzhhbm1UbUFPM3J1c2lsbVRQY2JSN3phU2J5bGtXenRxbTFOU29aOVJkVHp6RGJXOTNqVDgyUUdSaU5pWjFjY3k4b3VabTh5N0YxLW4tNFlPQkRfbzJSM20xMmNIbjBMdTBYd3NOb0RvanR1YVV4RkZvUmhXMGtFb3I2eHRFNHNWUDd3NmJwNThCbEg3NDZ6Yk1renFKaUowWXBOYlZidFZsVHlJZkFTLVU2YXFDOWNCTEJoMEZBRWNMYXpIV3ZwYzhfa19xMmZndi1TSHlucU4yRkxqdUZNQjI3dmtjUjQ3UnpUUGtnTDc4SmYwMHVHZG51ZW5ZMnJrSG9QUFJHX3Q1eTdOSUJvaUw4Q2pkUWVLWG00VXE0dXBOa0lzaHlNRzViZjRoUkdSaFpXUnhYWDdzOFJWbWJLRy1vTUlkRDktdW1zaUxzbVRNQWRuR0VyeU1KaFB5QzNxMTRKQ0RMekVUZVNobm9NLWtHRlFLZDdjamlmdTVFMjJsMG93QTRudlg4TkNqaTdWV0NyZXdiSzhPZFlWcWJjMjlVQ3hmbGU1a3k5TGtHak4wcmhqSFl1TDI5bmw2N0pud2xhRGhYdWRDcmJEV0VLdkU2VFp6MlFDc21VT3RpTWNpNXI1elV3UTZkUk9OU3JkTUFMbWljS1RJNk5Gc0RRVSIsImNpcGhlcnRleHRCeXRlcyI6NDM0LCJjaXBoZXJ0ZXh0U2hhMjU2IjoiYzI5NGU3MjNjYzk1NjdkMWM2ZWI0MTkzYjcwZGJhY2QxMThlODFlNmUyOWJkYTY4MWRmODA4N2NjM2NjYmIxNiIsImtpbmQiOiJwYXlsb2FkIiwibm9uY2UiOiJiRzF1YjNCeGNuTjBkWFozIiwic2NoZW1hIjoic2ludGVyLmNhcHN1bGUucGFydC52MSJ9LCJyZWNpcGllbnRzIjpbeyJlbmNhcHN1bGF0aW9uIjoiQkVXX1p0dzkzd1RuZUZGLTdvbHVqaDZZZHY4T2RCa1FiVnozclc4RGJQblZqZmdxVkZ2dUxocDltZFkyRmVlU0M0a0hfOW1sMXFmOFphT0doME5SSEd3IiwiZmluZ2VycHJpbnQiOiIyZjBkMWQwMzFhZmI4MWQ5MmMwZTM2YTZhMmI2Y2VhZWNmZTMyNzNiZGJjMzEzMDdkNzVjYTg5ZTE0MGE3ZWY1Iiwic2NoZW1hIjoic2ludGVyLmNhcHN1bGUucmVjaXBpZW50LnYxIiwid3JhcHBlZEtleSI6IjkyM1FvZ3A1RXlNQVhqb2FtRHU0aTR6WTJaRlF0SkVuMW9BRE5FMFpOdjJDV1JqOFNIc2dUOTJ1SFBXVDFseVAifV0sInNjaGVtYSI6InNpbnRlci5jYXBzdWxlLnYxIn0"
-  }
+  "senderSigningPublicKey": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "S-dpWGnc_pn1jLVydE6LjlNZLNzKKqdoLSqMrEe72hM",
+    "y": "8Lc2YPRfk_pzc1mZxxye9F142g5mZxKs_GQPvamTnY8"
+  },
+  "senderFingerprint": "ea73cc1069a603cc7dbe9abe9b62e99db097c15175209701cdcbc635556ba5e5",
+  "signatureInputUtf8Base64Url": "eyJoZWFkZXIiOnsiY2Fwc3VsZUlkIjoiWjAxYkFBbndERm1iUzhuUnhFaHJqZyIsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMjZUMDE6NTI6MjYuMjE2WiIsInNjaGVtYSI6InNpbnRlci5jYXBzdWxlLmhlYWRlci52MSIsInN1aXRlIjoiSFBLRS12MS1CYXNlLURIS0VNKFAtMjU2LEhLREYtU0hBMjU2KS1IS0RGLVNIQTI1Ni1BRVMtMjU2LUdDTSJ9LCJtYW5pZmVzdCI6eyJjaXBoZXJ0ZXh0Qnl0ZXMiOjQxMTIsImNpcGhlcnRleHRTaGEyNTYiOiJlZWIyYmU5ZmJiYzFlODk5NjYwZWFkNWUyZTRkMWY4Yjc0ODNkNDQzMDcxZTdmNmYyM2RmYjA5NTQxMTFlZGYzIiwia2luZCI6Im1hbmlmZXN0Iiwibm9uY2UiOiJwWHZGeEtPQWJmX3ZReGRKIiwic2NoZW1hIjoic2ludGVyLmNhcHN1bGUucGFydC52MSJ9LCJwYXlsb2FkIjp7ImNpcGhlcnRleHRCeXRlcyI6NDMyLCJjaXBoZXJ0ZXh0U2hhMjU2IjoiNjRkYzVhNWRlNTg5MTgwMDY3ZWEyNTNmOTNkYjgwNzk1MzVjZjcxNDVmZDkxM2UzYTEwNTM2ZWExZTE5MGEwYyIsImtpbmQiOiJwYXlsb2FkIiwibm9uY2UiOiJzWVVxamNBd2dRZE16RUdnIiwic2NoZW1hIjoic2ludGVyLmNhcHN1bGUucGFydC52MSJ9LCJyZWNpcGllbnRGaW5nZXJwcmludHMiOlsiYTI3OTc5MjE4MTc1MWI5MmE1NzMzN2FkNGRlNTgyYTQzOWNlOGRkNDc1ZjJjYjM1YmViMTg0ZjRkNTUyMzg2YiJdLCJzY2hlbWEiOiJzaW50ZXIuY2Fwc3VsZS5zaWduYXR1cmUtaW5wdXQudjEiLCJzZW5kZXIiOnsiZW5jcnlwdGlvblB1YmxpY0tleSI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6IkhWTFUzb0N6M1BINmRfOVpDY1RYd0wzQ1JOM0pFaHo3LWh6T2YxcjdfanMiLCJ5IjoiTjdaeVdNQl9qR0V0MjYwQnZCX2JFMTBLT2VZTlpHUUxUZnhyQU9VWldGQSJ9LCJmaW5nZXJwcmludCI6ImVhNzNjYzEwNjlhNjAzY2M3ZGJlOWFiZTliNjJlOTlkYjA5N2MxNTE3NTIwOTcwMWNkY2JjNjM1NTU2YmE1ZTUiLCJzY2hlbWEiOiJzaW50ZXIuY2Fwc3VsZS5zZW5kZXIudjEifX0",
+  "signatureInputSha256": "940f80f1bc90294ad170e626551abff5aa0fb0cd0fa0257f34331954fef79689",
+  "signature": "t7I97cB807B5OG3sXaiMNSU6CYxYI81FqSPzpPZF75L5FBOB-jt44NM1haJLodbvQfZfzJjxRTEfkYCrT-n0WQ"
 }

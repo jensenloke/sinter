@@ -129,6 +129,34 @@ describe("Cloud device service", () => {
     expect(saved).toBe(1);
   });
 
+  test("rejects same-point local keys before registration or lookup calls", async () => {
+    const generated = await generateDeviceKeyMaterial();
+    const material: DeviceKeyMaterial = {
+      ...generated,
+      signingPublicKey: { ...generated.encryptionPublicKey },
+      signingPrivateKey: { ...generated.encryptionPrivateKey },
+    };
+    let apiCalls = 0;
+    const keyStore: DeviceCredentialStore = {
+      description: "test key store",
+      async load() { return material; },
+      async save() {},
+      async delete() {},
+    };
+    const api: CloudDeviceApiClient = {
+      async listDevices() { apiCalls++; return []; },
+      async registerDevice() { apiCalls++; return { status: "registered", deviceId: "unexpected" }; },
+      async renameDevice() {},
+      async revokeDevice() {},
+      async listEnrollments() { apiCalls++; return []; },
+      async approveEnrollment() {},
+    };
+
+    await expect(createCloudDeviceService({ api, keys: keyStore }).register("Invalid Mac"))
+      .rejects.toThrow("Local device encryption and signing public keys must be distinct");
+    expect(apiCalls).toBe(0);
+  });
+
   test("reuses a pending enrollment for the same local fingerprint", async () => {
     const material: DeviceKeyMaterial = await generateDeviceKeyMaterial();
     let registrationCalls = 0;

@@ -57,9 +57,18 @@ function keys(purpose: "encryption" | "signing") {
   return { ...pair, publicKey };
 }
 
-function registrationFixture(name = "New laptop") {
-  const encryption = keys("encryption");
+function registrationFixture(name = "New laptop", options: { samePoint?: boolean } = {}) {
   const signing = keys("signing");
+  const encryption = options.samePoint
+    ? {
+        ...signing,
+        publicKey: {
+          ...signing.publicKey,
+          use: "enc" as const,
+          key_ops: [] as [],
+        },
+      }
+    : keys("encryption");
   const base: Omit<DeviceRegistration, "proof"> = {
     schema: DEVICE_REGISTRATION_SCHEMA,
     name,
@@ -243,6 +252,32 @@ describe("device registration and listing routes", () => {
     const payload = await body(response);
     expect(response.status).toBe(409);
     expect(payload.error.code).toBe("device_recovery_unavailable");
+    expect(wrote).toBe(false);
+  });
+
+  test("rejects same-point registration before device lookup or any write", async () => {
+    const fixture = registrationFixture("Invalid laptop", { samePoint: true });
+    let listed = false;
+    let wrote = false;
+    const data = source({
+      listDevices: async () => {
+        listed = true;
+        return { data: [], error: null };
+      },
+      bootstrapDevice: async () => {
+        wrote = true;
+        return { data: null, error: null };
+      },
+      createEnrollment: async () => {
+        wrote = true;
+        return { data: null, error: null };
+      },
+    });
+    const response = await createDevicesRoute(deps(data)).POST(
+      jsonRequest("/api/cli/devices", fixture.registration),
+    );
+    expect(response.status).toBe(400);
+    expect(listed).toBe(false);
     expect(wrote).toBe(false);
   });
 

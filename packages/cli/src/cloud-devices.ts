@@ -6,6 +6,7 @@ import {
   createDeviceRegistrationBody,
   deviceFingerprint,
   generateDeviceKeyMaterial,
+  validateDeviceKeyMaterial,
   type DeviceApprovalBody,
   type DeviceRegistrationBody,
 } from "./device-identity";
@@ -198,6 +199,7 @@ export function createCloudDeviceService(options: {
         material = await generateDeviceKeyMaterial(now());
         await keys.save(material);
       }
+      await validateDeviceKeyMaterial(material);
       const fingerprint = await deviceFingerprint(material.encryptionPublicKey, material.signingPublicKey);
       const existing = (await api.listDevices()).find((device) =>
         device.fingerprint === fingerprint && device.status !== "revoked" && device.revokedAt == null

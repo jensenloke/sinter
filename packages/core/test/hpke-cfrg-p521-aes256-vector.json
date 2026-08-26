@@ -1,0 +1,25 @@
+{
+  "provenance": {
+    "kind": "cfrg-published",
+    "standard": "RFC 9180 final CFRG test vectors",
+    "source": "https://github.com/cfrg/draft-irtf-cfrg-hpke/blob/5f503c564da00b0687b3de75f1dfbdfc4079ad31/test-vectors.json",
+    "sourceSha256": "61fc662f01996cd06d713dacf5e133167bd309a1f329442d53f1e21a47b3ede6",
+    "note": "Authoritative base-mode P-521/HKDF-SHA512/AES-256-GCM vector selected from the final CFRG JSON cited by RFC 9180."
+  },
+  "mode": 0,
+  "kemId": 18,
+  "kdfId": 3,
+  "aeadId": 2,
+  "info": "4f6465206f6e2061204772656369616e2055726e",
+  "ikmR": "2ad954bbe39b7122529f7dde780bff626cd97f850d0784a432784e69d86eccaade43b6c10a8ffdb94bf943c6da479db137914ec835a7e715e36e45e29b587bab3bf1",
+  "ikmE": "7f06ab8215105fc46aceeb2e3dc5028b44364f960426eb0d8e4026c2f8b5d7e7a986688f1591abf5ab753c357a5d6f0440414b4ed4ede71317772ac98d9239f70904",
+  "publicKey": "0401b45498c1714e2dce167d3caf162e45e0642afc7ed435df7902ccae0e84ba0f7d373f646b7738bbbdca11ed91bdeae3cdcba3301f2457be452f271fa6837580e661012af49583a62e48d44bed350c7118c0d8dc861c238c72a2bda17f64704f464b57338e7f40b60959480c0e58e6559b190d81663ed816e523b6b6a418f66d2451ec64",
+  "privateKey": "01462680369ae375e4b3791070a7458ed527842f6a98a79ff5e0d4cbde83c27196a3916956655523a6a2556a7af62c5cadabe2ef9da3760bb21e005202f7b2462847",
+  "encapsulation": "040138b385ca16bb0d5fa0c0665fbbd7e69e3ee29f63991d3e9b5fa740aab8900aaeed46ed73a49055758425a0ce36507c54b29cc5b85a5cee6bae0cf1c21f2731ece2013dc3fb7c8d21654bb161b463962ca19e8c654ff24c94dd2898de12051f1ed0692237fb02b2f8d1dc1c73e9b366b529eb436e98a996ee522aef863dd5739d2f29b0",
+  "aad": "436f756e742d30",
+  "plaintext": "4265617574792069732074727574682c20747275746820626561757479",
+  "ciphertext": "170f8beddfe949b75ef9c387e201baf4132fa7374593dfafa90768788b7b2b200aafcc6d80ea4c795a7c5b841a",
+  "exporterContext": "",
+  "exporterLength": 32,
+  "exportedValue": "05e2e5bd9f0c30832b80a279ff211cc65eceb0d97001524085d609ead60d0412"
+}
