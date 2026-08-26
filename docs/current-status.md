@@ -121,7 +121,7 @@ operations.
 - The Cloud UI uses an original five-cell sintered-mineral mark with transparent
   512, 192, and 32 px assets. The raster concept should be traced and optically
   refined before final trademark use.
-- Development verification: 798 tests, 9,467 assertions, 164 database policy
+- Development verification: 809 tests, 9,521 assertions, 217 database policy
   assertions, schema lint, both TypeScript checks, both production builds, npm
   package inspection, isolated Bun/npm installs, authoritative RFC HPKE
   interoperability, and independent adversarial device/capsule/admin reviews.
