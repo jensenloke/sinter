@@ -1,6 +1,6 @@
 # Sinter Cloud inventory
 
-Status: C0-C1 and metadata control plane deployed; C2 envelope remains local-only
+Status: existing-members-only C0-C1/control plane deployed; C2 remains local-only
 Last reviewed: 2026-08-25 (Asia/Singapore)
 
 This document turns the Sinter Cloud direction in [ROADMAP.md](../ROADMAP.md)
@@ -263,6 +263,9 @@ availability guarantee.
 
 - [x] Add Auth0 web sign-in, protected dashboard, CLI device authorization,
   rotating refresh, and sign-out/logout.
+- [x] Close public Cloud signup during private alpha: disable database signup,
+  require explicit Auth0 user admission, scope the Supabase role claim to Sinter
+  clients, and remove profile creation/member email mutation from account claim.
 - [x] Implement device key custody, first-device bootstrap, signed subsequent-
   device approval, list, rename, revoke, pending, and approval flows locally.
 - [x] Apply device identity and distinct encryption/signing-key constraints to

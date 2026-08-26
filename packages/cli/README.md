@@ -37,6 +37,19 @@ bun or npm installation that owns the current executable. If that ownership is
 ambiguous, pass `--package-manager bun` or `--package-manager npm`; use
 `--check` for a side-effect-free registry check.
 
+Sinter Cloud is currently a private alpha for existing members; the CLI remains
+fully usable without it. Approved members can register devices without uploading
+sessions:
+
+```sh
+sinter login
+sinter devices register --name "My Mac"
+sinter devices list
+```
+
+Private device keys stay local. A subsequent device requires signed approval
+from an existing active device. Session upload and sync remain disabled.
+
 Documentation, source, roadmap, and issue tracker:
 https://github.com/jensenloke/sinter
 

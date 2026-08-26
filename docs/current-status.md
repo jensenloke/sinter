@@ -57,20 +57,22 @@ operations.
   unavailable product surfaces remain clearly disabled.
 - One free Supabase development project runs in Singapore. It uses the
   publishable-key model, and legacy JWT API keys are disabled.
-- Auth0 now owns web and CLI authentication. The web app uses authorization
-  code plus rotating refresh tokens; the native CLI uses OAuth device
-  authorization plus rotating refresh tokens. Both applications sign RS256
-  tokens, and the post-login Action adds `role=authenticated` to ID tokens.
+- Auth0 owns web and CLI authentication. Cloud is existing-members-only during
+  private alpha: database signup is disabled; a Sinter-client-scoped Action
+  denies users without JSON `sinter_cloud_access: true`; then a second scoped
+  Action adds `role=authenticated` to ID tokens. The one owner is allowlisted.
+  The web app uses authorization code and the CLI uses device authorization,
+  both with rotating refresh tokens and RS256.
 - Hosted Supabase trusts the canonical Auth0 tenant through a manually created
   Third-Party Auth connection. Supabase CLI 2.115.0 ignores
   `[auth.third_party.auth0]` during `config push`, so the local block documents
   local development but does not create the hosted connection.
 - The provider-neutral `profiles`, `account_identities`, and `devices` model is
-  applied to hosted development. The verified Google/Auth0 identity linked to
-  the one existing profile without creating a duplicate (`profiles=1`,
-  `account_identities=1`). Twelve identity assertions prove claim idempotency,
-  own-row access, and cross-user denial; three more verify the keepalive RPC's
-  narrow privileges and execution.
+  applied to hosted development. `claim_account()` now returns an existing
+  identity or links one verified provider to an existing active profile; it has
+  no profile-creation path, members cannot rewrite linking emails, and denied
+  claims leave all control/device counts unchanged. Hosted profiles,
+  identities, and devices remain exactly 1/1/1.
 - `/api/health` reports configuration state without exposing credentials.
 - A free Vercel cron invokes a secret-protected, content-free Supabase database
   RPC once daily to reduce free-project idle-pausing risk. It neither reads nor
