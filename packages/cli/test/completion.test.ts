@@ -18,6 +18,8 @@ describe("shell completions", () => {
     expect(script).toContain("logout");
     expect(script).toContain("devices");
     expect(script).toContain("approve");
+    expect(script).toContain("no-wait");
+    expect(script).toContain("timeout");
     expect(script).toContain("gui");
     expect(script).toContain("recent");
     expect(script).toContain("watch");

@@ -8,10 +8,36 @@ import type { DeviceCredentialStore } from "../src/device-credentials";
 import type { DeviceKeyMaterial } from "../src/device-identity";
 import {
   createDeviceRegistrationBody,
+  DEVICE_CRYPTO_SUITE,
   deviceFingerprint,
   generateDeviceKeyMaterial,
   verifyCanonicalSignature,
 } from "../src/device-identity";
+
+function memoryKeyStore(initial: DeviceKeyMaterial) {
+  let material = initial;
+  let saves = 0;
+  let deletes = 0;
+  const store: DeviceCredentialStore = {
+    description: "test key store",
+    async load() { return material; },
+    async save(next) { material = next; saves++; },
+    async delete() { deletes++; },
+  };
+  return { store, material: () => material, saves: () => saves, deletes: () => deletes };
+}
+
+function inertApi(overrides: Partial<CloudDeviceApiClient> = {}): CloudDeviceApiClient {
+  return {
+    async listDevices() { return []; },
+    async registerDevice() { throw new Error("unexpected registration"); },
+    async renameDevice() {},
+    async revokeDevice() {},
+    async listEnrollments() { return []; },
+    async approveEnrollment() {},
+    ...overrides,
+  };
+}
 
 describe("Cloud device API", () => {
   test("uses both Auth0 headers and the versioned endpoint payloads", async () => {
@@ -104,7 +130,13 @@ describe("Cloud device service", () => {
     };
     const api: CloudDeviceApiClient = {
       async listDevices() { return []; },
-      async registerDevice() { return { status: "registered", deviceId: "registered-2" }; },
+      async registerDevice(body) {
+        return {
+          status: "registered",
+          deviceId: "registered-2",
+          device: { id: "registered-2", name: body.name, fingerprint: body.fingerprint, suite: body.suite, status: "active" },
+        };
+      },
       async renameDevice() {},
       async revokeDevice() {},
       async listEnrollments() {
@@ -181,7 +213,7 @@ describe("Cloud device service", () => {
       async approveEnrollment() {},
     };
 
-    const result = await createCloudDeviceService({ api, keys: keyStore }).register("Pending Mac");
+    const result = await createCloudDeviceService({ api, keys: keyStore }).register("Pending Mac", { wait: false });
     expect(result).toMatchObject({ status: "approval_required", enrollment: { id: "pending-request" } });
     expect(registrationCalls).toBe(0);
   });
@@ -198,7 +230,7 @@ describe("Cloud device service", () => {
     };
     const api: CloudDeviceApiClient = {
       async listDevices() {
-        return [{ id: "approved-device", name: "Approved Mac", fingerprint, status: "active", revokedAt: null }];
+        return [{ id: "approved-device", name: "Approved Mac", fingerprint, suite: DEVICE_CRYPTO_SUITE, status: "active", revokedAt: null }];
       },
       async registerDevice() {
         registrationCalls++;
@@ -214,5 +246,253 @@ describe("Cloud device service", () => {
     expect(result.status).toBe("registered");
     expect(material.deviceId).toBe("approved-device");
     expect(registrationCalls).toBe(0);
+  });
+
+  test("registers the first device immediately and verifies identity before saving its id", async () => {
+    const material = await generateDeviceKeyMaterial();
+    const keys = memoryKeyStore(material);
+    let registrationCalls = 0;
+    const api = inertApi({
+      async registerDevice(body) {
+        registrationCalls++;
+        return {
+          status: "registered",
+          device: { id: "first-device", name: body.name, fingerprint: body.fingerprint, suite: body.suite, status: "active" },
+        };
+      },
+    });
+
+    const result = await createCloudDeviceService({ api, keys: keys.store }).register("First Mac");
+    expect(result).toMatchObject({ status: "registered", deviceId: "first-device" });
+    expect(keys.material().deviceId).toBe("first-device");
+    expect(keys.saves()).toBe(1);
+    expect(registrationCalls).toBe(1);
+  });
+
+  test("waits through two polls after approval is required and auto-saves the approved device", async () => {
+    const material = await generateDeviceKeyMaterial();
+    const keys = memoryKeyStore(material);
+    const fingerprint = await deviceFingerprint(material.encryptionPublicKey, material.signingPublicKey);
+    let now = Date.parse("2026-08-25T10:00:00.000Z");
+    const enrollment = { id: "request-auto", requestFingerprint: fingerprint, expiresAt: new Date(now + 60_000).toISOString() };
+    let deviceLists = 0;
+    let enrollmentLists = 0;
+    let registrationCalls = 0;
+    const statuses: unknown[] = [];
+    const approved = { id: "approved-auto", name: "Second Mac", fingerprint, suite: DEVICE_CRYPTO_SUITE, status: "active" };
+    const api = inertApi({
+      async listDevices() {
+        deviceLists++;
+        return deviceLists >= 3 ? [approved] : [];
+      },
+      async listEnrollments() {
+        enrollmentLists++;
+        return enrollmentLists === 1 ? [] : [enrollment];
+      },
+      async registerDevice() {
+        registrationCalls++;
+        return { status: "approval_required", enrollment };
+      },
+    });
+    const service = createCloudDeviceService({
+      api,
+      keys: keys.store,
+      now: () => now,
+      pollIntervalMs: 100,
+      pause: async (ms) => { now += ms; },
+    });
+
+    const result = await service.register("Second Mac", { onStatus: (status) => { statuses.push(status); } });
+    expect(result).toMatchObject({ status: "registered", deviceId: "approved-auto" });
+    expect(keys.material().deviceId).toBe("approved-auto");
+    expect(deviceLists).toBe(3);
+    expect(enrollmentLists).toBe(2);
+    expect(registrationCalls).toBe(1);
+    expect(statuses).toEqual([{ status: "waiting_for_approval", requestId: "request-auto", expiresAt: enrollment.expiresAt }]);
+  });
+
+  test("--no-wait service mode returns approval-required without polling or duplicating the request", async () => {
+    const material = await generateDeviceKeyMaterial();
+    const keys = memoryKeyStore(material);
+    const fingerprint = await deviceFingerprint(material.encryptionPublicKey, material.signingPublicKey);
+    const enrollment = { id: "request-script", requestFingerprint: fingerprint, expiresAt: "2030-01-01T00:00:00.000Z" };
+    let deviceLists = 0;
+    let enrollmentLists = 0;
+    let registrationCalls = 0;
+    let pauses = 0;
+    const api = inertApi({
+      async listDevices() { deviceLists++; return []; },
+      async listEnrollments() { enrollmentLists++; return []; },
+      async registerDevice() { registrationCalls++; return { status: "approval_required", enrollment }; },
+    });
+    const result = await createCloudDeviceService({
+      api,
+      keys: keys.store,
+      pause: async () => { pauses++; },
+    }).register("Script Mac", { wait: false });
+
+    expect(result.status).toBe("approval_required");
+    expect(deviceLists).toBe(1);
+    expect(enrollmentLists).toBe(1);
+    expect(registrationCalls).toBe(1);
+    expect(pauses).toBe(0);
+  });
+
+  test("times out at the caller deadline and expires at the earlier server deadline", async () => {
+    for (const scenario of ["timeout", "expiry"] as const) {
+      const material = await generateDeviceKeyMaterial();
+      const keys = memoryKeyStore(material);
+      const fingerprint = await deviceFingerprint(material.encryptionPublicKey, material.signingPublicKey);
+      let now = Date.parse("2026-08-25T10:00:00.000Z");
+      const expiresIn = scenario === "expiry" ? 50 : 10_000;
+      const enrollment = { id: `request-${scenario}`, requestFingerprint: fingerprint, expiresAt: new Date(now + expiresIn).toISOString() };
+      let enrollmentLists = 0;
+      const api = inertApi({
+        async listEnrollments() { enrollmentLists++; return enrollmentLists === 1 ? [enrollment] : [enrollment]; },
+      });
+      const service = createCloudDeviceService({
+        api,
+        keys: keys.store,
+        now: () => now,
+        pollIntervalMs: 5_000,
+        pause: async (ms) => { now += ms; },
+      });
+      const registration = service.register("Waiting Mac", { timeoutMs: 5_000 });
+      if (scenario === "timeout") await expect(registration).rejects.toThrow("Timed out waiting for device approval");
+      else await expect(registration).rejects.toThrow("Device enrollment expired or disappeared");
+      expect(keys.material().deviceId).toBeUndefined();
+      expect(keys.deletes()).toBe(0);
+    }
+  });
+
+  test("fails with the fixed rerun error when the enrollment disappears before a device matches", async () => {
+    const material = await generateDeviceKeyMaterial();
+    const keys = memoryKeyStore(material);
+    const fingerprint = await deviceFingerprint(material.encryptionPublicKey, material.signingPublicKey);
+    const enrollment = { id: "request-gone", requestFingerprint: fingerprint, expiresAt: "2030-01-01T00:00:00.000Z" };
+    let enrollmentLists = 0;
+    let registrationCalls = 0;
+    const api = inertApi({
+      async listEnrollments() { enrollmentLists++; return enrollmentLists === 1 ? [enrollment] : []; },
+      async registerDevice() { registrationCalls++; throw new Error("must not create another request"); },
+    });
+
+    await expect(createCloudDeviceService({ api, keys: keys.store }).register("Gone Mac"))
+      .rejects.toThrow("Rerun `sinter devices register`");
+    expect(registrationCalls).toBe(0);
+    expect(keys.deletes()).toBe(0);
+  });
+
+  test("abort stops polling without deleting the pending request or local keys", async () => {
+    const material = await generateDeviceKeyMaterial();
+    const keys = memoryKeyStore(material);
+    const fingerprint = await deviceFingerprint(material.encryptionPublicKey, material.signingPublicKey);
+    const enrollment = { id: "request-abort", requestFingerprint: fingerprint, expiresAt: "2030-01-01T00:00:00.000Z" };
+    const controller = new AbortController();
+    let enrollmentLists = 0;
+    const api = inertApi({
+      async listEnrollments() { enrollmentLists++; return [enrollment]; },
+    });
+    const service = createCloudDeviceService({
+      api,
+      keys: keys.store,
+      pause: async () => { controller.abort(new Error("private abort reason")); },
+    });
+
+    await expect(service.register("Abort Mac", { signal: controller.signal })).rejects.toThrow("Stopped waiting for device approval");
+    expect(enrollmentLists).toBeGreaterThanOrEqual(2);
+    expect(keys.material().deviceId).toBeUndefined();
+    expect(keys.deletes()).toBe(0);
+  });
+
+  test.each(["network token=secret", "HTTP 503 proof=secret"])("sanitizes polling failure: %s", async (privateError) => {
+    const material = await generateDeviceKeyMaterial();
+    const keys = memoryKeyStore(material);
+    const fingerprint = await deviceFingerprint(material.encryptionPublicKey, material.signingPublicKey);
+    const enrollment = { id: "request-failure", requestFingerprint: fingerprint, expiresAt: "2030-01-01T00:00:00.000Z" };
+    let deviceLists = 0;
+    const api = inertApi({
+      async listDevices() {
+        deviceLists++;
+        if (deviceLists > 1) throw new Error(privateError);
+        return [];
+      },
+      async listEnrollments() { return [enrollment]; },
+    });
+
+    const registration = createCloudDeviceService({ api, keys: keys.store }).register("Failure Mac");
+    await expect(registration).rejects.toThrow("Could not check device approval");
+    await expect(registration).rejects.not.toThrow(privateError);
+    expect(keys.deletes()).toBe(0);
+  });
+
+  test("ignores other fingerprints but rejects an exact-fingerprint suite mismatch before saving", async () => {
+    const material = await generateDeviceKeyMaterial();
+    const keys = memoryKeyStore(material);
+    const fingerprint = await deviceFingerprint(material.encryptionPublicKey, material.signingPublicKey);
+    const enrollment = { id: "request-suite", requestFingerprint: fingerprint, expiresAt: "2030-01-01T00:00:00.000Z" };
+    let deviceLists = 0;
+    const api = inertApi({
+      async listDevices() {
+        deviceLists++;
+        if (deviceLists === 1) return [{ id: "other", name: "Other", fingerprint: "f".repeat(64), suite: DEVICE_CRYPTO_SUITE, status: "active" }];
+        return [{ id: "bad-suite", name: "Bad", fingerprint, suite: "unexpected-suite", status: "active" }];
+      },
+      async listEnrollments() { return [enrollment]; },
+    });
+
+    await expect(createCloudDeviceService({ api, keys: keys.store }).register("Suite Mac"))
+      .rejects.toThrow("unexpected cryptographic suite");
+    expect(keys.material().deviceId).toBeUndefined();
+    expect(keys.saves()).toBe(0);
+  });
+
+  test("rejects a mismatched immediate registration response without saving its id", async () => {
+    const material = await generateDeviceKeyMaterial();
+    const keys = memoryKeyStore(material);
+    const api = inertApi({
+      async registerDevice(body) {
+        return {
+          status: "registered",
+          device: { id: "wrong-device", name: body.name, fingerprint: "0".repeat(64), suite: DEVICE_CRYPTO_SUITE, status: "active" },
+        };
+      },
+    });
+
+    await expect(createCloudDeviceService({ api, keys: keys.store }).register("Mismatch Mac"))
+      .rejects.toThrow("unexpected registered device identity");
+    expect(keys.material().deviceId).toBeUndefined();
+    expect(keys.saves()).toBe(0);
+  });
+
+  test("rejects concurrent registration in one service instance without creating a duplicate request", async () => {
+    const material = await generateDeviceKeyMaterial();
+    const keys = memoryKeyStore(material);
+    const fingerprint = await deviceFingerprint(material.encryptionPublicKey, material.signingPublicKey);
+    const enrollment = { id: "request-concurrent", requestFingerprint: fingerprint, expiresAt: "2030-01-01T00:00:00.000Z" };
+    let registrationCalls = 0;
+    let enrollmentLists = 0;
+    let enteredPause!: () => void;
+    const pauseStarted = new Promise<void>((resolve) => { enteredPause = resolve; });
+    const controller = new AbortController();
+    const api = inertApi({
+      async listEnrollments() { enrollmentLists++; return enrollmentLists === 1 ? [] : [enrollment]; },
+      async registerDevice() { registrationCalls++; return { status: "approval_required", enrollment }; },
+    });
+    const service = createCloudDeviceService({
+      api,
+      keys: keys.store,
+      pause: async (_ms, signal) => {
+        enteredPause();
+        await new Promise<void>((_resolve, reject) => signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
+      },
+    });
+
+    const first = service.register("Concurrent Mac", { signal: controller.signal });
+    await pauseStarted;
+    await expect(service.register("Concurrent Mac", { wait: false })).rejects.toThrow("already in progress");
+    expect(registrationCalls).toBe(1);
+    controller.abort();
+    await expect(first).rejects.toThrow("Stopped waiting for device approval");
   });
 });

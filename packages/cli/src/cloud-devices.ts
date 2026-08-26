@@ -4,11 +4,13 @@ import { createDeviceCredentialStore, type DeviceCredentialStore } from "./devic
 import {
   createDeviceApprovalBody,
   createDeviceRegistrationBody,
+  DEVICE_CRYPTO_SUITE,
   deviceFingerprint,
   generateDeviceKeyMaterial,
   validateDeviceKeyMaterial,
   type DeviceApprovalBody,
   type DeviceRegistrationBody,
+  type DeviceKeyMaterial,
 } from "./device-identity";
 
 export interface CloudDevice {
@@ -38,23 +40,45 @@ export interface DeviceRegistrationResult {
   enrollment?: CloudDeviceEnrollment;
 }
 
+export interface DeviceRegistrationStatus {
+  status: "waiting_for_approval";
+  requestId: string;
+  expiresAt: string;
+}
+
+export interface DeviceRegistrationOptions {
+  wait?: boolean;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  onStatus?: (status: DeviceRegistrationStatus) => void | Promise<void>;
+}
+
 export interface CloudDeviceApiClient {
-  listDevices(): Promise<CloudDevice[]>;
+  listDevices(options?: { signal?: AbortSignal }): Promise<CloudDevice[]>;
   registerDevice(body: DeviceRegistrationBody): Promise<DeviceRegistrationResult>;
   renameDevice(id: string, name: string): Promise<void>;
   revokeDevice(id: string): Promise<void>;
-  listEnrollments(): Promise<CloudDeviceEnrollment[]>;
+  listEnrollments(options?: { signal?: AbortSignal }): Promise<CloudDeviceEnrollment[]>;
   approveEnrollment(id: string, body: DeviceApprovalBody): Promise<void>;
 }
 
 export interface CloudDeviceService {
-  register(name?: string): Promise<DeviceRegistrationResult & { name: string; keyStorage: string }>;
+  register(name?: string, options?: DeviceRegistrationOptions): Promise<DeviceRegistrationResult & { name: string; keyStorage: string }>;
   list(): Promise<CloudDevice[]>;
   rename(id: string, name: string): Promise<void>;
   revoke(id: string): Promise<void>;
   pending(): Promise<CloudDeviceEnrollment[]>;
   approve(requestId: string): Promise<{ requestId: string; approverDeviceId: string }>;
 }
+
+export const DEVICE_REGISTRATION_MIN_TIMEOUT_MS = 5_000;
+export const DEVICE_REGISTRATION_MAX_TIMEOUT_MS = 15 * 60_000;
+export const DEVICE_REGISTRATION_POLL_INTERVAL_MS = 2_000;
+
+const REGISTRATION_EXPIRED_MESSAGE = "Device enrollment expired or disappeared before approval. Rerun `sinter devices register`. Local device keys were left intact.";
+const REGISTRATION_TIMEOUT_MESSAGE = "Timed out waiting for device approval. Rerun `sinter devices register` to continue; the enrollment request and local device keys were left intact.";
+const REGISTRATION_ABORTED_MESSAGE = "Stopped waiting for device approval. The enrollment request and local device keys were left intact.";
+const REGISTRATION_POLL_FAILED_MESSAGE = "Could not check device approval. The enrollment request and local device keys were left intact; rerun `sinter devices register` to continue.";
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
@@ -117,7 +141,12 @@ export function createCloudDeviceApiClient(options: {
     headers.set("Authorization", `Bearer ${credentials.accessToken}`);
     headers.set("X-Sinter-ID-Token", credentials.idToken);
     if (init.body !== undefined) headers.set("Content-Type", "application/json");
-    const response = await request(`${credentials.baseUrl}${path}`, { ...init, headers });
+    let response: Response;
+    try {
+      response = await request(`${credentials.baseUrl}${path}`, { ...init, headers });
+    } catch {
+      throw new Error("Could not reach Sinter Cloud for this device operation");
+    }
     const body = await responseJson(response);
     if (!response.ok) {
       if (response.status === 401) throw new Error("Cloud session expired; run `sinter login` again");
@@ -128,8 +157,8 @@ export function createCloudDeviceApiClient(options: {
   }
 
   return {
-    async listDevices() {
-      return parseArray((await call("/api/cli/devices")).body, "devices", parseDevice);
+    async listDevices(options) {
+      return parseArray((await call("/api/cli/devices", { signal: options?.signal })).body, "devices", parseDevice);
     },
     async registerDevice(registration) {
       const { response, body } = await call("/api/cli/devices", { method: "POST", body: JSON.stringify(registration) });
@@ -156,8 +185,8 @@ export function createCloudDeviceApiClient(options: {
         body: JSON.stringify({ schema: "sinter.cloud.device-update.v1", revoke: true }),
       });
     },
-    async listEnrollments() {
-      return parseArray((await call("/api/cli/device-enrollments")).body, "enrollments", parseEnrollment);
+    async listEnrollments(options) {
+      return parseArray((await call("/api/cli/device-enrollments", { signal: options?.signal })).body, "enrollments", parseEnrollment);
     },
     async approveEnrollment(id, approval) {
       await call(`/api/cli/device-enrollments/${encodeURIComponent(id)}/approve`, {
@@ -182,42 +211,176 @@ function requireId(value: string, label: string): string {
   return id;
 }
 
+function activeDeviceForFingerprint(devices: CloudDevice[], fingerprint: string): CloudDevice | undefined {
+  const matching = devices.filter((device) =>
+    device.fingerprint === fingerprint &&
+    (device.status === undefined || device.status === "active") &&
+    device.revokedAt == null
+  );
+  const unexpected = matching.find((device) => device.suite !== DEVICE_CRYPTO_SUITE);
+  if (unexpected) {
+    throw new Error("Sinter Cloud returned a device with an unexpected cryptographic suite; the local device ID was not saved");
+  }
+  return matching[0];
+}
+
+function verifiedRegisteredDevice(result: DeviceRegistrationResult, fingerprint: string): CloudDevice {
+  const device = result.device;
+  if (!device || (device.id !== result.deviceId && result.deviceId !== undefined)) {
+    throw new Error("Sinter Cloud did not return complete registered device identity; the local device ID was not saved");
+  }
+  if (device.fingerprint !== fingerprint || device.suite !== DEVICE_CRYPTO_SUITE) {
+    throw new Error("Sinter Cloud returned an unexpected registered device identity; the local device ID was not saved");
+  }
+  return device;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new Error(REGISTRATION_ABORTED_MESSAGE);
+}
+
+async function defaultPause(ms: number, signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal);
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = () => signal?.removeEventListener("abort", abort);
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    const abort = () => {
+      clearTimeout(timer);
+      cleanup();
+      reject(new Error(REGISTRATION_ABORTED_MESSAGE));
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+  });
+}
+
 export function createCloudDeviceService(options: {
   api?: CloudDeviceApiClient;
   keys?: DeviceCredentialStore;
   now?: () => number;
+  pause?: (ms: number, signal?: AbortSignal) => Promise<void>;
+  pollIntervalMs?: number;
 } = {}): CloudDeviceService {
   const api = options.api ?? createCloudDeviceApiClient();
   const keys = options.keys ?? createDeviceCredentialStore();
   const now = options.now ?? Date.now;
+  const pause = options.pause ?? defaultPause;
+  const pollIntervalMs = options.pollIntervalMs ?? DEVICE_REGISTRATION_POLL_INTERVAL_MS;
+  if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) throw new Error("Device registration poll interval must be positive");
+  let registrationInProgress = false;
+
+  async function polledDevices(signal: AbortSignal | undefined): Promise<CloudDevice[]> {
+    throwIfAborted(signal);
+    try {
+      return await api.listDevices({ signal });
+    } catch {
+      throwIfAborted(signal);
+      throw new Error(REGISTRATION_POLL_FAILED_MESSAGE);
+    }
+  }
+
+  async function polledEnrollments(signal: AbortSignal | undefined): Promise<CloudDeviceEnrollment[]> {
+    throwIfAborted(signal);
+    try {
+      return await api.listEnrollments({ signal });
+    } catch {
+      throwIfAborted(signal);
+      throw new Error(REGISTRATION_POLL_FAILED_MESSAGE);
+    }
+  }
+
+  async function saveVerifiedDevice(material: DeviceKeyMaterial, device: CloudDevice): Promise<DeviceRegistrationResult> {
+    if (material.deviceId !== device.id) await keys.save({ ...material, deviceId: device.id });
+    return { status: "registered", device, deviceId: device.id };
+  }
+
+  async function waitForApproval(
+    material: DeviceKeyMaterial,
+    fingerprint: string,
+    enrollment: CloudDeviceEnrollment,
+    registration: DeviceRegistrationOptions,
+  ): Promise<DeviceRegistrationResult> {
+    if (enrollment.requestFingerprint !== fingerprint) {
+      throw new Error("Sinter Cloud returned an enrollment for an unexpected device fingerprint");
+    }
+    const expiresAt = Date.parse(enrollment.expiresAt);
+    if (!Number.isFinite(expiresAt)) throw new Error("Sinter Cloud returned an invalid device enrollment expiry");
+    const timeoutMs = registration.timeoutMs ?? DEVICE_REGISTRATION_MAX_TIMEOUT_MS;
+    if (!Number.isFinite(timeoutMs) || timeoutMs < DEVICE_REGISTRATION_MIN_TIMEOUT_MS || timeoutMs > DEVICE_REGISTRATION_MAX_TIMEOUT_MS) {
+      throw new Error("Device registration wait timeout must be between 5s and 15m");
+    }
+    const startedAt = now();
+    const deadline = Math.min(expiresAt, startedAt + timeoutMs);
+    await registration.onStatus?.({ status: "waiting_for_approval", requestId: enrollment.id, expiresAt: enrollment.expiresAt });
+
+    while (true) {
+      throwIfAborted(registration.signal);
+      const current = now();
+      if (current >= expiresAt) throw new Error(REGISTRATION_EXPIRED_MESSAGE);
+      if (current >= deadline) throw new Error(REGISTRATION_TIMEOUT_MESSAGE);
+
+      let device = activeDeviceForFingerprint(await polledDevices(registration.signal), fingerprint);
+      if (device) return saveVerifiedDevice(material, device);
+
+      const enrollments = await polledEnrollments(registration.signal);
+      const pending = enrollments.find((item) =>
+        item.id === enrollment.id && item.requestFingerprint === fingerprint
+      );
+      if (!pending) {
+        device = activeDeviceForFingerprint(await polledDevices(registration.signal), fingerprint);
+        if (device) return saveVerifiedDevice(material, device);
+        throw new Error(REGISTRATION_EXPIRED_MESSAGE);
+      }
+
+      const delay = Math.min(pollIntervalMs, deadline - now());
+      if (delay <= 0) continue;
+      try {
+        await pause(delay, registration.signal);
+      } catch {
+        throwIfAborted(registration.signal);
+        throw new Error(REGISTRATION_POLL_FAILED_MESSAGE);
+      }
+    }
+  }
 
   return {
-    async register(requestedName) {
-      const name = deviceName(requestedName);
-      let material = await keys.load();
-      if (!material) {
-        material = await generateDeviceKeyMaterial(now());
-        await keys.save(material);
-      }
-      await validateDeviceKeyMaterial(material);
-      const fingerprint = await deviceFingerprint(material.encryptionPublicKey, material.signingPublicKey);
-      const existing = (await api.listDevices()).find((device) =>
-        device.fingerprint === fingerprint && device.status !== "revoked" && device.revokedAt == null
-      );
-      const pending = existing ? undefined : (await api.listEnrollments()).find((request) =>
-        request.requestFingerprint === fingerprint
-      );
-      const result: DeviceRegistrationResult = existing
-        ? { status: "registered", device: existing, deviceId: existing.id }
-        : pending
+    async register(requestedName, registration = {}) {
+      if (registrationInProgress) throw new Error("Device registration is already in progress in this CLI process");
+      registrationInProgress = true;
+      try {
+        const name = deviceName(requestedName);
+        let material = await keys.load();
+        if (!material) {
+          material = await generateDeviceKeyMaterial(now());
+          await keys.save(material);
+        }
+        await validateDeviceKeyMaterial(material);
+        const fingerprint = await deviceFingerprint(material.encryptionPublicKey, material.signingPublicKey);
+        const existing = activeDeviceForFingerprint(await api.listDevices(), fingerprint);
+        if (existing) {
+          const result = await saveVerifiedDevice(material, existing);
+          return { ...result, name, keyStorage: keys.description };
+        }
+
+        const pending = (await api.listEnrollments()).find((request) => request.requestFingerprint === fingerprint);
+        const result: DeviceRegistrationResult = pending
           ? { status: "approval_required", enrollment: pending }
           : await api.registerDevice(await createDeviceRegistrationBody(material, name));
-      if (result.status === "registered") {
-        const deviceId = result.device?.id ?? result.deviceId;
-        if (!deviceId) throw new Error("Sinter Cloud did not return the registered device ID");
-        if (material.deviceId !== deviceId) await keys.save({ ...material, deviceId });
+        if (result.status === "registered") {
+          const device = verifiedRegisteredDevice(result, fingerprint);
+          const saved = await saveVerifiedDevice(material, device);
+          return { ...saved, name, keyStorage: keys.description };
+        }
+        if (!result.enrollment) throw new Error("Sinter Cloud did not return the device enrollment request");
+        if (registration.wait === false) return { ...result, name, keyStorage: keys.description };
+        const approved = await waitForApproval(material, fingerprint, result.enrollment, registration);
+        return { ...approved, name, keyStorage: keys.description };
+      } finally {
+        registrationInProgress = false;
       }
-      return { ...result, name, keyStorage: keys.description };
     },
     list: () => api.listDevices(),
     async rename(id, name) {

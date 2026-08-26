@@ -47,9 +47,11 @@ function fakeService(overrides: Partial<CloudDeviceService> = {}): CloudDeviceSe
 }
 
 describe("sinter devices commands", () => {
-  test("prints a clear approval-required registration response without scanning sessions", async () => {
+  test("--no-wait prints clear approval instructions without polling or scanning sessions", async () => {
+    let registrationOptions: Parameters<CloudDeviceService["register"]>[1];
     const harness = commandContext(fakeService({
-      async register(name) {
+      async register(name, options) {
+        registrationOptions = options;
         return {
           status: "approval_required",
           name: name ?? "Pending Mac",
@@ -58,11 +60,82 @@ describe("sinter devices commands", () => {
         };
       },
     }));
-    expect(await run(["devices", "register", "--name", "Pending Mac"], harness.ctx)).toBe(0);
+    expect(await run(["devices", "register", "--name", "Pending Mac", "--no-wait"], harness.ctx)).toBe(0);
     expect(harness.stdout.join("\n")).toContain("Approval required");
     expect(harness.stdout.join("\n")).toContain("request-1");
+    expect(harness.stdout.join("\n")).toContain("sinter devices approve request-1");
+    expect(registrationOptions?.wait).toBe(false);
+    expect(harness.stderr).toEqual([]);
     expect(harness.scans()).toBe(0);
     expect(harness.ledgerTouches()).toBe(0);
+  });
+
+  test("human registration prints approval progress to stderr and then success", async () => {
+    let timeoutMs: number | undefined;
+    const harness = commandContext(fakeService({
+      async register(name, options) {
+        timeoutMs = options?.timeoutMs;
+        await options?.onStatus?.({
+          status: "waiting_for_approval",
+          requestId: "request-human",
+          expiresAt: "2030-01-01T00:00:00.000Z",
+        });
+        return {
+          status: "registered",
+          name: name ?? "Waiting Mac",
+          keyStorage: "test keychain",
+          deviceId: "approved-device",
+          device: { id: "approved-device", name: name ?? "Waiting Mac", fingerprint: "abc", status: "active" },
+        };
+      },
+    }));
+
+    expect(await run(["devices", "register", "--name", "Waiting Mac", "--timeout", "90s"], harness.ctx)).toBe(0);
+    expect(timeoutMs).toBe(90_000);
+    expect(harness.stderr).toEqual([
+      "Enrollment request: request-human",
+      "Expires: 2030-01-01T00:00:00.000Z",
+      "Waiting for approval...",
+    ]);
+    expect(harness.stdout.join("\n")).toContain("Approved and registered device Waiting Mac (approved-device)");
+    expect(harness.stdout.join("\n")).not.toContain("abc");
+    expect(harness.scans()).toBe(0);
+    expect(harness.ledgerTouches()).toBe(0);
+  });
+
+  test("JSON registration emits one final stdout document while progress stays on stderr", async () => {
+    const harness = commandContext(fakeService({
+      async register(name, options) {
+        await options?.onStatus?.({
+          status: "waiting_for_approval",
+          requestId: "request-json",
+          expiresAt: "2030-01-01T00:00:00.000Z",
+        });
+        return { status: "registered", name: name ?? "JSON Mac", keyStorage: "test keychain", deviceId: "json-device" };
+      },
+    }));
+
+    expect(await run(["devices", "register", "--name", "JSON Mac", "--json"], harness.ctx)).toBe(0);
+    expect(harness.stdout).toHaveLength(1);
+    expect(JSON.parse(harness.stdout[0]!)).toMatchObject({
+      schema: "sinter.cloud.device-registration-result.v1",
+      ok: true,
+      status: "registered",
+      deviceId: "json-device",
+    });
+    expect(harness.stderr.join("\n")).toContain("Waiting for approval");
+    expect(harness.stdout[0]).not.toContain("Waiting for approval");
+  });
+
+  test("validates registration timeout bounds and incompatible wait flags before calling the service", async () => {
+    let calls = 0;
+    const harness = commandContext(fakeService({ async register(name) { calls++; return { status: "registered", name: name ?? "Mac", keyStorage: "keys", deviceId: "id" }; } }));
+    expect(await run(["devices", "register", "--timeout", "4s"], harness.ctx)).toBe(1);
+    expect(harness.stderr.pop()).toContain("between 5s and 15m");
+    expect(await run(["devices", "register", "--timeout", "16m"], harness.ctx)).toBe(1);
+    expect(await run(["devices", "register", "--no-wait", "--timeout", "5s"], harness.ctx)).toBe(1);
+    expect(harness.stderr.pop()).toContain("cannot be used with --no-wait");
+    expect(calls).toBe(0);
   });
 
   test("emits versioned JSON for lists and mutations", async () => {
@@ -99,6 +172,16 @@ describe("sinter devices commands", () => {
     expect(revoked).toBe(false);
     expect(harness.scans()).toBe(0);
     expect(harness.ledgerTouches()).toBe(0);
+  });
+
+  test("device help documents automatic waiting and script controls", async () => {
+    const harness = commandContext(fakeService());
+    expect(await run(["help", "devices"], harness.ctx)).toBe(0);
+    const help = harness.stdout.join("\n");
+    expect(help).toContain("--no-wait");
+    expect(help).toContain("--timeout 5m");
+    expect(help).toContain("waits for an existing device");
+    expect(help).toContain("Ctrl+C");
   });
 
   test("main treats device commands as account-only and does not create profile config", async () => {

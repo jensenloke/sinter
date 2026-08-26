@@ -54,7 +54,12 @@ import { renderSupportReport, supportPlatform, type SupportHarnessStatus } from 
 import { applyTransfer, fmtBytes, TRANSFER_MODES, type TransferMode } from "./transfer";
 import { sendTransfer, startTransferReceiver, type ReceivedTransfer } from "./network";
 import { createCloudAuthService, type CloudAuthService } from "./cloud-auth";
-import { createCloudDeviceService, type CloudDeviceService } from "./cloud-devices";
+import {
+  createCloudDeviceService,
+  DEVICE_REGISTRATION_MAX_TIMEOUT_MS,
+  DEVICE_REGISTRATION_MIN_TIMEOUT_MS,
+  type CloudDeviceService,
+} from "./cloud-devices";
 import type { UpdateDependencies } from "./update";
 
 export interface Ctx {
@@ -2145,6 +2150,17 @@ function cloudLoginTimeout(value: string | undefined) {
   return Math.floor(ms);
 }
 
+function deviceRegistrationTimeout(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const match = /^(\d+(?:\.\d+)?)\s*(s|m)$/i.exec(value.trim());
+  if (!match) throw new CliError(`bad --timeout: ${value} (try 5m or 90s)`);
+  const ms = Number(match[1]) * (match[2]!.toLowerCase() === "m" ? 60_000 : 1_000);
+  if (!Number.isFinite(ms) || ms < DEVICE_REGISTRATION_MIN_TIMEOUT_MS || ms > DEVICE_REGISTRATION_MAX_TIMEOUT_MS) {
+    throw new CliError("--timeout must be between 5s and 15m");
+  }
+  return Math.floor(ms);
+}
+
 function cloudAuth(ctx: Ctx) {
   return ctx.cloudAuth ?? createCloudAuthService();
 }
@@ -2154,28 +2170,55 @@ function cloudDevices(ctx: Ctx) {
 }
 
 export async function cmdDevices(argv: string[], ctx: Ctx): Promise<number> {
-  const args = parseArgs(argv, { strings: ["name"], booleans: ["json", "yes"] });
+  const args = parseArgs(argv, { strings: ["name", "timeout"], booleans: ["json", "yes", "no-wait"] });
   const action = args._[0] ?? "list";
   const positional = args._.slice(1);
   const json = flagBool(args, "json");
   const service = cloudDevices(ctx);
+  const hasRegistrationFlags = flagString(args, "timeout") !== undefined || flagBool(args, "no-wait");
 
   if (action === "register") {
-    if (positional.length) throw new CliError("usage: sinter devices register [--name name] [--json]");
-    const result = await service.register(flagString(args, "name"));
-    if (json) {
-      ctx.out(JSON.stringify({ schema: "sinter.cloud.device-registration-result.v1", ok: true, ...result }));
-    } else if (result.status === "approval_required") {
-      ctx.out("Approval required before this device can be registered.");
-      if (result.enrollment?.id) ctx.out(`request: ${result.enrollment.id}`);
-      ctx.out("Run `sinter devices pending` and approve this request from an existing registered device.");
-      ctx.out(ctx.pal.dim(`private keys: ${result.keyStorage}`));
-    } else {
-      ctx.out(`Registered device ${result.device?.name ?? result.name} (${result.device?.id ?? result.deviceId}).`);
-      ctx.out(ctx.pal.dim(`private keys: ${result.keyStorage}`));
+    if (positional.length) throw new CliError("usage: sinter devices register [--name name] [--no-wait] [--timeout 5m] [--json]");
+    const noWait = flagBool(args, "no-wait");
+    if (noWait && flagString(args, "timeout") !== undefined) throw new CliError("--timeout cannot be used with --no-wait");
+    const timeoutMs = deviceRegistrationTimeout(flagString(args, "timeout"));
+    const controller = new AbortController();
+    const stopWaiting = () => controller.abort();
+    let waiting = false;
+    if (!noWait) process.once("SIGINT", stopWaiting);
+    try {
+      const result = await service.register(flagString(args, "name"), {
+        wait: !noWait,
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
+        signal: controller.signal,
+        onStatus: (status) => {
+          waiting = true;
+          ctx.err(`Enrollment request: ${status.requestId}`);
+          ctx.err(`Expires: ${status.expiresAt}`);
+          ctx.err("Waiting for approval...");
+        },
+      });
+      if (json) {
+        ctx.out(JSON.stringify({ schema: "sinter.cloud.device-registration-result.v1", ok: true, ...result }));
+      } else if (result.status === "approval_required") {
+        ctx.out("Approval required before this device can be registered.");
+        if (result.enrollment?.id) ctx.out(`Request: ${result.enrollment.id}`);
+        if (result.enrollment?.expiresAt) ctx.out(`Expires: ${result.enrollment.expiresAt}`);
+        const request = result.enrollment?.id ? ` ${result.enrollment.id}` : " <request-id>";
+        ctx.out(`On an existing registered device, run \`sinter devices pending\`, then \`sinter devices approve${request}\`.`);
+        ctx.out(ctx.pal.dim(`private keys: ${result.keyStorage}`));
+      } else {
+        const prefix = waiting ? "Approved and registered device" : "Registered device";
+        ctx.out(`${prefix} ${result.device?.name ?? result.name} (${result.device?.id ?? result.deviceId}).`);
+        ctx.out(ctx.pal.dim(`private keys: ${result.keyStorage}`));
+      }
+      return EXIT.OK;
+    } finally {
+      if (!noWait) process.removeListener("SIGINT", stopWaiting);
     }
-    return EXIT.OK;
   }
+
+  if (hasRegistrationFlags) throw new CliError("--no-wait and --timeout are only valid with `sinter devices register`");
 
   if (action === "list") {
     if (positional.length || flagString(args, "name")) throw new CliError("usage: sinter devices list [--json]");

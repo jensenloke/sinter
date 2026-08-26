@@ -81,7 +81,7 @@ ${commands}
     config) _arguments $global_args '1:action:(show path validate example discover-shell)' '--shell=[absolute zsh/bash executable]:shell:_files' '--write[create config only if missing]' '--yes[confirm non-interactive config creation]' '--json[emit versioned JSON]' ;;
     login) _arguments $global_args '--no-open' '--timeout=[callback lifetime]:duration' '--json' ;;
     whoami|logout) _arguments $global_args '--json' ;;
-    devices) _arguments $global_args '1:action:(register list rename revoke pending approve)' '2:device or request id' '3:device name' '--name=[device name]:name' '--yes[confirm permanent revocation]' '--json' ;;
+    devices) _arguments $global_args '1:action:(register list rename revoke pending approve)' '2:device or request id' '3:device name' '--name=[device name]:name' '--no-wait[return approval-required without polling]' '--timeout=[approval wait, 5s to 15m]:duration' '--yes[confirm permanent revocation]' '--json' ;;
     ls) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
     recent) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' ;;
     watch) _arguments $global_args '1:view:(recent projects)' '--interval=[refresh interval]:duration' '--count=[snapshot count]:count' '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-clear' ;;
@@ -153,7 +153,7 @@ function bash(): string {
     return
   fi
   if [[ $command == devices ]]; then
-    COMPREPLY=( $(compgen -W 'register list rename revoke pending approve --name --yes --json' -- "$current") )
+    COMPREPLY=( $(compgen -W 'register list rename revoke pending approve --name --no-wait --timeout --yes --json' -- "$current") )
     return
   fi
   if [[ $command == update ]]; then
@@ -188,6 +188,8 @@ function fish(): string {
     "complete -c sinter -n '__fish_seen_subcommand_from config' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from devices' -a 'register list rename revoke pending approve' -d 'Action'",
     "complete -c sinter -n '__fish_seen_subcommand_from devices' -l name -r -d 'Device name'",
+    "complete -c sinter -n '__fish_seen_subcommand_from devices' -l no-wait -d 'Return approval-required without polling'",
+    "complete -c sinter -n '__fish_seen_subcommand_from devices' -l timeout -r -d 'Approval wait, 5s to 15m'",
     "complete -c sinter -n '__fish_seen_subcommand_from devices' -l yes -d 'Confirm permanent revocation'",
     "complete -c sinter -n '__fish_seen_subcommand_from devices' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from completion' -a 'zsh bash fish' -d 'Shell'",

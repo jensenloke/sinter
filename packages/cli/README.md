@@ -48,7 +48,12 @@ sinter devices list
 ```
 
 Private device keys stay local. A subsequent device requires signed approval
-from an existing active device. Session upload and sync remain disabled.
+from an existing active device. Registration waits for that approval by default
+and saves the approved device ID automatically; use `--no-wait` to return the
+pending request immediately in scripts, or `--timeout 5m` to shorten the wait.
+Progress is written to stderr so `--json` emits one final document on stdout.
+Ctrl+C stops waiting without deleting the request or local keys. Session upload
+and sync remain disabled.
 
 Documentation, source, roadmap, and issue tracker:
 https://github.com/jensenloke/sinter

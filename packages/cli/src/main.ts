@@ -208,7 +208,8 @@ cloud account (optional)
   login [--no-open] [--timeout 10m]      approve this CLI through Auth0 device login
   whoami [--json]                        verify and print the current Cloud identity
   logout [--json]                        revoke and remove this device's Cloud login
-  devices register [--name name]         register this device's public identity
+  devices register [--name name] [--no-wait] [--timeout 5m]
+                                         register and wait for device approval
   devices list|pending [--json]          list devices or enrollment requests
   devices rename|revoke|approve ...      manage Cloud device identity
 
@@ -315,7 +316,7 @@ const COMMAND_HELP: Record<string, string> = {
   login: "usage: sinter login [--no-open] [--timeout 10m] [--json]\n\nStarts an OAuth device authorization, opens Auth0 in the browser, prints the confirmation code for headless/SSH use, validates the returned Sinter Cloud identity, and stores rotating credentials in macOS Keychain (or an owner-only file when no native credential store is available). It does not upload sessions.",
   whoami: "usage: sinter whoami [--json]\n\nRefreshes the Cloud session when needed and verifies the identity with Sinter Cloud. It never scans local sessions.",
   logout: "usage: sinter logout [--json]\n\nRevokes the current Cloud session when reachable, then removes the local credential even if the network is unavailable.",
-  devices: "usage: sinter devices <register|list|rename|revoke|pending|approve> ...\n\nRegisters and manages Cloud device identities. Private P-256 keys remain in macOS Keychain (or a separate owner-only file on other platforms); only public JWKs are sent to Sinter Cloud. This command never scans local sessions or creates profile configuration.",
+  devices: "usage: sinter devices register [--name name] [--no-wait] [--timeout 5m] [--json]\n       sinter devices <list|rename|revoke|pending|approve> ...\n\nRegistration waits for an existing device to approve the enrollment, then saves the approved device ID automatically. --no-wait returns approval-required immediately for scripts. --timeout accepts 5s through 15m and never extends past the server expiry; without it, registration waits through the enrollment window. Progress is written to stderr, and --json writes one final versioned document to stdout. Ctrl+C stops waiting without removing the request or local keys.\n\nPrivate P-256 keys remain in macOS Keychain (or a separate owner-only file on other platforms); only public JWKs are sent to Sinter Cloud. Device commands never scan local sessions or create profile configuration.",
   telemetry: "usage: sinter telemetry [status|enable|disable] [--endpoint https://…]\n\nOpt-in anonymous active-use measurement. CI and non-interactive commands never emit events.",
   gui: "usage: sinter gui [--port n] [--no-open]\n\nRuns a token-protected workspace on 127.0.0.1; transcripts never leave this machine.",
   completion: "usage: sinter completion <zsh|bash|fish>\n\nPrints a native completion script to stdout; does not modify shell configuration.",
