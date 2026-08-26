@@ -58,13 +58,13 @@ import {
 } from "./commands";
 import { colorEnabled, palette, termWidth } from "./format";
 import { canRunMenu } from "./tui/menu";
-import { maybePromptForUpdate } from "./update";
+import { cmdUpdate, maybePromptForUpdate } from "./update";
 import { trackTelemetry, type TelemetryEvent } from "./telemetry";
 
 export const VERSION = "0.4.0";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
-const AUTO_SCAN_SKIP = new Set(["scan", "watch", "setup", "doctor", "capabilities", "ghosts", "tags", "privacy", "feedback", "telemetry", "completion", "config", "login", "whoami", "logout", "devices"]);
+const AUTO_SCAN_SKIP = new Set(["scan", "watch", "setup", "doctor", "capabilities", "ghosts", "tags", "privacy", "feedback", "telemetry", "completion", "config", "login", "whoami", "logout", "devices", "update"]);
 
 function skipsAutoScan(command: string, argv: string[]): boolean {
   if (AUTO_SCAN_SKIP.has(command)) return true;
@@ -101,6 +101,7 @@ async function autoScanLedger(ctx: Ctx, argv: string[]): Promise<void> {
 }
 
 const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = {
+  update: cmdUpdate,
   completion: cmdCompletion,
   compare: cmdCompare,
   capabilities: cmdCapabilities,
@@ -195,6 +196,8 @@ move and continue
 setup and maintenance
   setup [--yes] [--no-menu]              detect stores, build the ledger, then open the menu
   config [show|path|validate|example]    inspect and validate local profile configuration
+  update [--check] [--package-manager bun|npm] [--force] [--json]
+                                         install the exact latest published CLI build
   doctor [--json|--report [-o file]]     detect stores or create a privacy-safe report
   capabilities [--harness x] [--json]   show adapter read, write, and resume support
   ghosts [preview|prune] [...]          preview or prune disposable ghost rows
@@ -268,6 +271,7 @@ Usage or validation failures go to stderr and return a non-zero exit code.`;
 
 const COMMAND_HELP: Record<string, string> = {
   config: "usage: sinter config [show|path|validate|example] [--config file] [--json]\n\nShows profile store roots, prints the resolved config path, validates every profile, or prints editable TOML to stdout.",
+  update: "usage: sinter update [--check] [--package-manager bun|npm] [--force] [--json]\n\nQueries npm for an exact published version, then updates the matching global bun or npm installation. --check never installs. A newer local build is never downgraded unless --force is explicit. If installation ownership cannot be determined safely, pass --package-manager.",
   instances: INSTANCE_HELP,
   scan: "usage: sinter scan [--harness claude,codex] [--json]\n\nRefreshes the local ledger. Reads local stores only.",
   ls: "usage: sinter ls [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]",
@@ -345,6 +349,7 @@ export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile
     version: overrides.version ?? VERSION,
     interactive: overrides.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY),
     sleep: overrides.sleep ?? Bun.sleep,
+    update: overrides.update,
   };
 }
 
@@ -410,7 +415,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
           JSON.stringify({
             schema: "sinter.error.v1",
             ok: false,
-            error: { code: err.code, kind: err.code === EXIT.AMBIGUOUS ? "resolution" : "usage", message: err.message },
+            error: { code: err.code, kind: err.kind ?? (err.code === EXIT.AMBIGUOUS ? "resolution" : "usage"), message: err.message },
           }),
         );
       } else {
@@ -429,7 +434,10 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
   }
 }
 
-export async function main(argv: string[] = Bun.argv.slice(2)): Promise<number> {
+export async function main(
+  argv: string[] = Bun.argv.slice(2),
+  overrides: Partial<Ctx> & { ledgerPath?: string; profile?: SinterProfile } = {},
+): Promise<number> {
   if (await maybePromptForUpdate(VERSION, { argv })) return EXIT.OK;
   const ledgerIndex = argv.findIndex((arg) => arg === "--ledger" || arg.startsWith("--ledger="));
   const ledgerPath = ledgerIndex < 0 ? undefined : argv[ledgerIndex]!.includes("=") ? argv[ledgerIndex]!.slice(argv[ledgerIndex]!.indexOf("=") + 1) : argv[ledgerIndex + 1];
@@ -440,8 +448,8 @@ export async function main(argv: string[] = Bun.argv.slice(2)): Promise<number> 
     (["help", "--help", "-h", "--version", "-v", "version", "completion"].includes(command) ||
       (command === "config" && ["path", "example"].includes(argv[1] ?? "show")));
   const helpRequested = argv.includes("--help") || argv.includes("-h");
-  const accountOnly = command !== undefined && ["login", "whoami", "logout", "devices"].includes(command);
-  const operational = (!command || Boolean(COMMANDS[command])) && !informational && !helpRequested && !accountOnly;
+  const standalone = command !== undefined && ["login", "whoami", "logout", "devices", "update"].includes(command);
+  const operational = (!command || Boolean(COMMANDS[command])) && !informational && !helpRequested && !standalone;
   let bootstrap: ReturnType<typeof bootstrapDefaultConfig> | undefined;
   try {
     if (operational) {
@@ -454,8 +462,13 @@ export async function main(argv: string[] = Bun.argv.slice(2)): Promise<number> 
             : argv[configIndex + 1];
       bootstrap = bootstrapDefaultConfig(configPath);
     }
-    const profile = operational ? loadProfile(argv) : undefined;
-    const ctx = makeCtx({ ledgerPath, profile, pal: palette(noColor ? false : colorEnabled()) });
+    const profile = operational ? loadProfile(argv) : overrides.profile;
+    const ctx = makeCtx({
+      ...overrides,
+      ledgerPath: overrides.ledgerPath ?? ledgerPath,
+      profile,
+      pal: overrides.pal ?? palette(noColor ? false : colorEnabled()),
+    });
     if (bootstrap?.created)
       ctx.err(`created config: ${bootstrap.configPath} (instances: ${bootstrap.instances.join(", ")})`);
     return run(argv, ctx);

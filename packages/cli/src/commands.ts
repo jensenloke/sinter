@@ -46,6 +46,7 @@ import { applyTransfer, fmtBytes, TRANSFER_MODES, type TransferMode } from "./tr
 import { sendTransfer, startTransferReceiver, type ReceivedTransfer } from "./network";
 import { createCloudAuthService, type CloudAuthService } from "./cloud-auth";
 import { createCloudDeviceService, type CloudDeviceService } from "./cloud-devices";
+import type { UpdateDependencies } from "./update";
 
 export interface Ctx {
   registry: AdapterRegistry;
@@ -79,6 +80,8 @@ export interface Ctx {
   cloudAuth?: CloudAuthService;
   /** Device identity/API operations are separately injectable and never touch the session ledger. */
   cloudDevices?: CloudDeviceService;
+  /** Registry, process, and installation-layout seams for the explicit update command. */
+  update?: UpdateDependencies;
 }
 
 // ------------------------------------------------------------------ helpers

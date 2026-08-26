@@ -7,6 +7,7 @@ Pi, and pi.
 ```sh
 bunx @jensenloke/sinter --help
 bun add --global @jensenloke/sinter
+sinter update --check
 sinter scan
 sinter
 ```
@@ -23,6 +24,11 @@ context transfer over LAN or Tailscale. Run `sinter receive --help` and
 `~/.claude*` stores are present, the first operational run creates and selects
 a default multi-instance config without overwriting existing configuration.
 Run `sinter help instances` for the agent-safe porting workflow.
+
+Run `sinter update` to install the exact latest published build into the global
+bun or npm installation that owns the current executable. If that ownership is
+ambiguous, pass `--package-manager bun` or `--package-manager npm`; use
+`--check` for a side-effect-free registry check.
 
 Documentation, source, roadmap, and issue tracker:
 https://github.com/jensenloke/sinter

@@ -33,6 +33,7 @@ const COMMANDS = [
   ["receive", "receive an encrypted session directly"],
   ["resume", "print or run a native resume command"],
   ["setup", "detect stores and build the ledger"],
+  ["update", "install the latest published CLI build"],
   ["doctor", "report store and ledger health"],
   ["capabilities", "show adapter support matrix"],
   ["privacy", "explain local data handling"],
@@ -107,6 +108,7 @@ ${commands}
     receive) _arguments $global_args '--to=[target harness instance]:instance' '--bind=[listen address]:address' '--advertise=[LAN or Tailscale address]:address' '--port=[listen port]:port' '--ttl=[locator lifetime]:duration' '--cwd=[target directory]:directory:_directories' '--yes' '--json' ;;
     resume) _arguments $global_args '1:session id' '--in=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--exec' '--dry-run' '--live-tools' ;;
     setup) _arguments $global_args '--yes' '--no-menu' ;;
+    update) _arguments $global_args '--check[check without installing]' '--package-manager=[global installer]:package manager:(bun npm)' '--force[allow installing an older published version]' '--json[emit versioned JSON]' ;;
     doctor) _arguments $global_args '--json' '--report' '(-o --output)'{-o,--output}'=[diagnostic report file]:file:_files' ;;
     capabilities) _arguments $global_args '--harness=[filter by harness]:harness:($harnesses)' '--json' ;;
     feedback) _arguments $global_args '--title=[issue title]:title' '--no-open' ;;
@@ -139,6 +141,7 @@ function bash(): string {
   case "$previous" in
     --to|--in) COMPREPLY=( $(compgen -W '${HARNESSES.join(" ")}' -- "$current") ); return ;;
     --mode) COMPREPLY=( $(compgen -W '${MODES.join(" ")}' -- "$current") ); return ;;
+    --package-manager) COMPREPLY=( $(compgen -W 'bun npm' -- "$current") ); return ;;
     --cwd|--config|--ledger|-o|--output) COMPREPLY=( $(compgen -f -- "$current") ); return ;;
   esac
   if [[ $command == completion ]]; then
@@ -151,6 +154,10 @@ function bash(): string {
   fi
   if [[ $command == devices ]]; then
     COMPREPLY=( $(compgen -W 'register list rename revoke pending approve --name --yes --json' -- "$current") )
+    return
+  fi
+  if [[ $command == update ]]; then
+    COMPREPLY=( $(compgen -W '--check --package-manager --force --json bun npm' -- "$current") )
     return
   fi
   COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --all-harnesses --cwd --all-cwd --since --all-time --older-than --interval --count --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open --yes --ghosts --no-ghosts --subagents --no-subagents --force --all --clear --no-clear' -- "$current") )
@@ -180,6 +187,10 @@ function fish(): string {
     "complete -c sinter -n '__fish_seen_subcommand_from devices' -l yes -d 'Confirm permanent revocation'",
     "complete -c sinter -n '__fish_seen_subcommand_from devices' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from completion' -a 'zsh bash fish' -d 'Shell'",
+    "complete -c sinter -n '__fish_seen_subcommand_from update' -l check -d 'Check without installing'",
+    "complete -c sinter -n '__fish_seen_subcommand_from update' -l package-manager -xa 'bun npm' -d 'Global installer'",
+    "complete -c sinter -n '__fish_seen_subcommand_from update' -l force -d 'Allow an older published version'",
+    "complete -c sinter -n '__fish_seen_subcommand_from update' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from port' -l preview -d 'Preview without writing'",
     "complete -c sinter -n '__fish_seen_subcommand_from doctor' -l report -d 'Generate a privacy-safe report'",
     `complete -c sinter -n '__fish_seen_subcommand_from capabilities' -l harness -xa '${HARNESSES.join(" ")}' -d 'Filter by harness'`,
