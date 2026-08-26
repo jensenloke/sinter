@@ -33,6 +33,9 @@ describe("shell completions", () => {
     expect(script).toContain("unpin");
     expect(script).toContain("last");
     expect(script).toContain("config");
+    expect(script).toContain("discover-shell");
+    expect(script).toContain("shell");
+    expect(script).toContain("write");
     expect(script).toContain("preview");
     expect(script).toContain("report");
     expect(script).toContain("ndjson");

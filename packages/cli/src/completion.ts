@@ -78,7 +78,7 @@ ${commands}
 
   case $words[2] in
     scan) _arguments $global_args '--harness=[comma-separated harnesses]:harnesses' '--json' ;;
-    config) _arguments $global_args '1:action:(show path validate example)' '--json' ;;
+    config) _arguments $global_args '1:action:(show path validate example discover-shell)' '--shell=[absolute zsh/bash executable]:shell:_files' '--write[create config only if missing]' '--yes[confirm non-interactive config creation]' '--json[emit versioned JSON]' ;;
     login) _arguments $global_args '--no-open' '--timeout=[callback lifetime]:duration' '--json' ;;
     whoami|logout) _arguments $global_args '--json' ;;
     devices) _arguments $global_args '1:action:(register list rename revoke pending approve)' '2:device or request id' '3:device name' '--name=[device name]:name' '--yes[confirm permanent revocation]' '--json' ;;
@@ -142,14 +142,14 @@ function bash(): string {
     --to|--in) COMPREPLY=( $(compgen -W '${HARNESSES.join(" ")}' -- "$current") ); return ;;
     --mode) COMPREPLY=( $(compgen -W '${MODES.join(" ")}' -- "$current") ); return ;;
     --package-manager) COMPREPLY=( $(compgen -W 'bun npm' -- "$current") ); return ;;
-    --cwd|--config|--ledger|-o|--output) COMPREPLY=( $(compgen -f -- "$current") ); return ;;
+    --cwd|--config|--ledger|--shell|-o|--output) COMPREPLY=( $(compgen -f -- "$current") ); return ;;
   esac
   if [[ $command == completion ]]; then
     COMPREPLY=( $(compgen -W 'zsh bash fish' -- "$current") )
     return
   fi
   if [[ $command == config ]]; then
-    COMPREPLY=( $(compgen -W 'show path validate example --json' -- "$current") )
+    COMPREPLY=( $(compgen -W 'show path validate example discover-shell --shell --write --yes --json' -- "$current") )
     return
   fi
   if [[ $command == devices ]]; then
@@ -181,7 +181,11 @@ function fish(): string {
     "complete -c sinter -n '__fish_seen_subcommand_from receive' -l yes -d 'Accept without prompting'",
     `complete -c sinter -n '__fish_seen_subcommand_from resume' -l in -xa '${HARNESSES.join(" ")}' -d 'Target harness'`,
     `complete -c sinter -n '__fish_seen_subcommand_from port menu' -l mode -xa '${MODES.join(" ")}' -d 'Transfer mode'`,
-    "complete -c sinter -n '__fish_seen_subcommand_from config' -a 'show path validate example' -d 'Action'",
+    "complete -c sinter -n '__fish_seen_subcommand_from config' -a 'show path validate example discover-shell' -d 'Action'",
+    "complete -c sinter -n '__fish_seen_subcommand_from config' -l shell -r -d 'Absolute zsh/bash executable'",
+    "complete -c sinter -n '__fish_seen_subcommand_from config' -l write -d 'Create config only if missing'",
+    "complete -c sinter -n '__fish_seen_subcommand_from config' -l yes -d 'Confirm non-interactive config creation'",
+    "complete -c sinter -n '__fish_seen_subcommand_from config' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from devices' -a 'register list rename revoke pending approve' -d 'Action'",
     "complete -c sinter -n '__fish_seen_subcommand_from devices' -l name -r -d 'Device name'",
     "complete -c sinter -n '__fish_seen_subcommand_from devices' -l yes -d 'Confirm permanent revocation'",

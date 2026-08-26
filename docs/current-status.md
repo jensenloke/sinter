@@ -87,8 +87,11 @@ operations.
   an evidence-detected Bun/npm global layout, never downgrades without `--force`,
   and has check-only/JSON modes. Both local global 0.4.0 installs contain it; a
   live check correctly refused npm's older 0.3.1. Multi-instance TUI actions
-  show qualified names such as `claude@addvita`; the addvita config/store/routing
-  were healthy and only the former label was ambiguous.
+  show each user's dynamic `harness@instance` names. Opt-in `sinter config
+  discover-shell` safely previews simple Claude aliases and emits mergeable
+  TOML; it never runs during normal startup and never overwrites existing
+  config. The locally reported instance was healthy; only its label was
+  ambiguous.
 - Phase 1 device identity is deployed: paired Auth0 token verification,
   separate P-256 encryption/signing keys, Keychain or owner-only private-key
   custody, first-device bootstrap, signed approval for subsequent devices,
@@ -116,7 +119,7 @@ operations.
 - The Cloud UI uses an original five-cell sintered-mineral mark with transparent
   512, 192, and 32 px assets. The raster concept should be traced and optically
   refined before final trademark use.
-- Development verification: 781 tests, 9,381 assertions, 164 database policy
+- Development verification: 798 tests, 9,467 assertions, 164 database policy
   assertions, schema lint, both TypeScript checks, both production builds, npm
   package inspection, isolated Bun/npm installs, authoritative RFC HPKE
   interoperability, and independent adversarial device/capsule/admin reviews.

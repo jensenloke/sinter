@@ -25,6 +25,13 @@ context transfer over LAN or Tailscale. Run `sinter receive --help` and
 a default multi-instance config without overwriting existing configuration.
 Run `sinter help instances` for the agent-safe porting workflow.
 
+Custom Claude stores hidden behind shell aliases can be previewed only through
+`sinter config discover-shell`. This explicit opt-in executes the selected
+zsh/bash login startup files to list aliases; normal startup, setup, and scans
+never do so. Only simple `CLAUDE_CONFIG_DIR=<path> claude` aliases are accepted,
+raw alias output is suppressed, and `--write --yes` creates a missing owner-only
+config without ever overwriting an existing one.
+
 Run `sinter update` to install the exact latest published build into the global
 bun or npm installation that owns the current executable. If that ownership is
 ambiguous, pass `--package-manager bun` or `--package-manager npm`; use
