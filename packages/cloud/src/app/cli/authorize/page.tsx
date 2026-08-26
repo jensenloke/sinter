@@ -11,9 +11,9 @@ export default function CliAuthorize() {
       </nav>
       <section className="authorize-body">
         <div className="authorize-copy">
-          <p className="eyebrow">CONNECT THIS DEVICE</p>
+          <p className="eyebrow">EXISTING MEMBER DEVICE ACCESS</p>
           <h1>Sign in, then return securely to your terminal.</h1>
-          <p className="lede">The browser proves who you are. Your short-lived session is returned only to Sinter on this device.</p>
+          <p className="lede">Cloud device login is limited to existing private-alpha members. The local CLI does not require a Cloud account.</p>
         </div>
         <aside className="card"><p className="card-label">CLI ACCESS</p><h2>Use device authorization</h2><p>Run <code>sinter login</code>. Auth0 will show this page with a short code to approve—no localhost callback is required.</p></aside>
       </section>

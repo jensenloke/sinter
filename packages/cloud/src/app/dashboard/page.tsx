@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth0 } from "@/lib/auth0";
 import { hasSuperAdminAccess } from "@/lib/admin";
 import { quotaDisplayData } from "@/lib/cloud-quota";
+import { dashboardFailureCopy } from "@/lib/private-alpha";
 import {
   DashboardDataError,
   loadDashboardData,
@@ -125,14 +126,15 @@ function DashboardLoading({ viewer, adminAccess }: { viewer: Viewer; adminAccess
 }
 
 function ConnectionError({ viewer, error, adminAccess }: { viewer: Viewer; error: DashboardDataError; adminAccess: boolean }) {
+  const copy = dashboardFailureCopy(error.code, error.message);
   return (
     <main className="portal-shell">
       <DashboardNavigation viewer={viewer} adminAccess={adminAccess} />
       <section className="portal-content error-layout">
         <div className="error-panel">
-          <p className="eyebrow">DATA CONNECTION UNAVAILABLE</p>
-          <h1>Your account data stayed private.</h1>
-          <p className="lede">{error.message} No profile or device records were displayed.</p>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h1>{copy.heading}</h1>
+          <p className="lede">{copy.description}</p>
           <div className="error-actions">
             <a className="auth-button inline-button" href="/dashboard">Try again</a>
             <SignOut />

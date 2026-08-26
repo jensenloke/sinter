@@ -1,4 +1,5 @@
 import { Auth0Client } from "@auth0/nextjs-auth0/server";
+import { handleAuth0Callback } from "./auth-callback";
 
 export const auth0 = new Auth0Client({
   authorizationParameters: {
@@ -6,6 +7,7 @@ export const auth0 = new Auth0Client({
     scope: "openid profile email offline_access",
   },
   enableAccessTokenEndpoint: false,
+  onCallback: handleAuth0Callback,
   signInReturnToPath: "/dashboard",
 });
 

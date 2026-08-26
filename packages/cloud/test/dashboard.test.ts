@@ -6,6 +6,7 @@ import {
   developmentUsage,
   quotaDisplayData,
 } from "../src/lib/cloud-quota";
+import { dashboardFailureCopy } from "../src/lib/private-alpha";
 import type {
   AccountDeletionDataSource,
   CloudProfile,
@@ -81,7 +82,7 @@ describe("Supabase Auth0 dashboard boundary", () => {
     expect(await auth0SupabaseClientOptions(idToken).accessToken()).toBe(idToken);
   });
 
-  test("claims before reading and scopes both reads to the claimed account", async () => {
+  test("keeps the existing-member claim and scoped dashboard path unchanged", async () => {
     process.env.AUTH0_DOMAIN = "tenant.example.test";
     const calls: string[] = [];
     const source: DashboardDataSource = {
@@ -177,6 +178,16 @@ describe("Supabase Auth0 dashboard boundary", () => {
       expect((error as { code: string }).code).toBe("account-claim");
     }
     expect(calls).toEqual(["claim"]);
+  });
+
+  test("describes a closed claim as private-alpha access without enumerating identity", () => {
+    const copy = dashboardFailureCopy("account-claim", "sensitive database or identity detail");
+
+    expect(copy.eyebrow).toBe("CLOUD PRIVATE ALPHA");
+    expect(copy.heading).toContain("existing members");
+    expect(copy.description).toContain("No Cloud account was created");
+    expect(JSON.stringify(copy)).not.toContain("sensitive database");
+    expect(JSON.stringify(copy)).not.toContain("email");
   });
 
   test("fails closed when quota metadata does not match the claimed account", async () => {

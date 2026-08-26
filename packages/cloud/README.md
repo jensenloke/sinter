@@ -57,6 +57,23 @@ The Auth0 API audience must use RS256 and allow offline access. Deploy
 the Auth0 tenant in Supabase Authentication > Third-Party Auth before applying
 the provider-neutral identity migration.
 
+Cloud is existing-members-only during private alpha. Deploy
+`auth0/private-alpha.js` immediately before `auth0/post-login.js`; only users
+with the JSON boolean `app_metadata.sinter_cloud_access: true` may continue on
+the Sinter web/CLI clients. Keep database-connection signup disabled. The
+Supabase claim gate independently refuses to create profiles and permits only
+an existing issuer/subject or a verified provider link to one active,
+non-deleting profile. Reopening signup requires a reviewed Auth0, database, and
+portal change.
+
+Private-alpha admission is a manual, audited operator workflow: verify the exact
+Auth0 user and verified email, create one provider-neutral profile through a
+reviewed service/SQL operation, then set that Auth0 user's JSON boolean
+`sinter_cloud_access` metadata. The metadata is per Auth0 user, so a separately
+created provider identity must be admitted separately before it can link by
+verified email. Never add an admission endpoint or browser role-management UI
+without a new security review.
+
 Required server-only Vercel variables are `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`,
 `AUTH0_CLIENT_SECRET`, `AUTH0_SECRET`, `AUTH0_AUDIENCE`,
 `AUTH0_CLI_CLIENT_ID`, and `SUPABASE_SECRET_KEY`. `APP_BASE_URL` is the
