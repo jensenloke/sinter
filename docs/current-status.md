@@ -10,16 +10,15 @@ operations.
 ## Release state
 
 - Development CLI version on `docs/sinter-cloud-inventory`: `0.4.0`.
-- Latest published CLI version: `0.3.1`.
-- npm package: `@jensenloke/sinter@0.3.1`.
-- npm `latest`: `0.3.1`, publicly verified after publication.
+- Latest published CLI version: `0.4.0`.
+- npm package and `latest`: `@jensenloke/sinter@0.4.0`.
+- Registry shasum `972494f4c4cc25d537dbcea407441de9c98b0e30` matches the
+  inspected dry-run package; isolated npm and Bun installs both report `0.4.0`.
 - Both local global executables (`/opt/homebrew/bin/sinter` and
-  `~/.bun/bin/sinter`) are the unpublished `0.4.0` development build. npm
-  `latest` remains `0.3.1`; do not mistake a local install for publication.
-- Release notes: [releases/v0.3.1.md](releases/v0.3.1.md).
-- Release commit: `f805f3e feat: bootstrap multi-instance profiles`.
-- npm `0.3.1` is already published and cannot be republished. Any correction
-  requires a new version.
+  `~/.bun/bin/sinter`) report `0.4.0`; `sinter update --check` reports up to date.
+- Release notes: [releases/v0.4.0.md](releases/v0.4.0.md).
+- npm publication source HEAD: `90ed981 docs: record the 0.4.0 release gate`.
+- npm `0.4.0` is immutable. Any correction requires a new version.
 
 ## Git state at handoff
 
@@ -38,9 +37,10 @@ operations.
   `jensenloke/sinter`, and was clean at `origin/main`/`v0.2.0` before this
   branch was pushed. Follow the public-clone parity protocol in `AGENTS.md`;
   update that checkout by clean fast-forward after merge, not by copying files.
-- Sinter Cloud implementation remains isolated from CLI release commits. Do
-  not mix hosted application code into the CLI release line without an
-  explicit product decision.
+- By explicit product decision, npm `0.4.0` includes optional Cloud login/device
+  identity commands so the private-alpha second device can enroll. Hosted app,
+  admin, database, and capsule transport code are not packaged; the local CLI
+  remains fully useful without an account and cannot upload sessions.
 - Cloud planning and implementation continue on `docs/sinter-cloud-inventory`;
   its inventory is documented in
   [sinter-cloud-inventory.md](sinter-cloud-inventory.md).
@@ -309,27 +309,25 @@ bunx @jensenloke/sinter@0.3.1 --version
   but only the first CLI device is enrolled. Account identity exists, and no
   session content is stored remotely.
 - Workspace files and Git dirty state are not transferred.
-- Automatic profile bootstrap currently recognizes Claude Code's standard
-  `.claude` / `.claude-*` directory convention. Other custom stores still use
-  explicit TOML configuration.
+- Automatic profile bootstrap recognizes Claude Code's standard `.claude` /
+  `.claude-*` convention. Custom alias-backed stores use explicit opt-in
+  `sinter config discover-shell`; existing config is never overwritten.
 - The ledger migration is transactional and rollback-safe but does not create a
   separate user-visible backup file. Backup/repair UX remains roadmap work.
-- Sinter Cloud remains roadmap work. The open-source CLI must remain useful
-  without an account.
+- Sinter Cloud is an existing-members-only private alpha, not a public release.
+  The open-source CLI remains fully useful without an account.
 
 ## Recommended next actions
 
-1. Keep the deployed Phase 1 device identity checkpoint on
-   `docs/sinter-cloud-inventory` and out of the CLI release line.
-2. Obtain an external review of the C2 draft and retain its synthetic-only
-   boundary. The implementation uses a reviewed HPKE library, authoritative RFC
-   dependency vectors, project AES-256 vectors, and negative tests, but the
-   Sinter format itself is not yet externally reviewed.
-3. Enroll a second real device through signed approval before any real-session
-   Cloud test. Do not revoke the only active device.
-4. Design private Storage, quota reservations, encrypted **synthetic** push/list/
-   inspect/pull/delete, and permanent deletion only after the C2 format review.
-5. Separately review and merge GitHub PR #24 so the public default branch catches
-   up with the already-published npm package; then create the `v0.3.1` tag and
-   GitHub release without republishing npm.
+1. Install npm `0.4.0` on the Mac Mini, authenticate the existing allowlisted
+   owner, request device enrollment, and approve it from the current MacBook.
+2. Run the explicit-guard, synthetic-only two-device capsule test. Do not revoke
+   the only currently active device.
+3. Obtain human cryptographic review before freezing C2 or adding Storage; the
+   two cross-modal reviews approve only the synthetic second-device test.
+4. Design private Storage, durable replay, quota reservations, encrypted
+   **synthetic** push/list/inspect/pull/delete, and permanent deletion afterward.
+5. Merge PR #24, then rebase/fix PR #25's UTF-8 byte-budget and named-instance
+   integration before merging it. Create the eventual `v0.4.0` GitHub tag and
+   release without republishing npm.
 6. Continue physical-device LAN/Tailscale transfer tests independently of Cloud.
