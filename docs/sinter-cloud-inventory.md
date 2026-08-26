@@ -1,7 +1,7 @@
 # Sinter Cloud inventory
 
 Status: existing-members-only C0-C1/control plane deployed; C2 remains local-only
-Last reviewed: 2026-08-25 (Asia/Singapore)
+Last reviewed: 2026-08-26 (Asia/Singapore)
 
 This document turns the Sinter Cloud direction in [ROADMAP.md](../ROADMAP.md)
 into an implementation sequence. The first goal is not cloud execution. It is
@@ -269,7 +269,8 @@ availability guarantee.
 - [x] Implement device key custody, first-device bootstrap, signed subsequent-
   device approval, list, rename, revoke, pending, and approval flows locally.
 - [x] Apply device identity and distinct encryption/signing-key constraints to
-  hosted development, deploy the APIs, and register the first real device.
+  hosted development, deploy the APIs, and register two real devices; Mac Mini
+  enrollment was signed by the active MacBook and no request remains pending.
 - [x] RLS/service-boundary tests prove user A cannot read or mutate user B and
   authenticated SQL cannot bypass cryptographic approval.
 - [x] Keep all session and capsule upload paths absent and disabled.
@@ -286,6 +287,9 @@ availability guarantee.
 - [x] Encrypt/decrypt synthetic manifest and SIF locally; no upload path exists.
 - [ ] A second enrolled device decrypts the synthetic fixture with an explicit
   atomic replay guard.
+- [ ] Review and finish the interrupted, uncommitted local-file capsule
+  diagnostic before using it; it must remain synthetic-only with no native-store
+  read or upload.
 - [x] Tampering, wrong sender/device, recipient membership changes, replay guard,
   oversize, truncation, swapped parts/envelopes, malformed data, and unsupported
   versions fail locally.

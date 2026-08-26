@@ -1,6 +1,6 @@
 # Sinter current status
 
-Last updated: 2026-08-25 (Asia/Singapore)
+Last updated: 2026-08-26 (Asia/Singapore)
 
 This is the durable continuation handoff for maintainers and coding agents.
 Read the root [AGENTS.md](../AGENTS.md) first. Mutable facts below were verified
@@ -47,7 +47,28 @@ operations.
 - The Cloud branch is ahead of `origin/docs/sinter-cloud-inventory` with
   reviewed, unpushed commits. Phase 1 device identity and the metadata-only
   control plane are deployed; the C2 local-only envelope remains disconnected
-  from transport. Keep all of this work off the CLI release line.
+  from transport.
+
+## Interrupted worktree — resume before changing scope
+
+- Current HEAD is `4204cdf fix: complete device enrollment while waiting`; the
+  branch is 17 commits ahead of its remote and has not been pushed.
+- `4204cdf` is complete and reviewed locally: `devices register` now waits for
+  signed approval, auto-saves the approved device ID, supports bounded timeout/
+  Ctrl+C, and retains `--no-wait` for scripts. Its focused 31-test gate,
+  TypeScript, and CLI build passed. It is **not** in published npm `0.4.0`.
+- A later capsule-diagnostic agent was canceled by the user and left partial,
+  **uncommitted and unverified** work. Modified CLI files include README/package,
+  cloud-devices, commands, completion, main, and their related tests. Untracked
+  files are `packages/cli/src/capsule-test.ts` and
+  `packages/cli/test/capsule-test.test.ts`.
+- Do not run, publish, stage wholesale, or discard that partial work on resume.
+  Read its complete diff, verify the synthetic-only/no-session contract, finish
+  or correct it, then run targeted tests, full CLI/repository tests, TypeScript,
+  CLI/Cloud builds, package rehearsal, and `git diff --check`.
+- `packages/cli/package.json` still reports `0.4.0`; npm `0.4.0` is immutable.
+  If the auto-wait/capsule diagnostic is released, review and bump to `0.4.1`
+  and obtain explicit publication approval.
 
 ## Cloud development foundation
 
@@ -99,8 +120,9 @@ operations.
   custody, first-device bootstrap, signed approval for subsequent devices,
   immutable fingerprints, distinct encryption/signing points across CLI/API/DB,
   list/rename/revoke/pending/approve commands, service-only registration RPCs,
-  RLS, and portal inventory. The first real device is active and no enrollment
-  is pending. Revocation is irreversible;
+  RLS, and portal inventory. MacBook and Mac Mini are both active; the Mac Mini
+  was admitted by the MacBook's signed approval and no enrollment is pending.
+  Revocation is irreversible;
   after all devices are lost or revoked there is intentionally no recovery.
 - C2 has a hardened local-only synthetic capsule draft in `@sinter/core`: RFC
   9180 HPKE wraps a random content key; AES-256-GCM separately encrypts a fixed
@@ -305,9 +327,9 @@ bunx @jensenloke/sinter@0.3.1 --version
   network firewalls. Tailscale is transport reachability, not a separate Sinter
   protocol.
 - There is no offline inbox, cloud relay, encrypted capsule storage, browser
-  device, or cross-device search yet. Device enrollment/revocation is deployed,
-  but only the first CLI device is enrolled. Account identity exists, and no
-  session content is stored remotely.
+  device, or cross-device search yet. Two CLI devices are enrolled, but the
+  guarded synthetic capsule has not yet been created/opened across them. Account
+  identity exists, and no session content is stored remotely.
 - Workspace files and Git dirty state are not transferred.
 - Automatic profile bootstrap recognizes Claude Code's standard `.claude` /
   `.claude-*` convention. Custom alias-backed stores use explicit opt-in
@@ -319,15 +341,19 @@ bunx @jensenloke/sinter@0.3.1 --version
 
 ## Recommended next actions
 
-1. Install npm `0.4.0` on the Mac Mini, authenticate the existing allowlisted
-   owner, request device enrollment, and approve it from the current MacBook.
-2. Run the explicit-guard, synthetic-only two-device capsule test. Do not revoke
-   the only currently active device.
-3. Obtain human cryptographic review before freezing C2 or adding Storage; the
+1. Review and finish/correct the interrupted capsule-diagnostic diff without
+   discarding it. Prove it reads no native session/ledger content and exposes no
+   private keys before committing.
+2. Run its focused/full verification and decide whether to package it with the
+   committed auto-wait fix as `0.4.1`; publishing requires explicit approval.
+3. Deliver the verified build to both active devices and run create on MacBook,
+   manually copy the ciphertext file, then open on Mac Mini with explicit replay
+   rejection. Do not revoke either device before this test.
+4. Obtain human cryptographic review before freezing C2 or adding Storage; the
    two cross-modal reviews approve only the synthetic second-device test.
-4. Design private Storage, durable replay, quota reservations, encrypted
+5. Design private Storage, durable replay, quota reservations, encrypted
    **synthetic** push/list/inspect/pull/delete, and permanent deletion afterward.
-5. Merge PR #24, then rebase/fix PR #25's UTF-8 byte-budget and named-instance
+6. Merge PR #24, then rebase/fix PR #25's UTF-8 byte-budget and named-instance
    integration before merging it. Create the eventual `v0.4.0` GitHub tag and
    release without republishing npm.
-6. Continue physical-device LAN/Tailscale transfer tests independently of Cloud.
+7. Continue physical-device LAN/Tailscale transfer tests independently of Cloud.
