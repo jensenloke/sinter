@@ -30,6 +30,10 @@ operations.
 - GitHub PR #24 targets `main`:
   `https://github.com/jensenloke/sinter/pull/24`.
 - PR #24's macOS and Ubuntu verification checks passed for commit `f805f3e`.
+- PR #25 is open, GitHub-mergeable, and CI-green, but review found it must not
+  merge yet: merge/rebase on PR #24 first, preserve named-instance routing, keep
+  direct send modes concrete, and fix Devin UTF-8 byte-budget clipping/write
+  enforcement. No GitHub review/comment was submitted.
 - The sibling `sinter-public` checkout currently uses the same GitHub upstream,
   `jensenloke/sinter`, and was clean at `origin/main`/`v0.2.0` before this
   branch was pushed. Follow the public-clone parity protocol in `AGENTS.md`;
@@ -79,19 +83,29 @@ operations.
   in Keychain; other platforms currently use an owner-only file. A real Google
   login and refresh completed successfully. These account commands do not scan
   sessions, create profile configuration, or enable uploads.
+- `sinter update` now checks or installs an exact published npm version through
+  an evidence-detected Bun/npm global layout, never downgrades without `--force`,
+  and has check-only/JSON modes. Both local global 0.4.0 installs contain it; a
+  live check correctly refused npm's older 0.3.1. Multi-instance TUI actions
+  show qualified names such as `claude@addvita`; the addvita config/store/routing
+  were healthy and only the former label was ambiguous.
 - Phase 1 device identity is deployed: paired Auth0 token verification,
   separate P-256 encryption/signing keys, Keychain or owner-only private-key
   custody, first-device bootstrap, signed approval for subsequent devices,
-  immutable fingerprints, list/rename/revoke/pending/approve commands,
-  service-only registration RPCs, RLS, and portal inventory. The first real
-  device is active and no enrollment is pending. Revocation is irreversible;
+  immutable fingerprints, distinct encryption/signing points across CLI/API/DB,
+  list/rename/revoke/pending/approve commands, service-only registration RPCs,
+  RLS, and portal inventory. The first real device is active and no enrollment
+  is pending. Revocation is irreversible;
   after all devices are lost or revoked there is intentionally no recovery.
-- C2 has a local-only synthetic capsule draft in `@sinter/core`: RFC 9180 base
-  HPKE P-256/HKDF-SHA256/AES-256-GCM wraps a random content key; AES-256-GCM
-  separately encrypts canonical manifest and synthetic SIF payloads with bound
-  AAD. It has a clearly labeled project vector plus RFC Appendix A.3 dependency
-  interoperability, multi-recipient, tamper, wrong-key, size/version, and replay
-  tests. No CLI/TUI/Storage/network or real-session path uses it.
+- C2 has a hardened local-only synthetic capsule draft in `@sinter/core`: RFC
+  9180 HPKE wraps a random content key; AES-256-GCM separately encrypts a fixed
+  padded manifest and synthetic SIF payload; an expected Phase 1 sender signs
+  the header, part metadata, and exact recipient set. Replay keys are opener-
+  scoped and include both ciphertext hashes. Exact P-256/AES-256 and neighboring
+  authoritative CFRG vectors pass. Two independent Claude Opus reviews closed
+  all original blockers and approve a guarded synthetic second-device test, but
+  durable replay and human cryptographic review still block Storage/real data.
+  No CLI/TUI/Storage/network or real-session path uses the capsule format.
 - The metadata-only control plane is deployed: default disabled/zero development
   entitlements, own quota/usage RLS, unmetered owner semantics with retained
   safety caps, service-only first-admin/role/entitlement RPCs, immutable
@@ -102,7 +116,7 @@ operations.
 - The Cloud UI uses an original five-cell sintered-mineral mark with transparent
   512, 192, and 32 px assets. The raster concept should be traced and optically
   refined before final trademark use.
-- Development verification: 760 tests, 9,280 assertions, 150 database policy
+- Development verification: 781 tests, 9,381 assertions, 164 database policy
   assertions, schema lint, both TypeScript checks, both production builds, npm
   package inspection, isolated Bun/npm installs, authoritative RFC HPKE
   interoperability, and independent adversarial device/capsule/admin reviews.

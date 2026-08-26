@@ -265,21 +265,27 @@ availability guarantee.
   rotating refresh, and sign-out/logout.
 - [x] Implement device key custody, first-device bootstrap, signed subsequent-
   device approval, list, rename, revoke, pending, and approval flows locally.
-- [x] Apply the device identity migration and server-only secret to hosted
-  development, deploy the APIs, and register the first real device.
+- [x] Apply device identity and distinct encryption/signing-key constraints to
+  hosted development, deploy the APIs, and register the first real device.
 - [x] RLS/service-boundary tests prove user A cannot read or mutate user B and
   authenticated SQL cannot bypass cryptographic approval.
 - [x] Keep all session and capsule upload paths absent and disabled.
 
 ### C2 — encrypted synthetic capsule
 
-- [x] Implement a versioned local-only synthetic envelope with a project AES-256
-  vector and authoritative RFC Appendix A.3 dependency interoperability.
-- [ ] Freeze the Sinter format only after external cryptographic review.
+- [x] Implement a versioned local-only synthetic envelope with exact-suite and
+  neighboring authoritative CFRG vectors plus an honest project fixture.
+- [x] Add Phase 1 sender signatures, exact recipient-set authentication, fixed
+  padded manifests, opener-scoped replay keys, and strict parser budgets.
+- [x] Complete two independent Claude Opus adversarial reviews; all original
+  blockers are closed and a guarded synthetic second-device test is approved.
+- [ ] Freeze the Sinter format only after human cryptographic review.
 - [x] Encrypt/decrypt synthetic manifest and SIF locally; no upload path exists.
-- [ ] A second enrolled device decrypts the synthetic fixture.
-- [x] Tampering, wrong-device keys, replay guard, oversize, truncation, swapped
-  parts/envelopes, malformed data, and unsupported versions fail locally.
+- [ ] A second enrolled device decrypts the synthetic fixture with an explicit
+  atomic replay guard.
+- [x] Tampering, wrong sender/device, recipient membership changes, replay guard,
+  oversize, truncation, swapped parts/envelopes, malformed data, and unsupported
+  versions fail locally.
 - [ ] Permanent deletion removes metadata, wrapped keys, and Storage object.
 
 ### Metadata control-plane foundation
@@ -300,7 +306,9 @@ availability guarantee.
 - [x] Add Auth0 device-code `sinter login`, verified `whoami`, rotating refresh,
   and revoking `logout`, with macOS Keychain storage and an owner-only fallback.
 - [x] Add device register, rename, list, revoke, pending, and approve commands;
-  hosted activation remains gated on the C1 rollout.
+  hosted APIs are active and the first CLI device is registered.
+- [x] Add explicit `sinter update` with check-only, exact-version Bun/npm install,
+  no-downgrade default, JSON output, and no session scan/config side effects.
 - [ ] Add explicit `cloud push`, `cloud ls`, `cloud inspect`, and `cloud pull`;
   do not overload local `scan` or silently sync.
 - [ ] Preserve qualified `(harness, instance, native-id)` provenance locally
