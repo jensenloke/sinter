@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AdapterRegistry } from "../src/adapters";
-import { main, makeCtx, run } from "../src/main";
+import { main, makeCtx, run, VERSION } from "../src/main";
 import {
   UPDATE_CHECK_INTERVAL_MS,
   UpdateCommandError,
@@ -319,7 +319,7 @@ describe("update command dispatch", () => {
       expect(await main(["update", "--check"], {
         out: (message) => stdout.push(message),
         err: () => {},
-        update: { fetchLatest: async () => "0.4.0" },
+        update: { fetchLatest: async () => VERSION },
       })).toBe(0);
       expect(existsSync(configPath)).toBe(false);
       expect(stdout.join("\n")).toContain("up to date");

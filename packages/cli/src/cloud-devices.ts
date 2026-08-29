@@ -24,6 +24,12 @@ export interface CloudDevice {
   revokedAt?: string | null;
 }
 
+/** Full registered public identity for internal cryptographic operations only. */
+export interface CloudDeviceIdentity extends CloudDevice {
+  encryptionPublicKey: JsonWebKey;
+  signingPublicKey: JsonWebKey;
+}
+
 export interface CloudDeviceEnrollment {
   id: string;
   name?: string;
@@ -55,6 +61,8 @@ export interface DeviceRegistrationOptions {
 
 export interface CloudDeviceApiClient {
   listDevices(options?: { signal?: AbortSignal }): Promise<CloudDevice[]>;
+  /** Uses the same endpoint but retains public JWKs for internal cryptographic operations. */
+  listDeviceIdentities?(options?: { signal?: AbortSignal }): Promise<CloudDeviceIdentity[]>;
   registerDevice(body: DeviceRegistrationBody): Promise<DeviceRegistrationResult>;
   renameDevice(id: string, name: string): Promise<void>;
   revokeDevice(id: string): Promise<void>;
@@ -97,6 +105,31 @@ function parseDevice(value: unknown): CloudDevice | undefined {
     ...((typeof item.lastSeenAt === "string" || item.lastSeenAt === null) ? { lastSeenAt: item.lastSeenAt as string | null } : {}),
     ...((typeof item.revokedAt === "string" || item.revokedAt === null) ? { revokedAt: item.revokedAt as string | null } : {}),
   };
+}
+
+function parsePublicP256Jwk(value: unknown, purpose: "encryption" | "signing"): JsonWebKey | undefined {
+  const jwk = record(value);
+  if (!jwk || Object.keys(jwk).some((key) => !["kty", "crv", "x", "y", "use", "key_ops", "ext"].includes(key))) return undefined;
+  if (jwk.kty !== "EC" || jwk.crv !== "P-256" || typeof jwk.x !== "string" || typeof jwk.y !== "string") return undefined;
+  const expectedUse = purpose === "encryption" ? "enc" : "sig";
+  if (jwk.use !== undefined && jwk.use !== expectedUse) return undefined;
+  if (jwk.ext !== undefined && jwk.ext !== true) return undefined;
+  if (jwk.key_ops !== undefined) {
+    const valid = purpose === "encryption"
+      ? Array.isArray(jwk.key_ops) && jwk.key_ops.length === 0
+      : Array.isArray(jwk.key_ops) && jwk.key_ops.length === 1 && jwk.key_ops[0] === "verify";
+    if (!valid) return undefined;
+  }
+  return { kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y };
+}
+
+function parseDeviceIdentity(value: unknown): CloudDeviceIdentity | undefined {
+  const item = record(value);
+  const device = parseDevice(value);
+  const encryptionPublicKey = parsePublicP256Jwk(item?.encryptionPublicKey, "encryption");
+  const signingPublicKey = parsePublicP256Jwk(item?.signingPublicKey, "signing");
+  if (!device || !encryptionPublicKey || !signingPublicKey) return undefined;
+  return { ...device, encryptionPublicKey, signingPublicKey };
 }
 
 function parseEnrollment(value: unknown): CloudDeviceEnrollment | undefined {
@@ -159,6 +192,9 @@ export function createCloudDeviceApiClient(options: {
   return {
     async listDevices(options) {
       return parseArray((await call("/api/cli/devices", { signal: options?.signal })).body, "devices", parseDevice);
+    },
+    async listDeviceIdentities(options) {
+      return parseArray((await call("/api/cli/devices", { signal: options?.signal })).body, "devices", parseDeviceIdentity);
     },
     async registerDevice(registration) {
       const { response, body } = await call("/api/cli/devices", { method: "POST", body: JSON.stringify(registration) });

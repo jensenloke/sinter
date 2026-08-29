@@ -61,7 +61,7 @@ import { canRunMenu } from "./tui/menu";
 import { cmdUpdate, maybePromptForUpdate } from "./update";
 import { trackTelemetry, type TelemetryEvent } from "./telemetry";
 
-export const VERSION = "0.4.0";
+export const VERSION = "0.4.1";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
 const AUTO_SCAN_SKIP = new Set(["scan", "watch", "setup", "doctor", "capabilities", "ghosts", "tags", "privacy", "feedback", "telemetry", "completion", "config", "login", "whoami", "logout", "devices", "update"]);
@@ -212,6 +212,7 @@ cloud account (optional)
                                          register and wait for device approval
   devices list|pending [--json]          list devices or enrollment requests
   devices rename|revoke|approve ...      manage Cloud device identity
+  devices capsule-test create|open ...   verify a synthetic-only local capsule file
 
 support and interfaces
   privacy                                explain local storage and support limits
@@ -316,7 +317,7 @@ const COMMAND_HELP: Record<string, string> = {
   login: "usage: sinter login [--no-open] [--timeout 10m] [--json]\n\nStarts an OAuth device authorization, opens Auth0 in the browser, prints the confirmation code for headless/SSH use, validates the returned Sinter Cloud identity, and stores rotating credentials in macOS Keychain (or an owner-only file when no native credential store is available). It does not upload sessions.",
   whoami: "usage: sinter whoami [--json]\n\nRefreshes the Cloud session when needed and verifies the identity with Sinter Cloud. It never scans local sessions.",
   logout: "usage: sinter logout [--json]\n\nRevokes the current Cloud session when reachable, then removes the local credential even if the network is unavailable.",
-  devices: "usage: sinter devices register [--name name] [--no-wait] [--timeout 5m] [--json]\n       sinter devices <list|rename|revoke|pending|approve> ...\n\nRegistration waits for an existing device to approve the enrollment, then saves the approved device ID automatically. --no-wait returns approval-required immediately for scripts. --timeout accepts 5s through 15m and never extends past the server expiry; without it, registration waits through the enrollment window. Progress is written to stderr, and --json writes one final versioned document to stdout. Ctrl+C stops waiting without removing the request or local keys.\n\nPrivate P-256 keys remain in macOS Keychain (or a separate owner-only file on other platforms); only public JWKs are sent to Sinter Cloud. Device commands never scan local sessions or create profile configuration.",
+  devices: "usage: sinter devices register [--name name] [--no-wait] [--timeout 5m] [--json]\n       sinter devices <list|rename|revoke|pending|approve> ...\n       sinter devices capsule-test create --output <new-file> [--json]\n       sinter devices capsule-test open --input <file> [--json]\n\nRegistration waits for an existing device to approve the enrollment, then saves the approved device ID automatically. --no-wait returns approval-required immediately for scripts. --timeout accepts 5s through 15m and never extends past the server expiry; without it, registration waits through the enrollment window. Progress is written to stderr, and --json writes one final versioned document to stdout. Ctrl+C stops waiting without removing the request or local keys.\n\nCapsule-test is an explicit account-only, synthetic-only local-file diagnostic. Create requires at least two current active initialized exact-suite registered devices, self-verifies decrypt and replay rejection, and writes a new owner-only file without overwriting. Open requires the local recipient and signed sender to remain active in the current registry and verifies the exact fixed fixture plus same-process replay rejection. It never scans sessions, reads the ledger or native stores, bootstraps config, includes transcript/workspace content, or transfers/uploads the file automatically. Copy the created file between approved devices yourself.\n\nPrivate P-256 keys remain in macOS Keychain (or a separate owner-only file on other platforms); only public JWKs are sent to Sinter Cloud. Safe output contains fingerprints, capsule/file metadata, and verification booleans—not keys, ciphertext, device names, emails, tokens, or decrypted fixture content. Device commands never scan local sessions or create profile configuration.",
   telemetry: "usage: sinter telemetry [status|enable|disable] [--endpoint https://…]\n\nOpt-in anonymous active-use measurement. CI and non-interactive commands never emit events.",
   gui: "usage: sinter gui [--port n] [--no-open]\n\nRuns a token-protected workspace on 127.0.0.1; transcripts never leave this machine.",
   completion: "usage: sinter completion <zsh|bash|fish>\n\nPrints a native completion script to stdout; does not modify shell configuration.",
@@ -359,6 +360,9 @@ export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile
     sleep: overrides.sleep ?? Bun.sleep,
     update: overrides.update,
     shellDiscovery: overrides.shellDiscovery,
+    cloudAuth: overrides.cloudAuth,
+    cloudDevices: overrides.cloudDevices,
+    capsuleTest: overrides.capsuleTest,
   };
 }
 

@@ -178,24 +178,36 @@ and errors use stderr, and failures return a non-zero exit code.
 
 ## Optional Cloud account
 
-The `0.4.0` development CLI can authenticate without changing local-first
-behavior:
+The `0.4.1` CLI can authenticate and manage private-alpha device identity
+without changing local-first behavior:
 
 ```sh
 sinter login
 sinter whoami
+sinter devices register --name "My Mac"
+sinter devices list
 sinter logout
 ```
 
 Login opens `sinter-cloud.vercel.app`, waits on a random short-lived
 `127.0.0.1` callback, validates the returned identity, and stores the session
 in macOS Keychain. On platforms without a native credential-store
-implementation, Sinter uses an owner-only file. `--no-open` prints the URL for
-manual browser launch, and `--json` keeps the final result machine-readable.
+implementation, Sinter uses an owner-only file. Subsequent-device registration
+waits for signed approval from an active device and saves the approved device
+ID; `--no-wait` returns the pending request immediately for scripts.
 
-These commands do not scan local stores, create profile configuration, or
-upload sessions. Encrypted Cloud push/pull and device enrollment remain later
-milestones.
+Approved members with two active devices can exercise only the fixed synthetic
+capsule fixture, with no session read or automatic transfer:
+
+```sh
+sinter devices capsule-test create --output ./sinter-capsule-test.json
+# Manually copy the file to the other registered device.
+sinter devices capsule-test open --input ./sinter-capsule-test.json
+```
+
+Account and capsule-diagnostic commands do not scan local stores, open the
+ledger, create profile configuration, or upload sessions. Cloud push/pull,
+Storage, inbox, relay, and real-session uploads remain disabled.
 
 ## Direct device transfer
 

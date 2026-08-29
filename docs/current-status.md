@@ -1,6 +1,6 @@
 # Sinter current status
 
-Last updated: 2026-08-26 (Asia/Singapore)
+Last updated: 2026-08-28 (Asia/Singapore)
 
 This is the durable continuation handoff for maintainers and coding agents.
 Read the root [AGENTS.md](../AGENTS.md) first. Mutable facts below were verified
@@ -9,16 +9,16 @@ operations.
 
 ## Release state
 
-- Development CLI version on `docs/sinter-cloud-inventory`: `0.4.0`.
+- Development CLI version on `docs/sinter-cloud-inventory`: `0.4.1`.
 - Latest published CLI version: `0.4.0`.
 - npm package and `latest`: `@jensenloke/sinter@0.4.0`.
 - Registry shasum `972494f4c4cc25d537dbcea407441de9c98b0e30` matches the
-  inspected dry-run package; isolated npm and Bun installs both report `0.4.0`.
-- Both local global executables (`/opt/homebrew/bin/sinter` and
-  `~/.bun/bin/sinter`) report `0.4.0`; `sinter update --check` reports up to date.
-- Release notes: [releases/v0.4.0.md](releases/v0.4.0.md).
+  published package; both installed global executables still report `0.4.0`.
+- Unpublished candidate notes: [releases/v0.4.1.md](releases/v0.4.1.md).
+- Published release notes: [releases/v0.4.0.md](releases/v0.4.0.md).
 - npm publication source HEAD: `90ed981 docs: record the 0.4.0 release gate`.
-- npm `0.4.0` is immutable. Any correction requires a new version.
+- npm `0.4.0` is immutable. The `0.4.1` candidate requires explicit publication
+  approval after physical-device verification.
 
 ## Git state at handoff
 
@@ -28,7 +28,7 @@ operations.
   that remote branch. It has not yet been merged into `origin/main`.
 - GitHub PR #24 targets `main`:
   `https://github.com/jensenloke/sinter/pull/24`.
-- PR #24's macOS and Ubuntu verification checks passed for commit `f805f3e`.
+- PR #24's macOS and Ubuntu verification checks pass at current head `dd46ad1`.
 - PR #25 is open, GitHub-mergeable, and CI-green, but review found it must not
   merge yet: merge/rebase on PR #24 first, preserve named-instance routing, keep
   direct send modes concrete, and fix Devin UTF-8 byte-budget clipping/write
@@ -49,26 +49,32 @@ operations.
   control plane are deployed; the C2 local-only envelope remains disconnected
   from transport.
 
-## Interrupted worktree — resume before changing scope
+## Verified v0.4.1 candidate — keep unpublished
 
-- Current HEAD is `4204cdf fix: complete device enrollment while waiting`; the
-  branch is 17 commits ahead of its remote and has not been pushed.
+- The candidate is based on `c000a1d docs: hand off the interrupted two-device
+  test` plus this release commit. The branch remains local and unpushed.
 - `4204cdf` is complete and reviewed locally: `devices register` now waits for
   signed approval, auto-saves the approved device ID, supports bounded timeout/
-  Ctrl+C, and retains `--no-wait` for scripts. Its focused 31-test gate,
-  TypeScript, and CLI build passed. It is **not** in published npm `0.4.0`.
-- A later capsule-diagnostic agent was canceled by the user and left partial,
-  **uncommitted and unverified** work. Modified CLI files include README/package,
-  cloud-devices, commands, completion, main, and their related tests. Untracked
-  files are `packages/cli/src/capsule-test.ts` and
-  `packages/cli/test/capsule-test.test.ts`.
-- Do not run, publish, stage wholesale, or discard that partial work on resume.
-  Read its complete diff, verify the synthetic-only/no-session contract, finish
-  or correct it, then run targeted tests, full CLI/repository tests, TypeScript,
-  CLI/Cloud builds, package rehearsal, and `git diff --check`.
-- `packages/cli/package.json` still reports `0.4.0`; npm `0.4.0` is immutable.
-  If the auto-wait/capsule diagnostic is released, review and bump to `0.4.1`
-  and obtain explicit publication approval.
+  Ctrl+C, and retains `--no-wait` for scripts. It is **not** in published npm
+  `0.4.0`.
+- The synthetic local-file capsule diagnostic is reviewed, corrected, fully
+  verified, and included in the unpublished candidate. `devices capsule-test
+  create` encrypts one fixed synthetic fixture for the active exact-suite device
+  registry, self-opens it, proves same-process replay rejection, and exclusively
+  creates a `0600` file without following or overwriting an existing path.
+  `devices capsule-test open` safely reads a bounded regular file, requires the
+  local recipient and signed sender to remain active, verifies the exact fixture,
+  and proves replay rejection. Neither operation scans native stores, opens the
+  ledger, bootstraps profile config, uploads data, or emits keys/ciphertext/
+  decrypted fixture content.
+- Focused verification passed 66 tests and 473 assertions. The full repository
+  passed 832 tests and 9,680 assertions, both TypeScript checks, CLI and Cloud
+  production builds, npm package inspection, isolated Bun/npm installs, built
+  device-help smoke testing, and `git diff --check`.
+- `packages/cli/package.json`, the built CLI, and the candidate tarball report
+  `0.4.1`. npm `0.4.0` remains immutable; `0.4.1` is not published. Do not push,
+  tag, release, or publish until the physical two-device test completes and the
+  maintainer gives explicit approval.
 
 ## Cloud development foundation
 
@@ -143,7 +149,7 @@ operations.
 - The Cloud UI uses an original five-cell sintered-mineral mark with transparent
   512, 192, and 32 px assets. The raster concept should be traced and optically
   refined before final trademark use.
-- Development verification: 809 tests, 9,521 assertions, 217 database policy
+- Development verification: 832 tests, 9,680 assertions, 217 database policy
   assertions, schema lint, both TypeScript checks, both production builds, npm
   package inspection, isolated Bun/npm installs, authoritative RFC HPKE
   interoperability, and independent adversarial device/capsule/admin reviews.
@@ -341,19 +347,16 @@ bunx @jensenloke/sinter@0.3.1 --version
 
 ## Recommended next actions
 
-1. Review and finish/correct the interrupted capsule-diagnostic diff without
-   discarding it. Prove it reads no native session/ledger content and exposes no
-   private keys before committing.
-2. Run its focused/full verification and decide whether to package it with the
-   committed auto-wait fix as `0.4.1`; publishing requires explicit approval.
-3. Deliver the verified build to both active devices and run create on MacBook,
-   manually copy the ciphertext file, then open on Mac Mini with explicit replay
-   rejection. Do not revoke either device before this test.
-4. Obtain human cryptographic review before freezing C2 or adding Storage; the
+1. Deliver the identical verified `0.4.1` candidate to both active devices and
+   run create on MacBook, manually copy the ciphertext file, then open on Mac Mini
+   with explicit replay rejection. Do not revoke either device before this test.
+2. Review the physical-test evidence, then obtain explicit approval before any
+   push, tag, GitHub release, or npm publication.
+3. Obtain human cryptographic review before freezing C2 or adding Storage; the
    two cross-modal reviews approve only the synthetic second-device test.
-5. Design private Storage, durable replay, quota reservations, encrypted
+4. Design private Storage, durable replay, quota reservations, encrypted
    **synthetic** push/list/inspect/pull/delete, and permanent deletion afterward.
-6. Merge PR #24, then rebase/fix PR #25's UTF-8 byte-budget and named-instance
+5. Merge PR #24, then rebase/fix PR #25's UTF-8 byte-budget and named-instance
    integration before merging it. Create the eventual `v0.4.0` GitHub tag and
    release without republishing npm.
-7. Continue physical-device LAN/Tailscale transfer tests independently of Cloud.
+6. Continue physical-device LAN/Tailscale transfer tests independently of Cloud.

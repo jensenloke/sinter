@@ -1,6 +1,6 @@
 {
   "name": "@jensenloke/sinter",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Port and resume coding-agent sessions across harnesses.",
   "license": "Apache-2.0",
   "repository": {
@@ -27,6 +27,7 @@
     "dist"
   ],
   "devDependencies": {
+    "@sinter/core": "workspace:*",
     "@sinter/adapter-claude": "workspace:*",
     "@sinter/adapter-codex": "workspace:*",
     "@sinter/adapter-devin": "workspace:*",

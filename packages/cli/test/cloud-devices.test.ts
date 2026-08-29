@@ -101,6 +101,38 @@ describe("Cloud device API", () => {
     });
   });
 
+  test("retains public identities only on the internal API method and keeps list metadata unchanged", async () => {
+    const keys = await generateDeviceKeyMaterial();
+    const fingerprint = await deviceFingerprint(keys.encryptionPublicKey, keys.signingPublicKey);
+    const encryptionPublicKey = { kty: "EC", crv: "P-256", x: keys.encryptionPublicKey.x, y: keys.encryptionPublicKey.y };
+    const signingPublicKey = { kty: "EC", crv: "P-256", x: keys.signingPublicKey.x, y: keys.signingPublicKey.y };
+    const api = createCloudDeviceApiClient({
+      session: async () => ({ baseUrl: "https://cloud.example.test", accessToken: "access", idToken: "id" }),
+      fetch: async () => Response.json({ devices: [{
+        id: "device-identity",
+        name: "Private Name",
+        fingerprint,
+        suite: DEVICE_CRYPTO_SUITE,
+        encryptionPublicKey: keys.encryptionPublicKey,
+        signingPublicKey: keys.signingPublicKey,
+        revokedAt: null,
+      }] }),
+    });
+    const listed = await api.listDevices();
+    expect(listed).toEqual([{
+      id: "device-identity",
+      name: "Private Name",
+      fingerprint,
+      suite: DEVICE_CRYPTO_SUITE,
+      revokedAt: null,
+    }]);
+    expect(JSON.stringify(listed)).not.toContain("PublicKey");
+    const identities = await api.listDeviceIdentities!();
+    expect(identities[0]?.encryptionPublicKey).toEqual(encryptionPublicKey);
+    expect(identities[0]?.signingPublicKey).toEqual(signingPublicKey);
+    expect(JSON.stringify(identities)).not.toContain('"d"');
+  });
+
   test("surfaces approval-required registration without treating it as an HTTP error", async () => {
     const keys = await generateDeviceKeyMaterial();
     const api = createCloudDeviceApiClient({

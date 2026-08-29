@@ -1,7 +1,7 @@
 # Sinter Cloud inventory
 
 Status: existing-members-only C0-C1/control plane deployed; C2 remains local-only
-Last reviewed: 2026-08-26 (Asia/Singapore)
+Last reviewed: 2026-08-28 (Asia/Singapore)
 
 This document turns the Sinter Cloud direction in [ROADMAP.md](../ROADMAP.md)
 into an implementation sequence. The first goal is not cloud execution. It is
@@ -287,9 +287,9 @@ availability guarantee.
 - [x] Encrypt/decrypt synthetic manifest and SIF locally; no upload path exists.
 - [ ] A second enrolled device decrypts the synthetic fixture with an explicit
   atomic replay guard.
-- [ ] Review and finish the interrupted, uncommitted local-file capsule
-  diagnostic before using it; it must remain synthetic-only with no native-store
-  read or upload.
+- [x] Review, correct, and fully verify the local-file capsule diagnostic; it
+  remains synthetic-only with no native-store read or upload and is included in
+  the unpublished `0.4.1` candidate.
 - [x] Tampering, wrong sender/device, recipient membership changes, replay guard,
   oversize, truncation, swapped parts/envelopes, malformed data, and unsupported
   versions fail locally.
@@ -313,7 +313,7 @@ availability guarantee.
 - [x] Add Auth0 device-code `sinter login`, verified `whoami`, rotating refresh,
   and revoking `logout`, with macOS Keychain storage and an owner-only fallback.
 - [x] Add device register, rename, list, revoke, pending, and approve commands;
-  hosted APIs are active and the first CLI device is registered.
+  hosted APIs are active and two CLI devices are registered.
 - [x] Add explicit `sinter update` with check-only, exact-version Bun/npm install,
   no-downgrade default, JSON output, and no session scan/config side effects.
 - [ ] Add explicit `cloud push`, `cloud ls`, `cloud inspect`, and `cloud pull`;
@@ -362,7 +362,8 @@ Review C2 before enabling any upload path:
    encryption, HPKE recipient wrapping, strict parser, limits, and replay split;
 2. keep deterministic test hooks and the synthetic-only schema out of all
    production transport APIs;
-3. enroll and approve a second device, then decrypt only the synthetic fixture;
+3. deliver the verified diagnostic to both enrolled devices, then decrypt only
+   the synthetic fixture across them with explicit replay rejection;
 4. extend the deployed entitlement/usage control plane with atomic upload quota
    reservations while keeping uploads globally disabled;
 5. design private Storage begin/finalize/delete for synthetic ciphertext only;

@@ -55,6 +55,28 @@ Progress is written to stderr so `--json` emits one final document on stdout.
 Ctrl+C stops waiting without deleting the request or local keys. Session upload
 and sync remain disabled.
 
+Approved members with two active registered devices can explicitly test the
+local synthetic capsule protocol without reading or uploading any session:
+
+```sh
+# On the MacBook (or whichever registered device creates the file)
+sinter devices capsule-test create --output ./sinter-capsule-test.json
+
+# Copy that file yourself; Sinter does not transfer or upload it. On the Mac Mini:
+sinter devices capsule-test open --input ./sinter-capsule-test.json
+```
+
+The create command uses the current registered public identities from Sinter
+Cloud, requires at least two active exact-suite devices, self-decrypts the fixed
+synthetic fixture, verifies same-process replay rejection, and creates a new
+`0600` file without overwriting. Open resolves the signed sender and local
+recipient against the current active registry, then repeats the exact-fixture
+and replay checks. The command does not scan native stores, open the ledger,
+bootstrap profile config, or include titles, paths, repositories, transcripts,
+or workspace content. Private keys remain in device credential storage. Output
+contains only capsule/file identifiers, fingerprints, recipient count, a file
+SHA-256, and verification booleans. Use `--json` for one versioned document.
+
 Documentation, source, roadmap, and issue tracker:
 https://github.com/jensenloke/sinter
 

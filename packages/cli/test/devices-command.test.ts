@@ -181,6 +181,9 @@ describe("sinter devices commands", () => {
     expect(help).toContain("--no-wait");
     expect(help).toContain("--timeout 5m");
     expect(help).toContain("waits for an existing device");
+    expect(help).toContain("capsule-test create --output <new-file>");
+    expect(help).toContain("synthetic-only local-file diagnostic");
+    expect(help).toContain("never scans sessions");
     expect(help).toContain("Ctrl+C");
   });
 

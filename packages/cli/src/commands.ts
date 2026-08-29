@@ -60,6 +60,7 @@ import {
   DEVICE_REGISTRATION_MIN_TIMEOUT_MS,
   type CloudDeviceService,
 } from "./cloud-devices";
+import { createCapsuleTestService, type CapsuleTestResult, type CapsuleTestService } from "./capsule-test";
 import type { UpdateDependencies } from "./update";
 
 export interface Ctx {
@@ -94,6 +95,8 @@ export interface Ctx {
   cloudAuth?: CloudAuthService;
   /** Device identity/API operations are separately injectable and never touch the session ledger. */
   cloudDevices?: CloudDeviceService;
+  /** Synthetic-only capsule diagnostic; production composes account API, key custody, and core. */
+  capsuleTest?: CapsuleTestService;
   /** Registry, process, and installation-layout seams for the explicit update command. */
   update?: UpdateDependencies;
   /** Runner/environment/path seams for explicit, opt-in shell-alias discovery. */
@@ -2169,13 +2172,55 @@ function cloudDevices(ctx: Ctx) {
   return ctx.cloudDevices ?? createCloudDeviceService();
 }
 
+function capsuleTest(ctx: Ctx) {
+  return ctx.capsuleTest ?? createCapsuleTestService();
+}
+
+function printCapsuleTestResult(value: CapsuleTestResult, json: boolean, ctx: Ctx): void {
+  if (json) {
+    ctx.out(JSON.stringify(value, null, 2));
+    return;
+  }
+  ctx.out(`Synthetic capsule ${value.operation} diagnostic passed.`);
+  ctx.out(`Capsule ID: ${value.capsuleId}`);
+  ctx.out(`Sender fingerprint: ${value.senderFingerprint}`);
+  ctx.out(`Local recipient fingerprint: ${value.localRecipientFingerprint}`);
+  ctx.out(`Recipient count: ${value.recipientCount}`);
+  ctx.out(`File: ${value.filePath}`);
+  ctx.out(`File SHA-256: ${value.fileSha256}`);
+  ctx.out(`Decrypt verified: ${value.decryptVerified}`);
+  ctx.out(`Replay rejected: ${value.replayRejected}`);
+}
+
 export async function cmdDevices(argv: string[], ctx: Ctx): Promise<number> {
-  const args = parseArgs(argv, { strings: ["name", "timeout"], booleans: ["json", "yes", "no-wait"] });
+  const args = parseArgs(argv, { strings: ["name", "timeout", "output", "input"], booleans: ["json", "yes", "no-wait"] });
   const action = args._[0] ?? "list";
   const positional = args._.slice(1);
   const json = flagBool(args, "json");
-  const service = cloudDevices(ctx);
   const hasRegistrationFlags = flagString(args, "timeout") !== undefined || flagBool(args, "no-wait");
+
+  if (action === "capsule-test") {
+    const operation = positional[0];
+    if (positional.length !== 1 || !["create", "open"].includes(operation ?? "")
+      || flagString(args, "name") !== undefined || hasRegistrationFlags || flagBool(args, "yes")) {
+      throw new CliError("usage: sinter devices capsule-test create --output <new-file> [--json]\n       sinter devices capsule-test open --input <file> [--json]");
+    }
+    const output = flagString(args, "output");
+    const input = flagString(args, "input");
+    if (operation === "create") {
+      if (!output || input !== undefined) throw new CliError("usage: sinter devices capsule-test create --output <new-file> [--json]");
+      printCapsuleTestResult(await capsuleTest(ctx).create(output), json, ctx);
+    } else {
+      if (!input || output !== undefined) throw new CliError("usage: sinter devices capsule-test open --input <file> [--json]");
+      printCapsuleTestResult(await capsuleTest(ctx).open(input), json, ctx);
+    }
+    return EXIT.OK;
+  }
+
+  if (flagString(args, "output") !== undefined || flagString(args, "input") !== undefined) {
+    throw new CliError("--output and --input are only valid with `sinter devices capsule-test`");
+  }
+  const service = cloudDevices(ctx);
 
   if (action === "register") {
     if (positional.length) throw new CliError("usage: sinter devices register [--name name] [--no-wait] [--timeout 5m] [--json]");
@@ -2289,7 +2334,7 @@ export async function cmdDevices(argv: string[], ctx: Ctx): Promise<number> {
     return EXIT.OK;
   }
 
-  throw new CliError("usage: sinter devices <register|list|rename|revoke|pending|approve> ...");
+  throw new CliError("usage: sinter devices <register|list|rename|revoke|pending|approve|capsule-test> ...");
 }
 
 export async function cmdLogin(argv: string[], ctx: Ctx): Promise<number> {
