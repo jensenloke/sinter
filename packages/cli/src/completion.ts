@@ -104,8 +104,8 @@ ${commands}
     export) _arguments $global_args '1:session id' '(-o --output)'{-o,--output}'=[output file]:file:_files' '--slim' ;;
     import) _arguments $global_args '1:SIF file:_files' '--to=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--dry-run' '--live-tools' ;;
     port) _arguments $global_args '1:session id' '--to=[target harness]:harness:($harnesses)' '--mode=[transfer mode]:mode:($modes)' '--cwd=[target directory]:directory:_directories' '--preview' '--json' '--dry-run' '--live-tools' ;;
-    send) _arguments $global_args '1:session id' '--to=[one-use transfer locator]:locator' '--mode=[transfer mode]:mode:($modes)' '--preview' '--json' ;;
-    receive) _arguments $global_args '--to=[target harness instance]:instance' '--bind=[listen address]:address' '--advertise=[LAN or Tailscale address]:address' '--port=[listen port]:port' '--ttl=[locator lifetime]:duration' '--cwd=[target directory]:directory:_directories' '--yes' '--json' ;;
+    send) _arguments $global_args '1:session id' '--to=[one-use transfer locator]:locator' '--mode=[transfer mode]:mode:($modes)' '--repo-remote=[source Git remote name]:remote' '--preview' '--json' ;;
+    receive) _arguments $global_args '--to=[target harness instance]:instance' '--bind=[listen address]:address' '--advertise=[LAN or Tailscale address]:address' '--port=[listen port]:port' '--ttl=[locator lifetime]:duration' '--cwd=[target repository root]:directory:_directories' '--allow-repo-mismatch[explicit context-only mismatch override]' '--allow-missing-commit[explicit missing-commit override]' '--yes[accept after repository checks]' '--json' ;;
     resume) _arguments $global_args '1:session id' '--in=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--exec' '--dry-run' '--live-tools' ;;
     setup) _arguments $global_args '--yes' '--no-menu' ;;
     update) _arguments $global_args '--check[check without installing]' '--package-manager=[global installer]:package manager:(bun npm)' '--force[allow installing an older published version]' '--json[emit versioned JSON]' ;;
@@ -160,7 +160,7 @@ function bash(): string {
     COMPREPLY=( $(compgen -W '--check --package-manager --force --json bun npm' -- "$current") )
     return
   fi
-  COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --all-harnesses --cwd --all-cwd --since --all-time --older-than --interval --count --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open --yes --ghosts --no-ghosts --subagents --no-subagents --force --all --clear --no-clear' -- "$current") )
+  COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --all-harnesses --cwd --all-cwd --since --all-time --older-than --interval --count --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open --yes --repo-remote --allow-repo-mismatch --allow-missing-commit --ghosts --no-ghosts --subagents --no-subagents --force --all --clear --no-clear' -- "$current") )
 }
 complete -F _sinter_completion sinter
 `;
@@ -174,11 +174,15 @@ function fish(): string {
     `complete -c sinter -n '__fish_seen_subcommand_from port import receive' -l to -xa '${HARNESSES.join(" ")}' -d 'Target harness or instance'`,
     "complete -c sinter -n '__fish_seen_subcommand_from send' -l to -r -d 'One-use transfer locator'",
     `complete -c sinter -n '__fish_seen_subcommand_from send' -l mode -xa '${MODES.join(" ")}' -d 'Transfer mode'`,
+    "complete -c sinter -n '__fish_seen_subcommand_from send' -l repo-remote -r -d 'Source Git remote name'",
     "complete -c sinter -n '__fish_seen_subcommand_from receive' -l bind -r -d 'Listen address'",
     "complete -c sinter -n '__fish_seen_subcommand_from receive' -l advertise -r -d 'LAN or Tailscale address'",
     "complete -c sinter -n '__fish_seen_subcommand_from receive' -l port -r -d 'Listen port'",
     "complete -c sinter -n '__fish_seen_subcommand_from receive' -l ttl -r -d 'Locator lifetime'",
-    "complete -c sinter -n '__fish_seen_subcommand_from receive' -l yes -d 'Accept without prompting'",
+    "complete -c sinter -n '__fish_seen_subcommand_from receive' -l cwd -r -d 'Target repository root'",
+    "complete -c sinter -n '__fish_seen_subcommand_from receive' -l allow-repo-mismatch -d 'Explicit context-only mismatch override'",
+    "complete -c sinter -n '__fish_seen_subcommand_from receive' -l allow-missing-commit -d 'Explicit missing-commit override'",
+    "complete -c sinter -n '__fish_seen_subcommand_from receive' -l yes -d 'Accept after repository checks'",
     `complete -c sinter -n '__fish_seen_subcommand_from resume' -l in -xa '${HARNESSES.join(" ")}' -d 'Target harness'`,
     `complete -c sinter -n '__fish_seen_subcommand_from port menu' -l mode -xa '${MODES.join(" ")}' -d 'Transfer mode'`,
     "complete -c sinter -n '__fish_seen_subcommand_from config' -a 'show path validate example discover-shell' -d 'Action'",

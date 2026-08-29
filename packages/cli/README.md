@@ -19,8 +19,13 @@ On POSIX systems, the local SQLite ledger and sidecar files are restricted to
 the current user.
 
 Sinter also supports named instances of the same harness and direct encrypted
-context transfer over LAN or Tailscale. Run `sinter receive --help` and
-`sinter send --help` for the one-use transfer workflow. When multiple
+context transfer over LAN or Tailscale. Direct transfer v2 requires the receiver
+to select a target Git root with `--cwd`, compares sanitized repository identity,
+checks commit availability, previews dirty state without modifying it, and
+rewrites the imported session to the target-local monorepo directory. Legacy
+unbound payloads and unsafe targets fail closed; dedicated mismatch and
+missing-commit overrides remain explicit in provenance. Run the command-specific
+help for `sinter receive` and `sinter send` for the one-use workflow. When multiple
 `~/.claude*` stores are present, the first operational run creates and selects
 a default multi-instance config without overwriting existing configuration.
 Run `sinter help instances` for the agent-safe porting workflow.

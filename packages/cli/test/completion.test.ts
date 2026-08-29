@@ -25,6 +25,9 @@ describe("shell completions", () => {
     expect(script).toContain("input");
     expect(script).toContain("no-wait");
     expect(script).toContain("timeout");
+    expect(script).toContain("repo-remote");
+    expect(script).toContain("allow-repo-mismatch");
+    expect(script).toContain("allow-missing-commit");
     expect(script).toContain("gui");
     expect(script).toContain("recent");
     expect(script).toContain("watch");

@@ -135,6 +135,10 @@ function commandContext(service: CapsuleTestService) {
     readFile: async () => { throw new Error("generic reader must not be used"); },
     autoScan: true,
     capsuleTest: service,
+    repositoryBinding: {
+      async source() { throw new Error("capsule test must not inspect a repository"); },
+      async resolve() { throw new Error("capsule test must not resolve a repository"); },
+    },
   };
   return { ctx, stdout, stderr, scans: () => scans, ledgerTouches: () => ledgerTouches };
 }

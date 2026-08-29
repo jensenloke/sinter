@@ -9,7 +9,9 @@ operations.
 
 ## Release state
 
-- Development CLI version on `docs/sinter-cloud-inventory`: `0.4.1`.
+- Development CLI version on `feat/repository-binding-v2`: `0.5.0`.
+- The verified `0.4.1` candidate remains scoped to automatic device-enrollment
+  waiting and synthetic capsule diagnostics on the parent branch.
 - Latest published CLI version: `0.4.0`.
 - npm package and `latest`: `@jensenloke/sinter@0.4.0`.
 - Registry shasum `972494f4c4cc25d537dbcea407441de9c98b0e30` matches the
@@ -18,12 +20,15 @@ operations.
 - Published release notes: [releases/v0.4.0.md](releases/v0.4.0.md).
 - npm publication source HEAD: `90ed981 docs: record the 0.4.0 release gate`.
 - npm `0.4.0` is immutable. The `0.4.1` candidate requires explicit publication
-  approval after physical-device verification.
+  approval after physical-device verification. `0.5.0` is development-only and
+  must not be pushed, tagged, released, or published from this branch.
 
 ## Git state at handoff
 
 - CLI release work remains on `feat/multi-instance-lan`. Cloud foundation work
   is isolated on `docs/sinter-cloud-inventory`.
+- Repository-bound direct transfer v2 is isolated on the local, unpushed child
+  branch `feat/repository-binding-v2`; it is not part of the `0.4.1` candidate.
 - The feature branch is pushed as `origin/feat/multi-instance-lan` and tracks
   that remote branch. It has not yet been merged into `origin/main`.
 - GitHub PR #24 targets `main`:
@@ -44,6 +49,12 @@ operations.
 - Cloud planning and implementation continue on `docs/sinter-cloud-inventory`;
   its inventory is documented in
   [sinter-cloud-inventory.md](sinter-cloud-inventory.md).
+- Real-session direct transfer v2 now binds an explicitly selected target
+  checkout to sanitized repository identity rather than a source absolute path.
+  The design, resolved mismatch policy, acceptance tests, and continuation
+  guidance are in [repository-binding-design.md](repository-binding-design.md).
+  The implementation is isolated on `feat/repository-binding-v2` and does not
+  change the scoped `0.4.1` synthetic candidate.
 - The Cloud branch is ahead of `origin/docs/sinter-cloud-inventory` with
   reviewed, unpushed commits. Phase 1 device identity and the metadata-only
   control plane are deployed; the C2 local-only envelope remains disconnected
@@ -81,6 +92,36 @@ operations.
   `0.4.1`. npm `0.4.0` remains immutable; `0.4.1` is not published. The physical
   test is complete, but do not push, tag, release, or publish without explicit
   maintainer approval.
+
+## Verified repository-bound direct transfer v2 — development only
+
+- The `0.5.0` development CLI retains the version 1 locator, request encryption,
+  and authenticated receipt while moving session content into a strict encrypted
+  `sinter.session-transfer.v2` envelope with `sinter.repository-binding.v1`.
+- Send derives sanitized hosted Git identities, commit, branch hint, and
+  monorepo-relative `cwd` from the actual source checkout. It strips source
+  absolute paths and raw Git metadata from the transferred SIF. Multiple source
+  identities require `--repo-remote <name>`.
+- Receive rejects legacy v1 session payloads and requires
+  `--cwd <repository-root>`. It compares exact sanitized remotes, checks commit
+  availability without network access, rejects unbound/non-Git targets, blocks
+  traversal and symlink escape, reports dirty state without modifying it, and
+  repeats semantic checks immediately before the adapter write.
+- Repository mismatch and missing-commit exceptions require separate
+  `--allow-repo-mismatch` and `--allow-missing-commit` options; `--yes` cannot
+  bypass them. Overrides remain visible in native and cached lineage provenance.
+- A real-Git encrypted loopback test proves the same repository at different
+  device paths rewrites every session `cwd` to the validated target-local
+  subdirectory before the exact `harness@instance` writer runs. Distinct
+  repositories with the same basename fail by remote identity, and all refusal
+  paths prove zero adapter writes.
+- The full repository passed 847 tests and 9,822 assertions, both TypeScript
+  checks, CLI and Cloud production builds, isolated Bun/npm package rehearsal,
+  built help, and `git diff --check`. Independent adversarial review found no
+  remaining critical, high, or medium blockers.
+- This branch does not add Cloud upload, Storage, workspace transfer, Git fetch/
+  checkout/reset/patch behavior, or any repository dependency to the `0.4.1`
+  synthetic capsule diagnostic.
 
 ## Cloud development foundation
 
@@ -269,10 +310,10 @@ session into an exact target instance:
 
 ```sh
 # LAN: advertise a private address automatically when one is available
-sinter receive --to claude@addvita --profile all
+sinter receive --to claude@addvita --cwd <target-repository-root> --profile all
 
 # Tailscale: advertise the device's tailnet IP explicitly
-sinter receive --to claude@addvita --advertise <tailscale-ip> --profile all
+sinter receive --to claude@addvita --cwd <target-repository-root> --advertise <tailscale-ip> --profile all
 
 # On the sending device
 sinter send <id> --to 'sinter://transfer/v1?...' --profile all
@@ -291,10 +332,13 @@ Protocol properties:
   import complete;
 - LAN and Tailscale supported by address from day one; no SSH dependency.
 
-Network payloads remove raw adapter records, provider-private `preserve` state,
-native store paths, and additional workspace directories. Historical tools are
-inert on import. The feature moves conversation context only: it does not copy
-repository files, dirty changes, environment values, or credentials.
+The `0.5.0` development payload additionally removes source absolute `cwd` and
+raw Git URLs, carries only a sanitized encrypted binding, requires an explicit
+target repository root, and rejects legacy unbound payloads. Network payloads
+remove raw adapter records, provider-private `preserve` state, native store paths,
+and additional workspace directories. Historical tools are inert on import. The
+feature moves conversation context only: it does not copy repository files,
+dirty changes, environment values, or credentials.
 
 Primary implementation locations:
 
@@ -338,7 +382,8 @@ bunx @jensenloke/sinter@0.3.1 --version
   the sender.
 - Direct transfer requires network reachability and may be blocked by host or
   network firewalls. Tailscale is transport reachability, not a separate Sinter
-  protocol.
+  protocol. The `0.5.0` development receiver accepts only repository-bound v2
+  session payloads; both devices must run the same development build.
 - There is no offline inbox, cloud relay, encrypted capsule storage, browser
   device, or cross-device search yet. Two CLI devices are enrolled and passed the
   guarded synthetic capsule create/open test, but replay remains process-local.
@@ -354,14 +399,17 @@ bunx @jensenloke/sinter@0.3.1 --version
 
 ## Recommended next actions
 
-1. Review the successful physical-test evidence, then obtain explicit approval
-   before any push, tag, GitHub release, or npm publication of `0.4.1`.
-2. Obtain human cryptographic review before freezing C2 or adding Storage; the
-   two cross-modal reviews and physical test do not replace this gate.
-3. Design private Storage, durable replay, quota reservations, encrypted
-   **synthetic** push/list/inspect/pull/delete, and permanent deletion afterward.
-4. Keep real-session upload and viewing blocked until those gates pass.
-5. Merge PR #24, then rebase/fix PR #25's UTF-8 byte-budget and named-instance
+1. Review and checkpoint `feat/repository-binding-v2`, then run one physical
+   MacBook/Mac Mini direct transfer using the identical `0.5.0` development build
+   and two explicit checkouts of the same repository.
+2. Obtain human privacy/security review of repository binding before merging it;
+   the automated adversarial review does not replace this gate.
+3. Separately decide whether to publish the already-verified `0.4.1` candidate;
+   pushing, tagging, releasing, and npm publication require explicit approval.
+4. Obtain human cryptographic review before freezing C2 or adding Storage, then
+   design durable replay, quota reservations, private encrypted **synthetic**
+   push/list/inspect/pull/delete, and permanent deletion.
+5. Keep real-session Cloud upload and viewing blocked until those gates pass.
+6. Merge PR #24, then rebase/fix PR #25's UTF-8 byte-budget and named-instance
    integration before merging it. Create the eventual `v0.4.0` GitHub tag and
    release without republishing npm.
-6. Continue physical-device LAN/Tailscale transfer tests independently of Cloud.

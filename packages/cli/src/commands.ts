@@ -61,6 +61,16 @@ import {
   type CloudDeviceService,
 } from "./cloud-devices";
 import { createCapsuleTestService, type CapsuleTestResult, type CapsuleTestService } from "./capsule-test";
+import {
+  bindSessionToRepository,
+  createRepositoryBindingService,
+  parseSessionTransferPayload,
+  RepositoryBindingError,
+  sanitizeSessionForNetwork,
+  serializeSessionTransferPayload,
+  type RepositoryBindingPreview,
+  type RepositoryBindingService,
+} from "./repository-binding";
 import type { UpdateDependencies } from "./update";
 
 export interface Ctx {
@@ -97,6 +107,7 @@ export interface Ctx {
   cloudDevices?: CloudDeviceService;
   /** Synthetic-only capsule diagnostic; production composes account API, key custody, and core. */
   capsuleTest?: CapsuleTestService;
+  repositoryBinding?: RepositoryBindingService;
   /** Registry, process, and installation-layout seams for the explicit update command. */
   update?: UpdateDependencies;
   /** Runner/environment/path seams for explicit, opt-in shell-alias discovery. */
@@ -1415,6 +1426,7 @@ async function writeInto(
   session: SifSession,
   args: ParsedArgs,
   mode?: string,
+  cwdOverride?: string,
 ): Promise<number> {
   const { adapter } = binding;
   const target = instanceLabel(binding.harness, binding.instanceId);
@@ -1422,7 +1434,7 @@ async function writeInto(
 
   const cwd = flagString(args, "cwd");
   const dryRun = flagBool(args, "dry-run");
-  const resolvedCwd = cwd === "." ? process.cwd() : cwd;
+  const resolvedCwd = cwdOverride ?? (cwd === "." ? process.cwd() : cwd);
   const ref = await adapter.write(session, {
     instanceId: binding.instanceId,
     cwd: resolvedCwd,
@@ -1574,21 +1586,7 @@ export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
 }
 
 function networkSafeSession(session: SifSession): SifSession {
-  const sanitize = (value: SifSession): SifSession => {
-    const { preserve: _preserve, additionalDirs: _additionalDirs, ...rest } = value;
-    return {
-      ...rest,
-      origin: {
-        harness: value.origin.harness,
-        ...(value.origin.instanceId ? { instanceId: value.origin.instanceId } : {}),
-        nativeId: value.origin.nativeId,
-        ...(value.origin.host ? { host: value.origin.host } : {}),
-      },
-      entries: value.entries.map(({ raw: _raw, ...entry }) => entry as SifEntry),
-      ...(value.subsessions ? { subsessions: value.subsessions.map(sanitize) } : {}),
-    };
-  };
-  return sanitize(session);
+  return sanitizeSessionForNetwork(session);
 }
 
 function transferTtl(value: string | undefined): number {
@@ -1616,6 +1614,47 @@ function advertiseAddress(bindHost: string, explicit?: string): string {
   throw new CliError("no private LAN address found; pass --advertise <LAN-or-Tailscale-IP>");
 }
 
+function repositoryBindings(ctx: Ctx): RepositoryBindingService {
+  return ctx.repositoryBinding ?? createRepositoryBindingService();
+}
+
+function sameRepositoryBindingPreview(left: RepositoryBindingPreview, right: RepositoryBindingPreview): boolean {
+  return left.schema === right.schema
+    && left.sourceRepository === right.sourceRepository
+    && left.sourceCommit === right.sourceCommit
+    && left.sourceBranch === right.sourceBranch
+    && left.targetRepository === right.targetRepository
+    && left.targetRoot === right.targetRoot
+    && left.targetCwd === right.targetCwd
+    && left.targetHead === right.targetHead
+    && left.relativeCwd === right.relativeCwd
+    && left.match === right.match
+    && left.commitAvailable === right.commitAvailable
+    && left.targetWorktreeDirty === right.targetWorktreeDirty
+    && left.overrides.repositoryMismatch === right.overrides.repositoryMismatch
+    && left.overrides.missingCommit === right.overrides.missingCommit
+    && left.writes === right.writes;
+}
+
+function printRepositoryBindingPreview(ctx: Ctx, preview: RepositoryBindingPreview, target: string): void {
+  const rows = [
+    ["target harness", target],
+    ["source repository", preview.sourceRepository],
+    ["source commit", preview.sourceCommit],
+    ["source branch", preview.sourceBranch ?? "-"],
+    ["target repository", preview.targetRepository],
+    ["target root", preview.targetRoot],
+    ["relative directory", preview.relativeCwd || "."],
+    ["target directory", preview.targetCwd],
+    ["repository match", preview.match],
+    ["commit available", preview.commitAvailable ? "yes" : "no — explicit override"],
+    ["target worktree", preview.targetWorktreeDirty ? "dirty — left untouched" : "clean"],
+    ["writes", "none — checks completed before import"],
+  ];
+  ctx.err("Repository binding preview");
+  ctx.err(renderTable([{ header: "FIELD" }, { header: "VALUE", flex: true }], rows, { width: ctx.width, pal: ctx.pal }));
+}
+
 async function confirmReceive(ctx: Ctx, transfer: ReceivedTransfer, target: string): Promise<boolean> {
   const question = `Accept ${fmtBytes(transfer.bytes.byteLength)} into ${target}? [y/N]`;
   if (ctx.confirm) return ctx.confirm(question);
@@ -1631,26 +1670,33 @@ async function confirmReceive(ctx: Ctx, transfer: ReceivedTransfer, target: stri
 
 /** Send a context-only, encrypted one-shot session payload to a receiver locator. */
 export async function cmdSend(argv: string[], ctx: Ctx): Promise<number> {
-  const args = parseArgs(argv, { strings: ["to", "mode"], booleans: ["preview", "json"] });
+  const args = parseArgs(argv, { strings: ["to", "mode", "repo-remote"], booleans: ["preview", "json"] });
   const prefix = args._[0];
   const locator = flagString(args, "to");
-  if (!prefix || !locator) throw new CliError("usage: sinter send <id-prefix> --to <sinter://transfer/...> [--mode compact|slim|full]");
+  if (!prefix || !locator) throw new CliError("usage: sinter send <id-prefix> --to <sinter://transfer/...> [--mode compact|slim|full] [--repo-remote <name>]");
   const row = resolveRow(ctx, prefix);
   const source = await readSessionForPort(ctx, row);
   const mode = (flagString(args, "mode") ?? "compact") as TransferMode;
   if (!TRANSFER_MODES.includes(mode))
     throw new CliError(`unknown --mode: ${mode} (known: ${TRANSFER_MODES.join(", ")})`);
+  const repository = await repositoryBindings(ctx).source(source, { remoteName: flagString(args, "repo-remote") });
   const transferred = applyTransfer(source, mode);
   const session = networkSafeSession(transferred.session);
   validateSession(session);
-  const bytes = new TextEncoder().encode(JSON.stringify(session));
+  const bytes = new TextEncoder().encode(serializeSessionTransferPayload(session, repository));
   if (flagBool(args, "preview")) {
     const preview = {
       source: { harness: row.harness, instanceId: row.instanceId ?? DEFAULT_INSTANCE_ID, nativeId: row.nativeId },
+      repository: {
+        selectedRemote: `${repository.selectedRemote.host}/${repository.selectedRemote.path}`,
+        commit: repository.commit,
+        ...(repository.branch ? { branch: repository.branch } : {}),
+        relativeCwd: repository.relativeCwd,
+      },
       mode,
       entries: session.entries.length,
-      bytes: bytes.byteLength,
-      encrypted: true,
+      payloadBytes: bytes.byteLength,
+      transportEncryption: "on-send",
       sends: false,
     };
     if (flagBool(args, "json")) ctx.out(JSON.stringify(preview, null, 2));
@@ -1659,7 +1705,7 @@ export async function cmdSend(argv: string[], ctx: Ctx): Promise<number> {
   }
   const receipt = await sendTransfer(locator, bytes, {
     metadata: {
-      schema: "sinter.session.v1",
+      schema: "sinter.session.v2",
       mode,
       sourceHarness: row.harness,
       sourceInstance: row.instanceId ?? DEFAULT_INSTANCE_ID,
@@ -1674,43 +1720,83 @@ export async function cmdSend(argv: string[], ctx: Ctx): Promise<number> {
 export async function cmdReceive(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv, {
     strings: ["to", "bind", "advertise", "port", "ttl", "cwd"],
-    booleans: ["yes", "json"],
+    booleans: ["yes", "json", "allow-repo-mismatch", "allow-missing-commit"],
   });
   const to = flagString(args, "to");
-  if (!to) throw new CliError("usage: sinter receive --to <harness@instance> [--advertise <LAN-or-Tailscale-IP>] [--yes]");
-  const binding = await resolveTargetBinding(ctx, to);
-  if (!binding.adapter.write) throw new CliError(`${instanceLabel(binding.harness, binding.instanceId)} adapter cannot write sessions yet`);
+  if (!to) throw new CliError("usage: sinter receive --to <harness@instance> --cwd <repository-root> [--advertise <LAN-or-Tailscale-IP>] [--yes]");
+  const cwd = flagString(args, "cwd");
+  if (!cwd) throw new CliError("sinter receive v2 requires --cwd <repository-root>");
+  const targetRoot = cwd === "." ? process.cwd() : cwd;
+  const targetBinding = await resolveTargetBinding(ctx, to);
+  if (!targetBinding.adapter.write) throw new CliError(`${instanceLabel(targetBinding.harness, targetBinding.instanceId)} adapter cannot write sessions yet`);
   const bindHost = flagString(args, "bind") ?? "0.0.0.0";
   const advertised = advertiseAddress(bindHost, flagString(args, "advertise"));
   const portValue = flagString(args, "port");
   const port = portValue === undefined ? 0 : Number(portValue);
   if (!Number.isInteger(port) || port < 0 || port > 65_535) throw new CliError(`bad --port: ${portValue}`);
-  const target = instanceLabel(binding.harness, binding.instanceId);
+  const target = instanceLabel(targetBinding.harness, targetBinding.instanceId);
+  let preview: RepositoryBindingPreview | undefined;
+  let receiverFailure: CliError | undefined;
   const receiver = startTransferReceiver({
     bindHost,
     advertiseHost: advertised,
     port,
     ttlMs: transferTtl(flagString(args, "ttl")),
     async accept(transfer) {
-      if (transfer.metadata.schema !== "sinter.session.v1") throw new CliError("unsupported transfer payload");
-      let session: SifSession;
       try {
-        session = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(transfer.bytes)) as SifSession;
-      } catch {
-        throw new CliError("received payload is not valid SIF JSON");
+        if (transfer.metadata.schema !== "sinter.session.v2") {
+          throw new RepositoryBindingError("Received unsupported session transfer payload; both devices must use Sinter direct transfer v2");
+        }
+        const mode = transfer.metadata.mode as TransferMode | undefined;
+        if (!mode || !TRANSFER_MODES.includes(mode)) throw new RepositoryBindingError("Received session transfer mode is invalid");
+        let serialized: string;
+        try {
+          serialized = new TextDecoder("utf-8", { fatal: true }).decode(transfer.bytes);
+        } catch {
+          throw new RepositoryBindingError("Received session transfer payload is not valid UTF-8");
+        }
+        const payload = parseSessionTransferPayload(serialized);
+        const resolveOptions = {
+          allowRepositoryMismatch: flagBool(args, "allow-repo-mismatch"),
+          allowMissingCommit: flagBool(args, "allow-missing-commit"),
+        };
+        const resolution = await repositoryBindings(ctx).resolve(payload.repository, targetRoot, resolveOptions);
+        preview = resolution.preview;
+        printRepositoryBindingPreview(ctx, preview, target);
+        if (!flagBool(args, "yes") && !(await confirmReceive(ctx, transfer, target)))
+          throw new CliError("transfer declined");
+        const finalResolution = await repositoryBindings(ctx).resolve(payload.repository, targetRoot, resolveOptions);
+        if (!sameRepositoryBindingPreview(finalResolution.preview, preview)) {
+          throw new RepositoryBindingError("The target repository changed after preview; no session or workspace files were written");
+        }
+        const session = bindSessionToRepository(payload.session, finalResolution);
+        await writeInto(
+          ctx,
+          targetBinding,
+          session,
+          args,
+          `network-${mode}${finalResolution.provenanceModeSuffix}`,
+          finalResolution.targetCwd,
+        );
+      } catch (error) {
+        if (error instanceof CliError) receiverFailure = error;
+        throw error;
       }
-      validateSession(session);
-      if (!flagBool(args, "yes") && !(await confirmReceive(ctx, transfer, target)))
-        throw new CliError("transfer declined");
-      await writeInto(ctx, binding, networkSafeSession(session), args, `network-${transfer.metadata.mode ?? "compact"}`);
     },
   });
   ctx.out(receiver.locator);
   ctx.err(`listening on ${bindHost}:${receiver.port} for one encrypted transfer → ${target}`);
   try {
-    const received = await receiver.received;
+    let received: ReceivedTransfer;
+    try {
+      received = await receiver.received;
+    } catch (error) {
+      await (ctx.sleep ?? Bun.sleep)(50);
+      if (receiverFailure) throw receiverFailure;
+      throw error;
+    }
     if (flagBool(args, "json"))
-      ctx.out(JSON.stringify({ ok: true, transferId: received.transferId, bytes: received.bytes.byteLength, target }));
+      ctx.out(JSON.stringify({ ok: true, transferId: received.transferId, bytes: received.bytes.byteLength, target, repository: preview }));
     else ctx.err(`received and imported ${fmtBytes(received.bytes.byteLength)} · ${received.transferId}`);
     // `received` resolves when the authenticated Response is created. Give Bun
     // one event-loop turn to flush that receipt before closing the one-shot server.

@@ -53,7 +53,7 @@ sinter show <id-prefix> --tail 20       # render only the latest entries
 sinter port <id-prefix> --to codex --mode compact --preview
 sinter port <id-prefix> --to omp
 sinter resume <id-prefix> --in omp --exec
-sinter receive --to claude@work --advertise 100.64.0.12
+sinter receive --to claude@work --cwd ~/Code/project --advertise 100.64.0.12
 sinter send <id-prefix> --to 'sinter://transfer/v1?...'
 sinter login                    # optional Sinter Cloud browser login
 sinter whoami                   # verify the current Cloud identity
@@ -211,14 +211,15 @@ Storage, inbox, relay, and real-session uploads remain disabled.
 
 ## Direct device transfer
 
-On the receiving device, create a one-use encrypted locator:
+On the receiving device, explicitly select the root of the target Git checkout
+and create a one-use encrypted locator:
 
 ```sh
 # LAN address is selected automatically when available
-sinter receive --to claude@claude-work
+sinter receive --to claude@claude-work --cwd ~/Code/project
 
 # Or advertise the device's Tailscale IP explicitly
-sinter receive --to claude@claude-work --advertise 100.64.0.12
+sinter receive --to claude@claude-work --cwd ~/Code/project --advertise 100.64.0.12
 ```
 
 Copy the printed `sinter://transfer/v1?...` locator to the sending device:
@@ -227,14 +228,28 @@ Copy the printed `sinter://transfer/v1?...` locator to the sending device:
 sinter send <id-prefix> --to 'sinter://transfer/v1?...'
 ```
 
-The capability in the locator encrypts and authenticates one transfer, expires
-after five minutes by default, and is never sent to the receiver as an HTTP
-credential. The sender reports success only after the receiver validates,
-confirms, and imports the session. Network payloads exclude raw adapter
-records, provider-private state, native store paths, and extra workspace
-directories. This transfers conversation context, not repository files or
-credentials. LAN and Tailscale use the same direct protocol; no SSH or cloud
-account is required.
+The locator and encrypted transport framing remain version 1; the encrypted
+session envelope is repository-bound version 2. The sender derives a sanitized
+remote identity, source commit, branch hint, and monorepo-relative directory
+from the local checkout. If several remotes remain possible, select one by name
+with `send --repo-remote <name>`.
+
+After decryption, the receiver compares sanitized remotes, checks that the
+source commit exists locally, validates the relative directory, reports dirty
+state, and shows a no-write preview before confirmation. Repository mismatches
+and missing commits fail closed unless their dedicated
+`--allow-repo-mismatch` or `--allow-missing-commit` option is explicit; `--yes`
+cannot bypass those checks. Legacy unbound session payloads are rejected.
+Sinter never fetches, checks out, resets, patches, or changes repository files.
+It rewrites the imported session to the target-local directory.
+
+The capability encrypts and authenticates one transfer, expires after five
+minutes by default, and is never sent to the receiver as an HTTP credential.
+Network payloads exclude the source absolute working directory, raw Git URL,
+raw adapter records, provider-private state, native store paths, and extra
+workspace directories. This transfers conversation context, not repository
+files or credentials. LAN and Tailscale use the same direct protocol; no SSH or
+Cloud account is required.
 
 ## Feedback
 

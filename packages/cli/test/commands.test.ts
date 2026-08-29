@@ -11,6 +11,15 @@ import { run } from "../src/main";
 import { MockAdapter, session, summary } from "../../ledger/test/mock-adapter";
 import { CodexAdapter } from "@sinter/adapter-codex";
 import type { HarnessAdapter } from "@sinter/core";
+import {
+  REPOSITORY_BINDING_PREVIEW_SCHEMA,
+  REPOSITORY_BINDING_SCHEMA,
+  RepositoryBindingError,
+  sanitizeSessionForNetwork,
+  serializeSessionTransferPayload,
+  type RepositoryBindingService,
+} from "../src/repository-binding";
+import { sendTransfer } from "../src/network";
 
 const NOW = Date.parse("2026-08-13T12:00:00.000Z");
 
@@ -98,12 +107,34 @@ async function scan(target?: Harness) {
   return run(["scan"], (target ?? h).ctx);
 }
 
+function repositoryFixture() {
+  const commit = "b".repeat(40);
+  return {
+    schema: REPOSITORY_BINDING_SCHEMA,
+    remotes: [{ host: "github.com", path: "example/project" }],
+    selectedRemote: { host: "github.com", path: "example/project" },
+    commit,
+    branch: "feature/repository-binding",
+    relativeCwd: "",
+  } as const;
+}
+
 describe("CLI conventions", () => {
   test("renders command-specific help without touching the ledger", async () => {
     expect(await run(["port", "--help"], h.ctx)).toBe(0);
     expect(h.out()).toContain("usage: sinter port");
     expect(h.out()).toContain("Creates a new target session");
     expect(h.out()).not.toContain("one ledger for every coding-agent session");
+    h.stdout.length = 0;
+    expect(await run(["receive", "--help"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("--cwd <repository-root>");
+    expect(h.out()).toContain("--allow-repo-mismatch");
+    expect(h.out()).toContain("--allow-missing-commit");
+    expect(h.out()).toContain("rejects legacy v1 session payloads");
+    h.stdout.length = 0;
+    expect(await run(["send", "--help"], h.ctx)).toBe(0);
+    expect(h.out()).toContain("--repo-remote <name>");
+    expect(h.out()).toContain("source absolute working directory");
   });
 
   test("groups top-level help by user job", async () => {
@@ -216,13 +247,92 @@ describe("named harness instances", () => {
     ledger.close();
   });
 
-  test("send/receive imports only after an encrypted receiver accepts", async () => {
+  test("send v2 preview exposes only sanitized repository binding metadata", async () => {
+    const sourcePath = "/Users/source/private/project";
     const source = new MockAdapter({
       id: "claude",
-      summaries: [summary({ nativeId: "source-one" })],
+      summaries: [summary({ nativeId: "source-preview", cwd: sourcePath })],
+      sessions: {
+        "source-preview": {
+          ...session("source-preview"),
+          cwd: sourcePath,
+          git: { remote: "https://token:secret@github.com/example/project.git?hidden=1" },
+        },
+      },
+    });
+    const ledger = new Ledger(":memory:");
+    await ledger.scan(await new StaticAdapterRegistry([{ instanceId: "personal", adapter: source }]).available());
+    const output: string[] = [];
+    const ctx: Ctx = {
+      ...h.ctx,
+      ledger: () => ledger,
+      out: (line) => output.push(line),
+      registry: new StaticAdapterRegistry([{ instanceId: "personal", adapter: source }]),
+      repositoryBinding: {
+        async source(_session, options) {
+          expect(options).toEqual({ remoteName: "upstream" });
+          return repositoryFixture();
+        },
+        async resolve() { throw new Error("preview must not resolve a target"); },
+      },
+    };
+    expect(await run([
+      "send", "claude@personal:source-preview", "--to", "unused-locator", "--repo-remote", "upstream", "--preview", "--json",
+    ], ctx)).toBe(0);
+    expect(output).toHaveLength(1);
+    const preview = JSON.parse(output[0]!);
+    expect(preview.repository).toEqual({
+      selectedRemote: "github.com/example/project",
+      commit: "b".repeat(40),
+      branch: "feature/repository-binding",
+      relativeCwd: "",
+    });
+    expect(preview).toMatchObject({ transportEncryption: "on-send", sends: false });
+    expect(preview.payloadBytes).toBeGreaterThan(0);
+    expect(output[0]).not.toContain(sourcePath);
+    expect(output[0]).not.toContain("token");
+    expect(output[0]).not.toContain("secret");
+    expect(output[0]).not.toContain("hidden");
+    ledger.close();
+  });
+
+  test("send/receive v2 binds the encrypted session to an explicit matching target repository", async () => {
+    const sourcePath = "/Users/source/private/project/packages/frontend";
+    const targetRoot = "/Users/target/Code/project";
+    const targetCwd = `${targetRoot}/packages/frontend`;
+    const commit = "a".repeat(40);
+    const repository = {
+      schema: REPOSITORY_BINDING_SCHEMA,
+      remotes: [{ host: "github.com", path: "example/project" }],
+      selectedRemote: { host: "github.com", path: "example/project" },
+      commit,
+      branch: "feature/repository-binding",
+      relativeCwd: "packages/frontend",
+    } as const;
+    const preview = {
+      schema: REPOSITORY_BINDING_PREVIEW_SCHEMA,
+      sourceRepository: "github.com/example/project",
+      sourceCommit: commit,
+      sourceBranch: "feature/repository-binding",
+      targetRepository: "github.com/example/project",
+      targetRoot,
+      targetCwd,
+      targetHead: commit,
+      relativeCwd: "packages/frontend",
+      match: "exact" as const,
+      commitAvailable: true,
+      targetWorktreeDirty: true,
+      overrides: { repositoryMismatch: false, missingCommit: false },
+      writes: false as const,
+    };
+    const source = new MockAdapter({
+      id: "claude",
+      summaries: [summary({ nativeId: "source-one", cwd: sourcePath })],
       sessions: {
         "source-one": {
           ...session("source-one"),
+          cwd: sourcePath,
+          git: { sha: commit, branch: "feature/repository-binding", remote: "https://token@github.com/example/project.git" },
           preserve: { secretProviderState: "drop-me" },
         },
       },
@@ -232,12 +342,33 @@ describe("named harness instances", () => {
     const receiverLedger = new Ledger(":memory:");
     await senderLedger.scan(await new StaticAdapterRegistry([{ instanceId: "personal", adapter: source }]).available());
     const receiverOut: string[] = [];
+    const receiverErr: string[] = [];
     const senderOut: string[] = [];
+    const sourceBinding: RepositoryBindingService = {
+      async source() { return repository; },
+      async resolve() { throw new Error("sender must not resolve a target"); },
+    };
+    const targetBinding: RepositoryBindingService = {
+      async source() { throw new Error("receiver must not inspect a source"); },
+      async resolve(value, path, options) {
+        expect(value).toEqual(repository);
+        expect(path).toBe(targetRoot);
+        expect(options).toEqual({ allowRepositoryMismatch: false, allowMissingCommit: false });
+        return {
+          preview,
+          targetCwd,
+          git: { sha: commit, branch: repository.branch, remote: "https://github.com/example/project" },
+          provenanceModeSuffix: "",
+        };
+      },
+    };
     const receiverCtx: Ctx = {
       ...h.ctx,
       ledger: () => receiverLedger,
       out: (line) => receiverOut.push(line),
+      err: (line) => receiverErr.push(line),
       registry: new StaticAdapterRegistry([{ instanceId: "work", adapter: target, command: ["codex-work"] }]),
+      repositoryBinding: targetBinding,
       interactive: false,
     };
     const senderCtx: Ctx = {
@@ -245,10 +376,11 @@ describe("named harness instances", () => {
       ledger: () => senderLedger,
       out: (line) => senderOut.push(line),
       registry: new StaticAdapterRegistry([{ instanceId: "personal", adapter: source }]),
+      repositoryBinding: sourceBinding,
     };
 
     const receiving = run([
-      "receive", "--to", "codex@work", "--bind", "127.0.0.1", "--advertise", "127.0.0.1", "--ttl", "30s", "--yes",
+      "receive", "--to", "codex@work", "--cwd", targetRoot, "--bind", "127.0.0.1", "--advertise", "127.0.0.1", "--ttl", "30s", "--yes",
     ], receiverCtx);
     await Bun.sleep(0);
     const locator = receiverOut.find((line) => line.startsWith("sinter://"));
@@ -257,13 +389,261 @@ describe("named harness instances", () => {
     expect({ sendCode, senderError: h.stderr.join("\n"), receiverOutput: receiverOut }).toMatchObject({ sendCode: 0 });
     expect(await receiving).toBe(0);
     expect(target.written).toHaveLength(1);
-    expect(target.written[0]!.opts?.instanceId).toBe("work");
+    expect(target.written[0]!.opts).toMatchObject({ instanceId: "work", cwd: targetCwd, mode: "network-compact" });
+    expect(target.written[0]!.session).toMatchObject({
+      cwd: targetCwd,
+      git: { sha: commit, branch: repository.branch, remote: "https://github.com/example/project" },
+    });
     expect(target.written[0]!.session.preserve).toBeUndefined();
     expect(target.written[0]!.session.origin.nativePath).toBeUndefined();
     expect(target.written[0]!.session.entries.every((entry) => entry.raw === undefined)).toBe(true);
+    expect(JSON.stringify(target.written[0]!.session)).not.toContain(sourcePath);
+    expect(JSON.stringify(target.written[0]!.session)).not.toContain("token@");
+    expect(receiverErr.join("\n")).toContain("Repository binding preview");
+    expect(receiverErr.join("\n")).toContain("target harness");
+    expect(receiverErr.join("\n")).toContain("codex@work");
+    expect(receiverErr.join("\n")).toContain("target worktree");
+    expect(receiverErr.join("\n")).not.toContain(sourcePath);
+    expect(receiverErr.join("\n")).not.toContain("token@");
     expect(senderOut.join("\n")).toContain("accepted as");
     senderLedger.close();
     receiverLedger.close();
+  });
+
+  test("receive v2 requires an explicit target repository before listening", async () => {
+    const target = new MockAdapter({ id: "codex" });
+    const output: string[] = [];
+    const errors: string[] = [];
+    const ctx: Ctx = {
+      ...h.ctx,
+      out: (line) => output.push(line),
+      err: (line) => errors.push(line),
+      registry: new StaticAdapterRegistry([{ instanceId: "work", adapter: target }]),
+    };
+    expect(await run(["receive", "--to", "codex@work", "--bind", "127.0.0.1", "--yes"], ctx)).toBe(1);
+    expect(output.some((line) => line.startsWith("sinter://"))).toBe(false);
+    expect(errors.join("\n")).toContain("requires --cwd <repository-root>");
+    expect(target.written).toHaveLength(0);
+  });
+
+  test("receive v2 rejects legacy v1 payloads before repository or adapter writes", async () => {
+    const target = new MockAdapter({ id: "codex" });
+    const output: string[] = [];
+    const errors: string[] = [];
+    let repositoryCalls = 0;
+    const ctx: Ctx = {
+      ...h.ctx,
+      out: (line) => output.push(line),
+      err: (line) => errors.push(line),
+      registry: new StaticAdapterRegistry([{ instanceId: "work", adapter: target }]),
+      repositoryBinding: {
+        async source() { throw new Error("unexpected source inspection"); },
+        async resolve() { repositoryCalls++; throw new Error("unexpected target inspection"); },
+      },
+    };
+    const receiving = run([
+      "receive", "--to", "codex@work", "--cwd", "/target/repository", "--bind", "127.0.0.1", "--advertise", "127.0.0.1", "--ttl", "30s", "--yes",
+    ], ctx);
+    await Bun.sleep(0);
+    const locator = output.find((line) => line.startsWith("sinter://"));
+    expect(locator).toBeDefined();
+    await expect(sendTransfer(locator!, new TextEncoder().encode(JSON.stringify(session("legacy"))), {
+      metadata: { schema: "sinter.session.v1", mode: "compact" },
+    })).rejects.toThrow("receiver_rejected_transfer");
+    expect(await receiving).toBe(1);
+    expect(errors.join("\n")).toContain("both devices must use Sinter direct transfer v2");
+    expect(repositoryCalls).toBe(0);
+    expect(target.written).toHaveLength(0);
+  });
+
+  test("non-interactive receive still requires --yes after repository preview", async () => {
+    const repository = repositoryFixture();
+    const payload = new TextEncoder().encode(serializeSessionTransferPayload(sanitizeSessionForNetwork(session("source")), repository));
+    const target = new MockAdapter({ id: "codex" });
+    const output: string[] = [];
+    const errors: string[] = [];
+    const targetRoot = "/target/repository";
+    const preview = {
+      schema: REPOSITORY_BINDING_PREVIEW_SCHEMA,
+      sourceRepository: "github.com/example/project",
+      sourceCommit: repository.commit,
+      sourceBranch: repository.branch,
+      targetRepository: "github.com/example/project",
+      targetRoot,
+      targetCwd: targetRoot,
+      targetHead: repository.commit,
+      relativeCwd: "",
+      match: "exact" as const,
+      commitAvailable: true,
+      targetWorktreeDirty: false,
+      overrides: { repositoryMismatch: false, missingCommit: false },
+      writes: false as const,
+    };
+    const ctx: Ctx = {
+      ...h.ctx,
+      interactive: false,
+      out: (line) => output.push(line),
+      err: (line) => errors.push(line),
+      registry: new StaticAdapterRegistry([{ instanceId: "work", adapter: target }]),
+      repositoryBinding: {
+        async source() { throw new Error("unexpected source inspection"); },
+        async resolve() {
+          return {
+            preview,
+            targetCwd: targetRoot,
+            git: { sha: repository.commit, branch: repository.branch, remote: "https://github.com/example/project" },
+            provenanceModeSuffix: "",
+          };
+        },
+      },
+    };
+    const receiving = run([
+      "receive", "--to", "codex@work", "--cwd", targetRoot, "--bind", "127.0.0.1", "--advertise", "127.0.0.1", "--ttl", "30s",
+    ], ctx);
+    await Bun.sleep(0);
+    const locator = output.find((line) => line.startsWith("sinter://"));
+    await expect(sendTransfer(locator!, payload, { metadata: { schema: "sinter.session.v2", mode: "compact" } }))
+      .rejects.toThrow("receiver_rejected_transfer");
+    expect(await receiving).toBe(1);
+    expect(errors.join("\n")).toContain("receive needs an interactive terminal; use --yes");
+    expect(errors.join("\n")).toContain("Repository binding preview");
+    expect(target.written).toHaveLength(0);
+  });
+
+  test("--yes cannot bypass mismatch and dedicated overrides remain visible in provenance", async () => {
+    const repository = repositoryFixture();
+    const payload = new TextEncoder().encode(serializeSessionTransferPayload(sanitizeSessionForNetwork(session("source")), repository));
+    const refusedTarget = new MockAdapter({ id: "codex" });
+    const refusedOutput: string[] = [];
+    const refusedErrors: string[] = [];
+    const refusedCtx: Ctx = {
+      ...h.ctx,
+      out: (line) => refusedOutput.push(line),
+      err: (line) => refusedErrors.push(line),
+      registry: new StaticAdapterRegistry([{ instanceId: "work", adapter: refusedTarget }]),
+      repositoryBinding: {
+        async source() { throw new Error("unexpected source inspection"); },
+        async resolve(_binding, _path, options) {
+          expect(options.allowRepositoryMismatch).toBe(false);
+          throw new RepositoryBindingError("Refusing repository mismatch; no session or workspace files were written");
+        },
+      },
+    };
+    const refused = run([
+      "receive", "--to", "codex@work", "--cwd", "/target/repository", "--bind", "127.0.0.1", "--advertise", "127.0.0.1", "--ttl", "30s", "--yes",
+    ], refusedCtx);
+    await Bun.sleep(0);
+    const refusedLocator = refusedOutput.find((line) => line.startsWith("sinter://"));
+    await expect(sendTransfer(refusedLocator!, payload, { metadata: { schema: "sinter.session.v2", mode: "compact" } }))
+      .rejects.toThrow("receiver_rejected_transfer");
+    expect(await refused).toBe(1);
+    expect(refusedErrors.join("\n")).toContain("Refusing repository mismatch");
+    expect(refusedTarget.written).toHaveLength(0);
+
+    const allowedTarget = new MockAdapter({ id: "codex" });
+    const allowedOutput: string[] = [];
+    const allowedErrors: string[] = [];
+    const targetRoot = "/target/repository";
+    const preview = {
+      schema: REPOSITORY_BINDING_PREVIEW_SCHEMA,
+      sourceRepository: "github.com/example/project",
+      sourceCommit: repository.commit,
+      sourceBranch: repository.branch,
+      targetRepository: "github.com/example/other",
+      targetRoot,
+      targetCwd: targetRoot,
+      targetHead: "c".repeat(40),
+      relativeCwd: "",
+      match: "mismatch" as const,
+      commitAvailable: false,
+      targetWorktreeDirty: false,
+      overrides: { repositoryMismatch: true, missingCommit: true },
+      writes: false as const,
+    };
+    const allowedCtx: Ctx = {
+      ...h.ctx,
+      out: (line) => allowedOutput.push(line),
+      err: (line) => allowedErrors.push(line),
+      registry: new StaticAdapterRegistry([{ instanceId: "work", adapter: allowedTarget }]),
+      repositoryBinding: {
+        async source() { throw new Error("unexpected source inspection"); },
+        async resolve(_binding, path, options) {
+          expect(path).toBe(targetRoot);
+          expect(options).toEqual({ allowRepositoryMismatch: true, allowMissingCommit: true });
+          return {
+            preview,
+            targetCwd: targetRoot,
+            git: { sha: repository.commit, branch: repository.branch, remote: "https://github.com/example/other" },
+            provenanceModeSuffix: "+repo-mismatch-allowed+missing-commit-allowed",
+          };
+        },
+      },
+    };
+    const allowed = run([
+      "receive", "--to", "codex@work", "--cwd", targetRoot, "--bind", "127.0.0.1", "--advertise", "127.0.0.1", "--ttl", "30s", "--yes", "--allow-repo-mismatch", "--allow-missing-commit",
+    ], allowedCtx);
+    await Bun.sleep(0);
+    const allowedLocator = allowedOutput.find((line) => line.startsWith("sinter://"));
+    await sendTransfer(allowedLocator!, payload, { metadata: { schema: "sinter.session.v2", mode: "compact" } });
+    expect(await allowed).toBe(0);
+    expect(allowedTarget.written).toHaveLength(1);
+    expect(allowedTarget.written[0]!.opts?.mode).toBe("network-compact+repo-mismatch-allowed+missing-commit-allowed");
+    expect(allowedErrors.join("\n")).toContain("Repository binding preview");
+  });
+
+  test("receive rechecks repository identity after preview and before writing", async () => {
+    const repository = repositoryFixture();
+    const payload = new TextEncoder().encode(serializeSessionTransferPayload(sanitizeSessionForNetwork(session("source")), repository));
+    const target = new MockAdapter({ id: "codex" });
+    const output: string[] = [];
+    const errors: string[] = [];
+    let checks = 0;
+    const targetRoot = "/target/repository";
+    const ctx: Ctx = {
+      ...h.ctx,
+      out: (line) => output.push(line),
+      err: (line) => errors.push(line),
+      registry: new StaticAdapterRegistry([{ instanceId: "work", adapter: target }]),
+      repositoryBinding: {
+        async source() { throw new Error("unexpected source inspection"); },
+        async resolve() {
+          checks++;
+          const preview = {
+            schema: REPOSITORY_BINDING_PREVIEW_SCHEMA,
+            sourceRepository: "github.com/example/project",
+            sourceCommit: repository.commit,
+            sourceBranch: repository.branch,
+            targetRepository: "github.com/example/project",
+            targetRoot,
+            targetCwd: targetRoot,
+            targetHead: (checks === 1 ? "c" : "d").repeat(40),
+            relativeCwd: "",
+            match: "exact" as const,
+            commitAvailable: true,
+            targetWorktreeDirty: false,
+            overrides: { repositoryMismatch: false, missingCommit: false },
+            writes: false as const,
+          };
+          return {
+            preview,
+            targetCwd: targetRoot,
+            git: { sha: repository.commit, branch: repository.branch, remote: "https://github.com/example/project" },
+            provenanceModeSuffix: "",
+          };
+        },
+      },
+    };
+    const receiving = run([
+      "receive", "--to", "codex@work", "--cwd", targetRoot, "--bind", "127.0.0.1", "--advertise", "127.0.0.1", "--ttl", "30s", "--yes",
+    ], ctx);
+    await Bun.sleep(0);
+    const locator = output.find((line) => line.startsWith("sinter://"));
+    await expect(sendTransfer(locator!, payload, { metadata: { schema: "sinter.session.v2", mode: "compact" } }))
+      .rejects.toThrow("receiver_rejected_transfer");
+    expect(await receiving).toBe(1);
+    expect(checks).toBe(2);
+    expect(errors.join("\n")).toContain("target repository changed after preview");
+    expect(target.written).toHaveLength(0);
   });
 });
 
