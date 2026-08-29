@@ -1,7 +1,7 @@
 # Sinter Cloud inventory
 
 Status: existing-members-only C0-C1/control plane deployed; C2 remains local-only
-Last reviewed: 2026-08-28 (Asia/Singapore)
+Last reviewed: 2026-08-29 (Asia/Singapore)
 
 This document turns the Sinter Cloud direction in [ROADMAP.md](../ROADMAP.md)
 into an implementation sequence. The first goal is not cloud execution. It is

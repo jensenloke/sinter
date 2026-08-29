@@ -1,6 +1,6 @@
 # Sinter current status
 
-Last updated: 2026-08-28 (Asia/Singapore)
+Last updated: 2026-08-29 (Asia/Singapore)
 
 This is the durable continuation handoff for maintainers and coding agents.
 Read the root [AGENTS.md](../AGENTS.md) first. Mutable facts below were verified
@@ -51,8 +51,8 @@ operations.
 
 ## Verified v0.4.1 candidate — keep unpublished
 
-- The candidate is based on `c000a1d docs: hand off the interrupted two-device
-  test` plus this release commit. The branch remains local and unpushed.
+- Candidate implementation commit: `84ca372 feat: add synthetic capsule
+  diagnostics`. The branch remains local and unpushed.
 - `4204cdf` is complete and reviewed locally: `devices register` now waits for
   signed approval, auto-saves the approved device ID, supports bounded timeout/
   Ctrl+C, and retains `--no-wait` for scripts. It is **not** in published npm
