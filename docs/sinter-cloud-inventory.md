@@ -285,8 +285,9 @@ availability guarantee.
   blockers are closed and a guarded synthetic second-device test is approved.
 - [ ] Freeze the Sinter format only after human cryptographic review.
 - [x] Encrypt/decrypt synthetic manifest and SIF locally; no upload path exists.
-- [ ] A second enrolled device decrypts the synthetic fixture with an explicit
-  atomic replay guard.
+- [x] The enrolled Mac Mini decrypted a capsule created by the MacBook from the
+  identical packaged `0.4.1` candidate; IDs and file hashes matched, the device
+  fingerprints were distinct, and same-process replay was rejected.
 - [x] Review, correct, and fully verify the local-file capsule diagnostic; it
   remains synthetic-only with no native-store read or upload and is included in
   the unpublished `0.4.1` candidate.
@@ -358,16 +359,17 @@ time-bounded support access instead of an administrative master key.
 
 Review C2 before enabling any upload path:
 
-1. obtain an external review of the canonical header/AAD, AES-GCM part
+1. obtain a human external review of the canonical header/AAD, AES-GCM part
    encryption, HPKE recipient wrapping, strict parser, limits, and replay split;
 2. keep deterministic test hooks and the synthetic-only schema out of all
    production transport APIs;
-3. deliver the verified diagnostic to both enrolled devices, then decrypt only
-   the synthetic fixture across them with explicit replay rejection;
+3. retain the successful packaged two-device synthetic result as evidence, not
+   as a substitute for durable replay or cryptographic review;
 4. extend the deployed entitlement/usage control plane with atomic upload quota
    reservations while keeping uploads globally disabled;
 5. design private Storage begin/finalize/delete for synthetic ciphertext only;
-6. keep real-session integration blocked until deletion and two-device tests.
+6. keep real-session integration blocked until durable deletion and replay gates
+   pass.
 
 C1 proves authentication, local key custody, cryptographic approval, hosted
 schema, and account isolation. The local C2 draft proves envelope behavior

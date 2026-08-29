@@ -49,7 +49,7 @@ operations.
   control plane are deployed; the C2 local-only envelope remains disconnected
   from transport.
 
-## Verified v0.4.1 candidate — keep unpublished
+## Verified v0.4.1 candidate and physical test — keep unpublished
 
 - Candidate implementation commit: `84ca372 feat: add synthetic capsule
   diagnostics`. The branch remains local and unpushed.
@@ -71,10 +71,16 @@ operations.
   passed 832 tests and 9,680 assertions, both TypeScript checks, CLI and Cloud
   production builds, npm package inspection, isolated Bun/npm installs, built
   device-help smoke testing, and `git diff --check`.
+- The identical packaged `0.4.1` candidate was installed into temporary prefixes
+  on the MacBook and Mac Mini. MacBook create and Mac Mini open reported the same
+  capsule ID and file SHA-256, two distinct registered device fingerprints, two
+  recipients, successful exact-fixture decryption, same-process replay rejection,
+  and exit code zero. The transferred capsule remained `0600`; no real session
+  content or Cloud Storage path was involved.
 - `packages/cli/package.json`, the built CLI, and the candidate tarball report
-  `0.4.1`. npm `0.4.0` remains immutable; `0.4.1` is not published. Do not push,
-  tag, release, or publish until the physical two-device test completes and the
-  maintainer gives explicit approval.
+  `0.4.1`. npm `0.4.0` remains immutable; `0.4.1` is not published. The physical
+  test is complete, but do not push, tag, release, or publish without explicit
+  maintainer approval.
 
 ## Cloud development foundation
 
@@ -99,7 +105,7 @@ operations.
   identity or links one verified provider to an existing active profile; it has
   no profile-creation path, members cannot rewrite linking emails, and denied
   claims leave all control/device counts unchanged. Hosted profiles,
-  identities, and devices remain exactly 1/1/1.
+  identities, and devices remain exactly 1/1/2.
 - `/api/health` reports configuration state without exposing credentials.
 - A free Vercel cron invokes a secret-protected, content-free Supabase database
   RPC once daily to reduce free-project idle-pausing risk. It neither reads nor
@@ -136,9 +142,10 @@ operations.
   the header, part metadata, and exact recipient set. Replay keys are opener-
   scoped and include both ciphertext hashes. Exact P-256/AES-256 and neighboring
   authoritative CFRG vectors pass. Two independent Claude Opus reviews closed
-  all original blockers and approve a guarded synthetic second-device test, but
-  durable replay and human cryptographic review still block Storage/real data.
-  No CLI/TUI/Storage/network or real-session path uses the capsule format.
+  all original blockers, and the guarded synthetic capsule passed across the
+  MacBook and Mac Mini with replay rejection. Durable replay and human
+  cryptographic review still block Storage/real data. No CLI/TUI/Storage/network
+  or real-session path uses the capsule format.
 - The metadata-only control plane is deployed: default disabled/zero development
   entitlements, own quota/usage RLS, unmetered owner semantics with retained
   safety caps, service-only first-admin/role/entitlement RPCs, immutable
@@ -333,9 +340,9 @@ bunx @jensenloke/sinter@0.3.1 --version
   network firewalls. Tailscale is transport reachability, not a separate Sinter
   protocol.
 - There is no offline inbox, cloud relay, encrypted capsule storage, browser
-  device, or cross-device search yet. Two CLI devices are enrolled, but the
-  guarded synthetic capsule has not yet been created/opened across them. Account
-  identity exists, and no session content is stored remotely.
+  device, or cross-device search yet. Two CLI devices are enrolled and passed the
+  guarded synthetic capsule create/open test, but replay remains process-local.
+  Account identity exists, and no session content is stored remotely.
 - Workspace files and Git dirty state are not transferred.
 - Automatic profile bootstrap recognizes Claude Code's standard `.claude` /
   `.claude-*` convention. Custom alias-backed stores use explicit opt-in
@@ -347,15 +354,13 @@ bunx @jensenloke/sinter@0.3.1 --version
 
 ## Recommended next actions
 
-1. Deliver the identical verified `0.4.1` candidate to both active devices and
-   run create on MacBook, manually copy the ciphertext file, then open on Mac Mini
-   with explicit replay rejection. Do not revoke either device before this test.
-2. Review the physical-test evidence, then obtain explicit approval before any
-   push, tag, GitHub release, or npm publication.
-3. Obtain human cryptographic review before freezing C2 or adding Storage; the
-   two cross-modal reviews approve only the synthetic second-device test.
-4. Design private Storage, durable replay, quota reservations, encrypted
+1. Review the successful physical-test evidence, then obtain explicit approval
+   before any push, tag, GitHub release, or npm publication of `0.4.1`.
+2. Obtain human cryptographic review before freezing C2 or adding Storage; the
+   two cross-modal reviews and physical test do not replace this gate.
+3. Design private Storage, durable replay, quota reservations, encrypted
    **synthetic** push/list/inspect/pull/delete, and permanent deletion afterward.
+4. Keep real-session upload and viewing blocked until those gates pass.
 5. Merge PR #24, then rebase/fix PR #25's UTF-8 byte-budget and named-instance
    integration before merging it. Create the eventual `v0.4.0` GitHub tag and
    release without republishing npm.
