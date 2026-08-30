@@ -9,29 +9,29 @@ operations.
 
 ## Release state
 
-- Stable Cloud-free release preparation: `@jensenloke/sinter@0.4.1`.
-- Scoped public access and npm tag `latest` are explicit; publication remains
-  pending the tagged-clean-main gate.
-- Latest published npm package and `latest`: `@jensenloke/sinter@0.4.0` until
-  the final publication step succeeds.
-- npm `0.4.1` and GitHub release/tag `v0.4.1` were absent before preparation.
+- Current CLI version: `0.4.1`.
+- npm package and `latest`: `@jensenloke/sinter@0.4.1`, publicly verified.
+- Published shasum: `4c944de67e826899e137c9a06aa571ea9e32d472`.
+- Release source commit: `4d51a11 release: prepare Cloud-free v0.4.1 (#28)`.
+- Annotated tag and public GitHub release: `v0.4.1`.
+- npm `0.4.1` is immutable and must never be republished. Any correction
+  requires a new version.
 - Release notes: [releases/v0.4.1.md](releases/v0.4.1.md).
 
 ## Git state at handoff
 
-- Stable preparation branch `release/v0.4.1` starts from clean public `main` at
-  `158d7f1`.
-- PR #26 merged the terminal-only candidate into its public base as `b44c195`.
-- PR #24 then merged that base into `main` as `8afda31`; refreshed macOS and
+- PR #28 merged stable release metadata into `main` as `4d51a11`; macOS and
   Ubuntu checks passed before merge.
-- `main` now contains explicit self-update, safe Claude shell-alias discovery,
+- Annotated tag `v0.4.1` points exactly to `4d51a11` and the matching public
+  GitHub release is published.
+- Earlier PR #26 merged the terminal-only candidate into its public base, and
+  PR #24 merged that base into `main`.
+- `main` contains explicit self-update, safe Claude shell-alias discovery,
   exact TUI instance actions, readable Codex tool input, and direct transfer v1.
 - It contains no private Cloud ancestry, hosted application, Auth0 integration,
   account/device/capsule commands, Supabase migrations, or Storage code.
 - Repository-bound direct-transfer v2 remains on
   `feat/repository-binding-v2-public` for v0.5.0 testing.
-- The `sinter-public` checkout was clean and fast-forwarded to `8afda31` after
-  merge. npm remains unchanged and no `v0.4.1` tag exists.
 
 Before continuing, run:
 
@@ -244,12 +244,9 @@ bunx @jensenloke/sinter@0.3.1 --version
 
 ## Recommended next actions
 
-1. Review the stable metadata diff, exact tarball inventory, and completed
-   Cloud-free release gate.
-2. Merge `release/v0.4.1` through normal review, then create and push the exact
-   `v0.4.1` tag from clean `main`.
-3. Publish `@jensenloke/sinter@0.4.1` once with public access and npm tag
-   `latest`, create the matching GitHub release, and verify registry/source
-   parity.
-4. Continue terminal improvements publicly. Keep Sinter Cloud private and hold
-   repository-bound direct-transfer v2 for the v0.5.0 test/review cycle.
+1. Do not republish immutable npm `0.4.1`; any correction requires a new
+   version and the full release gate.
+2. Continue terminal improvements publicly while keeping the package fully
+   useful without an account.
+3. Keep Sinter Cloud private for maintainer testing and hold repository-bound
+   direct-transfer v2 for the v0.5.0 test/review cycle.
