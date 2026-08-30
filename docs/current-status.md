@@ -30,7 +30,9 @@ operations.
 - Repository-bound direct-transfer v2 remains on
   `feat/repository-binding-v2-public` for v0.5.0 testing; v0.4.1 retains the
   existing direct-transfer v1 behavior.
-- GitHub PR #24 remains the public direct-transfer base and targets `main`.
+- GitHub PR #26 targets `feat/multi-instance-lan` as a stacked review; it does
+  not publish npm or create a tag. PR #24 remains that public base and targets
+  `main`.
 - The sibling `sinter-public` checkout uses the same upstream. Follow the public
   clone parity protocol in `AGENTS.md`; do not duplicate-push from that checkout.
 
@@ -244,9 +246,9 @@ bunx @jensenloke/sinter@0.3.1 --version
 
 ## Recommended next actions
 
-1. Review the completed release-candidate gate, exact tarball inventory, and
-   independent Cloud-free assessment.
-2. Review pushed candidate `8e9c4bd`; do not publish the `0.4.1-rc.0` package.
+1. Review PR #26, its completed release-candidate gate, exact tarball inventory,
+   and independent Cloud-free assessment.
+2. Do not publish the `0.4.1-rc.0` package.
 3. Merge the required public base and candidate through normal review so stable
    publication can occur from clean `main`, as required by the guard.
 4. After explicit final npm approval, convert package/runtime to stable `0.4.1`,
