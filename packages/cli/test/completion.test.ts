@@ -6,6 +6,10 @@ describe("shell completions", () => {
     const script = completionScript(shell);
     expect(script).toContain("sinter");
     expect(script).toContain("completion");
+    expect(script).toContain("update");
+    expect(script).toContain("package-manager");
+    expect(script).toContain("bun");
+    expect(script).toContain("npm");
     expect(script).toContain("port");
     expect(script).toContain("compare");
     expect(script).toContain("feedback");
@@ -24,6 +28,9 @@ describe("shell completions", () => {
     expect(script).toContain("unpin");
     expect(script).toContain("last");
     expect(script).toContain("config");
+    expect(script).toContain("discover-shell");
+    expect(script).toContain("shell");
+    expect(script).toContain("write");
     expect(script).toContain("preview");
     expect(script).toContain("report");
     expect(script).toContain("ndjson");

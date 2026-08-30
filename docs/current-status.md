@@ -1,6 +1,6 @@
 # Sinter current status
 
-Last updated: 2026-08-25 (Asia/Singapore)
+Last updated: 2026-08-30 (Asia/Singapore)
 
 This is the durable continuation handoff for maintainers and coding agents.
 Read the root [AGENTS.md](../AGENTS.md) first. Mutable facts below were verified
@@ -9,30 +9,28 @@ operations.
 
 ## Release state
 
-- Current CLI version: `0.3.1`.
-- npm package: `@jensenloke/sinter@0.3.1`.
-- npm `latest`: `0.3.1`, publicly verified after publication.
-- Both the globally resolved npm executable and Bun's global executable were
-  verified at version `0.3.1`.
-- Release notes: [releases/v0.3.1.md](releases/v0.3.1.md).
-- Release commit: `f805f3e feat: bootstrap multi-instance profiles`.
-- npm `0.3.1` is already published and cannot be republished. Any correction
-  requires a new version.
+- Cloud-free release candidate: `@jensenloke/sinter@0.4.1-rc.0`.
+- The candidate is `private: true`, uses npm tag `next`, and is not published.
+- Latest published npm package and `latest`: `@jensenloke/sinter@0.4.0`.
+- npm `0.4.1` is available but must not be published until the explicit final
+  approval and stable-release conversion described below.
+- Candidate notes: [releases/v0.4.1.md](releases/v0.4.1.md).
 
 ## Git state at handoff
 
-- Working branch: `feat/multi-instance-lan`.
-- The feature branch is pushed as `origin/feat/multi-instance-lan` and tracks
-  that remote branch. It has not yet been merged into `origin/main`.
-- GitHub PR #24 targets `main`:
-  `https://github.com/jensenloke/sinter/pull/24`.
-- PR #24's macOS and Ubuntu verification checks passed for commit `f805f3e`.
-- The sibling `sinter-public` checkout currently uses the same GitHub upstream,
-  `jensenloke/sinter`, and was clean at `origin/main`/`v0.2.0` before this
-  branch was pushed. Follow the public-clone parity protocol in `AGENTS.md`;
-  update that checkout by clean fast-forward after merge, not by copying files.
-- Sinter Cloud experiments remain isolated from this CLI branch. Do not mix
-  them into this release line without an explicit product decision.
+- Working branch: local `release/v0.4.1-terminal`, based directly on the
+  already-public `origin/feat/multi-instance-lan` commit `dd46ad1`.
+- It ports only public-safe terminal improvements: explicit self-update, safe
+  Claude shell-alias discovery, exact TUI instance actions, and readable Codex
+  tool input.
+- It contains no private Cloud ancestry, hosted application, Auth0 integration,
+  account/device/capsule commands, Supabase migrations, or Storage code.
+- Repository-bound direct-transfer v2 remains on
+  `feat/repository-binding-v2-public` for v0.5.0 testing; v0.4.1 retains the
+  existing direct-transfer v1 behavior.
+- GitHub PR #24 remains the public direct-transfer base and targets `main`.
+- The sibling `sinter-public` checkout uses the same upstream. Follow the public
+  clone parity protocol in `AGENTS.md`; do not duplicate-push from that checkout.
 
 Before continuing, run:
 
@@ -47,6 +45,30 @@ npm view @jensenloke/sinter version dist-tags --json
 
 Do not infer that npm publication means GitHub was updated; these are separate
 release operations.
+
+## v0.4.1 terminal-only candidate
+
+- `sinter update --check` compares strict semantic versions without installing;
+  explicit update resolves Bun/npm ownership, uses exact argv without a shell,
+  installs an exact version, and verifies the resolved executable afterward.
+- `sinter config discover-shell` is explicit and opt-in. It executes a validated
+  zsh/bash login shell only to list aliases, suppresses raw output, accepts only
+  conservative `CLAUDE_CONFIG_DIR=<path> claude` shapes, and never overwrites
+  existing config.
+- TUI resume and port actions use exact harness instances.
+- Codex custom tool input remains readable across supported transfers.
+- Direct-transfer protocol and receiver behavior remain compatible with v0.4.0;
+  repository-bound v2 is deferred to v0.5.0.
+- Cloud-free source and built-package gates reject known private-alpha modules,
+  commands, API paths, identity markers, and hosted URLs before packing or
+  publication.
+- Publication additionally requires explicit approval, clean tagged stable
+  `main`, package/runtime version parity, and proof that npm v0.4.1 is absent.
+- The candidate passed 695 tests and 9,047 assertions, TypeScript, production
+  build, built-help Cloud exclusion, frozen lockfile, Cloud-free source/dist
+  checks, package inspection, isolated Bun/npm installs, and `git diff --check`.
+  The 23-file candidate tarball contains only `dist`, package metadata, README,
+  and license; shasum `cafc6477e76af8e2de8ac72618820107c538cf8c`.
 
 ## Completed in v0.3.1
 
@@ -206,28 +228,28 @@ bunx @jensenloke/sinter@0.3.1 --version
 - Direct transfer requires network reachability and may be blocked by host or
   network firewalls. Tailscale is transport reachability, not a separate Sinter
   protocol.
-- There is no offline inbox, cloud relay, account/device identity, revocation
-  service, or cross-device search yet.
+- This package contains no offline inbox, Cloud relay, account/device identity,
+  revocation service, capsule sync, Storage, or cross-device search.
 - Workspace files and Git dirty state are not transferred.
 - Automatic profile bootstrap currently recognizes Claude Code's standard
   `.claude` / `.claude-*` directory convention. Other custom stores still use
   explicit TOML configuration.
 - The ledger migration is transactional and rollback-safe but does not create a
   separate user-visible backup file. Backup/repair UX remains roadmap work.
-- Sinter Cloud remains roadmap work. The open-source CLI must remain useful
-  without an account.
+- Sinter Cloud remains on a separate private development line for maintainer
+  testing. Public terminal releases must remain useful without an account and
+  pass the Cloud-free source/dist gate.
 
 ## Recommended next actions
 
-1. Review and merge GitHub PR #24 so the public default branch catches up with
-   the already-published npm package.
-2. After merge, create the Git tag/GitHub release for `v0.3.1`; do not publish
-   `0.3.1` to npm again.
-3. Test an actual same-harness port from `claude@personal` to
-   `claude@addvita`, including preview, write, qualified resolution, and the
-   generated `CLAUDE_CONFIG_DIR` resume command.
-4. Test direct transfer between two physical devices on LAN, then across
-   Tailscale. Record firewall and address-selection problems as issues.
-5. Choose the next CLI checkpoint from [../ROADMAP.md](../ROADMAP.md). The most
-   natural follow-ups are peer discovery, inspect-before-send UX, and explicit
-   ledger backup/repair—not Sinter Cloud implementation yet.
+1. Complete the full release-candidate gate, inspect the exact tarball, and
+   independently verify that source, history, and built output are Cloud-free.
+2. Commit and push `release/v0.4.1-terminal` for review; do not publish the
+   `0.4.1-rc.0` package.
+3. Merge the required public base and candidate through normal review so stable
+   publication can occur from clean `main`, as required by the guard.
+4. After explicit final npm approval, convert package/runtime to stable `0.4.1`,
+   remove `private`, review scoped-package public access and dist-tag, create the
+   exact `v0.4.1` tag, rerun every gate, and publish once.
+5. Continue terminal improvements publicly. Keep Sinter Cloud private and hold
+   repository-bound direct-transfer v2 for the v0.5.0 test/review cycle.

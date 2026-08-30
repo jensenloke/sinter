@@ -6,7 +6,7 @@
  * event_msg/response_item text dedupe still exercises exactly as in the wild.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
@@ -283,8 +283,8 @@ describe("modern rollout (2026-07)", () => {
       expect(call).toBeDefined();
       const part = call.content[0] as any;
       expect(part.name).toBe(c.payload.name);
-      // non-JSON custom tool input (apply_patch text) falls back to {input}
-      expect(typeof part.args).toBe("object");
+      // Custom tool input (for example apply_patch text) stays readable verbatim.
+      expect(part.args).toBe(String(c.payload.input ?? ""));
 
       const result = s.entries.find(
         (e) => e.kind === "toolResult" && e.callId === c.payload.call_id,
@@ -426,6 +426,24 @@ describe("legacy rollout (2025-10, pre-drift format)", () => {
       ) as any;
       expect(result.toolName).toBe(c.payload.name); // name only exists on the call
     }
+  });
+
+  test("keeps malformed function arguments and custom tool input as readable strings", async () => {
+    const path = join(tmpRoot, "rollout-2026-08-25T00-00-00-raw-tools.jsonl");
+    const patch = "*** Begin Patch\n+readable line\n*** End Patch";
+    const records = [
+      { timestamp: "2026-08-25T00:00:00.000Z", type: "session_meta", payload: { id: "raw-tools", session_id: "raw-tools", cwd: "/tmp/raw-tools", model_provider: "openai" } },
+      { timestamp: "2026-08-25T00:00:01.000Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "Test raw tools" }] } },
+      { timestamp: "2026-08-25T00:00:02.000Z", type: "response_item", payload: { type: "function_call", call_id: "broken-call", name: "exec", arguments: "{\"command\":" } },
+      { timestamp: "2026-08-25T00:00:03.000Z", type: "response_item", payload: { type: "custom_tool_call", call_id: "patch-call", name: "apply_patch", input: patch } },
+    ];
+    writeFileSync(path, records.map((record) => JSON.stringify(record)).join("\n"));
+
+    const session = await adapter.readFile(path);
+    const args = session.entries.flatMap((entry) => entry.kind === "assistant"
+      ? entry.content.filter((part) => part.type === "toolCall").map((part) => part.args)
+      : []);
+    expect(args).toEqual(["{\"command\":", patch]);
   });
 
   test("a result always precedes-pairs its call (validateSession's callId rule)", async () => {
