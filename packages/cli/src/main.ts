@@ -57,7 +57,7 @@ import { canRunMenu } from "./tui/menu";
 import { maybePromptForUpdate } from "./update";
 import { trackTelemetry, type TelemetryEvent } from "./telemetry";
 
-export const VERSION = "0.3.1";
+export const VERSION = "0.5.0-dev.0";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
 const AUTO_SCAN_SKIP = new Set(["scan", "watch", "setup", "doctor", "capabilities", "ghosts", "tags", "privacy", "feedback", "telemetry", "completion", "config"]);
@@ -181,7 +181,8 @@ move and continue
   port <id-prefix> --to <harness> [...]  create a new target-native session
   resume <id-prefix> [--in <harness>] [--exec]
                                          print (or run) the native resume command
-  receive --to <harness@instance> [...]  accept one encrypted LAN/Tailscale transfer
+  receive --to <harness@instance> --cwd <repository-root>
+                                         accept one repository-bound encrypted transfer
   send <id-prefix> --to <locator> [...]  send encrypted context to that receiver
 
 setup and maintenance
@@ -278,8 +279,8 @@ const COMMAND_HELP: Record<string, string> = {
   import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",
   port: "usage: sinter port <harness[@instance]:id> --to <harness[@instance]> [--mode full|slim|compact] [--preview [--json]] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source. Use qualified IDs when a harness has multiple instances.\n--preview reports target readiness and transfer impact without invoking the target writer.\n--dry-run asks the target writer to validate and describe its planned native output.\nHistorical tool calls are inert unless --live-tools is explicit.",
   resume: "usage: sinter resume <harness[@instance]:id> [--in <harness[@instance]>] [--exec]\n\nPrints the native resume command to stdout. --exec hands this terminal to the exact target harness instance.",
-  send: "usage: sinter send <id-prefix> --to <sinter://transfer/...> [--mode compact|slim|full] [--preview] [--json]\n\nSends a one-use encrypted, context-only payload. The sender reports success only after the receiver accepts and imports it.",
-  receive: "usage: sinter receive --to <harness@instance> [--bind 0.0.0.0] [--advertise <LAN-or-Tailscale-IP>] [--port n] [--ttl 5m] [--cwd dir] [--yes]\n\nPrints a one-use locator, accepts one encrypted transfer, confirms it, and imports it into the exact target instance. Use --advertise with a Tailscale IP for tailnet transfer.",
+  send: "usage: sinter send <id-prefix> --to <sinter://transfer/...> [--mode compact|slim|full] [--repo-remote <name>] [--preview] [--json]\n\nSends a one-use encrypted, context-only v2 payload. Source repository identity is sanitized inside the encrypted payload; the source absolute working directory and raw Git URL are not transferred. If several hosted remotes remain possible and the session does not identify one, --repo-remote must select the intended Git remote by name. The sender reports success only after the receiver validates, accepts, and imports it.",
+  receive: "usage: sinter receive --to <harness@instance> --cwd <repository-root> [--bind 0.0.0.0] [--advertise <LAN-or-Tailscale-IP>] [--port n] [--ttl 5m] [--allow-repo-mismatch] [--allow-missing-commit] [--yes] [--json]\n\nAccepts only repository-bound direct-transfer v2 payloads and rejects legacy v1 session payloads. --cwd must explicitly select the target Git repository root. After decryption, Sinter compares sanitized remotes, verifies the source commit is present, validates the repository-relative subdirectory, reports dirty state, and shows a no-write preview before confirmation or import. It never fetches, checks out, resets, patches, or modifies repository files. A mismatch or missing commit requires its dedicated explicit override; --yes only skips the final receipt prompt and cannot bypass repository checks. --json emits one versioned listener record followed by one versioned completion record, with human preview details on stderr. Use --advertise with a Tailscale IP for tailnet transfer.",
   doctor: "usage: sinter doctor [--json|--report [-o file]]\n\nNormal output shows resolved local store paths. --json emits safe structured health. --report emits a reviewable support report that excludes paths, prompts, titles, session IDs, transcripts, and raw errors.",
   capabilities: "usage: sinter capabilities [--harness x] [--json]\n\nChecks adapter loading, local-store detection, write support, and native resume availability without reading transcripts or touching the ledger.",
   setup: "usage: sinter setup [--yes] [--no-menu]\n\nShows detected local stores. Interactive setup asks before scanning and opening the menu; --yes scans without opening it.",
@@ -325,6 +326,7 @@ export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile
     version: overrides.version ?? VERSION,
     interactive: overrides.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY),
     sleep: overrides.sleep ?? Bun.sleep,
+    repositoryBinding: overrides.repositoryBinding,
   };
 }
 
@@ -390,7 +392,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
           JSON.stringify({
             schema: "sinter.error.v1",
             ok: false,
-            error: { code: err.code, kind: err.code === EXIT.AMBIGUOUS ? "resolution" : "usage", message: err.message },
+            error: { code: err.code, kind: err.kind ?? (err.code === EXIT.AMBIGUOUS ? "resolution" : "usage"), message: err.message },
           }),
         );
       } else {

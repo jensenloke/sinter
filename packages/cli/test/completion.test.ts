@@ -24,6 +24,11 @@ describe("shell completions", () => {
     expect(script).toContain("unpin");
     expect(script).toContain("last");
     expect(script).toContain("config");
+    expect(script).toContain("help");
+    expect(script).toContain("version");
+    expect(script).toContain("repo-remote");
+    expect(script).toContain("allow-repo-mismatch");
+    expect(script).toContain("allow-missing-commit");
     expect(script).toContain("preview");
     expect(script).toContain("report");
     expect(script).toContain("ndjson");
@@ -37,6 +42,8 @@ describe("shell completions", () => {
   test("zsh output is a native compdef function", () => {
     expect(completionScript("zsh")).toStartWith("#compdef sinter");
     expect(completionScript("zsh")).toContain("compdef _sinter sinter");
+    expect(completionScript("zsh")).toContain("show command or topic help");
+    expect(completionScript("zsh")).toContain("print the CLI version");
   });
 
   test("bash output registers a completion function", () => {

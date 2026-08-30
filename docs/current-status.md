@@ -1,6 +1,6 @@
 # Sinter current status
 
-Last updated: 2026-08-25 (Asia/Singapore)
+Last updated: 2026-08-30 (Asia/Singapore)
 
 This is the durable continuation handoff for maintainers and coding agents.
 Read the root [AGENTS.md](../AGENTS.md) first. Mutable facts below were verified
@@ -9,30 +9,29 @@ operations.
 
 ## Release state
 
-- Current CLI version: `0.3.1`.
-- npm package: `@jensenloke/sinter@0.3.1`.
-- npm `latest`: `0.3.1`, publicly verified after publication.
-- Both the globally resolved npm executable and Bun's global executable were
-  verified at version `0.3.1`.
-- Release notes: [releases/v0.3.1.md](releases/v0.3.1.md).
-- Release commit: `f805f3e feat: bootstrap multi-instance profiles`.
-- npm `0.3.1` is already published and cannot be republished. Any correction
-  requires a new version.
+- Development CLI version on `feat/repository-binding-v2-public`:
+  `0.5.0-dev.0`.
+- The development package is `private: true`, uses npm tag `next`, and cannot be
+  published as a prerelease. It is for source/tarball testing only.
+- Latest published npm package and `latest`: `@jensenloke/sinter@0.4.0`.
+- npm `0.4.0` is immutable; no npm publication is part of this branch push.
+- Historical public-base notes: [releases/v0.3.1.md](releases/v0.3.1.md).
 
 ## Git state at handoff
 
-- Working branch: `feat/multi-instance-lan`.
-- The feature branch is pushed as `origin/feat/multi-instance-lan` and tracks
-  that remote branch. It has not yet been merged into `origin/main`.
-- GitHub PR #24 targets `main`:
-  `https://github.com/jensenloke/sinter/pull/24`.
-- PR #24's macOS and Ubuntu verification checks passed for commit `f805f3e`.
-- The sibling `sinter-public` checkout currently uses the same GitHub upstream,
-  `jensenloke/sinter`, and was clean at `origin/main`/`v0.2.0` before this
-  branch was pushed. Follow the public-clone parity protocol in `AGENTS.md`;
-  update that checkout by clean fast-forward after merge, not by copying files.
-- Sinter Cloud experiments remain isolated from this CLI branch. Do not mix
-  them into this release line without an explicit product decision.
+- Working branch: `feat/repository-binding-v2-public`, based directly on the
+  already-public `origin/feat/multi-instance-lan` commit `dd46ad1`.
+- The branch contains no private Cloud ancestry. It ports only repository-bound
+  direct transfer, Cloud-free packaging gates, tests, and public documentation.
+- GitHub repository `jensenloke/sinter` is public. Never push the local private
+  `feat/repository-binding-v2` branch or its newer Cloud ancestry here.
+- The sibling `sinter-public` checkout uses the same upstream and was clean at
+  `origin/main` when this branch was prepared. Follow the parity protocol in
+  `AGENTS.md`; do not duplicate-push from the sibling checkout.
+- GitHub PR #24 remains the public direct-transfer base and targets `main`.
+- Hosted Sinter Cloud implementation, Auth0 integration, device/capsule client
+  commands, Supabase migrations, admin surfaces, and Storage are absent from
+  this branch and rejected by source/build package gates.
 
 Before continuing, run:
 
@@ -47,6 +46,35 @@ npm view @jensenloke/sinter version dist-tags --json
 
 Do not infer that npm publication means GitHub was updated; these are separate
 release operations.
+
+## Repository-bound direct transfer v2 — private development
+
+- The locator, encrypted request, and authenticated receipt remain transport
+  version 1. Session plaintext uses strict `sinter.session-transfer.v2` with an
+  encrypted `sinter.repository-binding.v1` record.
+- Send derives credential-free remote identity, commit, branch hint, and
+  monorepo-relative working directory from the actual source checkout. It strips
+  source absolute `cwd`, raw Git URLs, native paths, provider state, and raw
+  adapter records before encryption.
+- Receive requires an explicit target Git root, rejects legacy unbound payloads,
+  compares exact sanitized repository identity, checks local commit availability
+  without fetching, validates relative-directory containment, reports dirty
+  state, and repeats checks immediately before the exact instance write.
+- Mismatch and missing-commit exceptions require separate explicit flags and are
+  retained in provenance. `--yes` cannot bypass repository checks.
+- Versioned JSON distinguishes send preview/result and receive listener/result;
+  successful receive reports both `imported: true` and `wrote: true`.
+- Source and built npm boundaries are Cloud-free. Package preparation fails if
+  known Cloud modules, commands, API paths, identity schemas, or hosted URLs are
+  present. Publication also requires explicit approval, clean tagged stable
+  `main`, package/runtime parity, and proof that the npm version is absent.
+- Design and resolved policy: [repository-binding-design.md](repository-binding-design.md).
+- The public branch passed 676 tests and 9,085 assertions, TypeScript, production
+  CLI build, Cloud-free source/dist checks, package inspection, isolated Bun/npm
+  installs, built help, frozen lockfile, and `git diff --check`. The dry-run npm
+  payload contains 23 files limited to `dist`, package metadata, README, and
+  license; shasum `97311f1e95e31a0dec9f4f51b2bc7cf56f96b002`. The explicit
+  prepublication command fails closed before npm publication.
 
 ## Completed in v0.3.1
 
@@ -205,29 +233,33 @@ bunx @jensenloke/sinter@0.3.1 --version
   the sender.
 - Direct transfer requires network reachability and may be blocked by host or
   network firewalls. Tailscale is transport reachability, not a separate Sinter
-  protocol.
+  protocol. Repository-bound v2 rejects legacy v1 session payloads, so both
+  devices must use the same hash-matched development package.
 - There is no offline inbox, cloud relay, account/device identity, revocation
-  service, or cross-device search yet.
+  service, capsule sync, Storage, or cross-device search in this branch.
 - Workspace files and Git dirty state are not transferred.
 - Automatic profile bootstrap currently recognizes Claude Code's standard
   `.claude` / `.claude-*` directory convention. Other custom stores still use
   explicit TOML configuration.
 - The ledger migration is transactional and rollback-safe but does not create a
   separate user-visible backup file. Backup/repair UX remains roadmap work.
-- Sinter Cloud remains roadmap work. The open-source CLI must remain useful
-  without an account.
+- Sinter Cloud remains a separately gated roadmap/development line. Public npm
+  artifacts from this branch are required to remain Cloud-free, and the
+  open-source CLI remains fully useful without an account.
 
 ## Recommended next actions
 
-1. Review and merge GitHub PR #24 so the public default branch catches up with
-   the already-published npm package.
-2. After merge, create the Git tag/GitHub release for `v0.3.1`; do not publish
-   `0.3.1` to npm again.
-3. Test an actual same-harness port from `claude@personal` to
-   `claude@addvita`, including preview, write, qualified resolution, and the
-   generated `CLAUDE_CONFIG_DIR` resume command.
-4. Test direct transfer between two physical devices on LAN, then across
-   Tailscale. Record firewall and address-selection problems as issues.
-5. Choose the next CLI checkpoint from [../ROADMAP.md](../ROADMAP.md). The most
-   natural follow-ups are peer discovery, inspect-before-send UX, and explicit
-   ledger backup/repair—not Sinter Cloud implementation yet.
+1. Review the Cloud-free branch diff and package inventory, then push only
+   `feat/repository-binding-v2-public` to the public origin.
+2. Keep the package private and unpublished. Before any npm release, complete a
+   hash-matched physical MacBook/Mac Mini transfer from this exact public branch,
+   obtain human privacy/security review, merge its public base, and rerun the
+   complete gate on clean `main`.
+3. Any eventual stable release must deliberately remove `private`, change or
+   remove npm tag `next`, review scoped-package public access, create the exact
+   stable tag, and pass both Cloud-free and publication guards with explicit
+   approval.
+4. Review and merge GitHub PR #24 so the public default branch catches up with
+   the already-published npm package; do not republish an immutable version.
+5. Continue peer discovery, inspect-before-send UX, and explicit ledger backup/
+   repair without adding Sinter Cloud implementation to this branch.
