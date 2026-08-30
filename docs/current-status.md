@@ -18,23 +18,17 @@ operations.
 
 ## Git state at handoff
 
-- Working branch: `release/v0.4.1-terminal`, based directly on the already-public
-  `origin/feat/multi-instance-lan` commit `dd46ad1`.
-- Candidate commit `8e9c4bd` is pushed and the branch tracks
-  `origin/release/v0.4.1-terminal`.
-- It ports only public-safe terminal improvements: explicit self-update, safe
-  Claude shell-alias discovery, exact TUI instance actions, and readable Codex
-  tool input.
+- PR #26 merged the terminal-only candidate into its public base as `b44c195`.
+- PR #24 then merged that base into `main` as `8afda31`; refreshed macOS and
+  Ubuntu checks passed before merge.
+- `main` now contains explicit self-update, safe Claude shell-alias discovery,
+  exact TUI instance actions, readable Codex tool input, and direct transfer v1.
 - It contains no private Cloud ancestry, hosted application, Auth0 integration,
   account/device/capsule commands, Supabase migrations, or Storage code.
 - Repository-bound direct-transfer v2 remains on
-  `feat/repository-binding-v2-public` for v0.5.0 testing; v0.4.1 retains the
-  existing direct-transfer v1 behavior.
-- GitHub PR #26 targets `feat/multi-instance-lan` as a stacked review; it does
-  not publish npm or create a tag. PR #24 remains that public base and targets
-  `main`.
-- The sibling `sinter-public` checkout uses the same upstream. Follow the public
-  clone parity protocol in `AGENTS.md`; do not duplicate-push from that checkout.
+  `feat/repository-binding-v2-public` for v0.5.0 testing.
+- The `sinter-public` checkout was clean and fast-forwarded to `8afda31` after
+  merge. npm remains unchanged and no `v0.4.1` tag exists.
 
 Before continuing, run:
 
@@ -246,13 +240,11 @@ bunx @jensenloke/sinter@0.3.1 --version
 
 ## Recommended next actions
 
-1. Review PR #26, its completed release-candidate gate, exact tarball inventory,
-   and independent Cloud-free assessment.
+1. Review merged `main`, the completed release-candidate gate, exact tarball
+   inventory, and independent Cloud-free assessment.
 2. Do not publish the `0.4.1-rc.0` package.
-3. Merge the required public base and candidate through normal review so stable
-   publication can occur from clean `main`, as required by the guard.
-4. After explicit final npm approval, convert package/runtime to stable `0.4.1`,
+3. After explicit final npm approval, convert package/runtime to stable `0.4.1`,
    remove `private`, review scoped-package public access and dist-tag, create the
-   exact `v0.4.1` tag, rerun every gate, and publish once.
-5. Continue terminal improvements publicly. Keep Sinter Cloud private and hold
+   exact `v0.4.1` tag, rerun every gate on clean `main`, and publish once.
+4. Continue terminal improvements publicly. Keep Sinter Cloud private and hold
    repository-bound direct-transfer v2 for the v0.5.0 test/review cycle.
