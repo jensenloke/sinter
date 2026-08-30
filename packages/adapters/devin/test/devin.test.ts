@@ -179,6 +179,26 @@ describe("DevinAdapter", () => {
     expect(validateSession(restored)).toEqual([]);
   });
 
+  test("writes raw Codex custom tool input without escaped JSON noise", async () => {
+    const adapter = new DevinAdapter({ dbPath });
+    const session = portableSession();
+    const patch = "*** Begin Patch\n+readable line\n*** End Patch";
+    session.origin = { harness: "codex", nativeId: "codex-source" };
+    const assistant = session.entries[1];
+    if (assistant?.kind !== "assistant" || assistant.content[0]?.type !== "toolCall") throw new Error("expected tool call");
+    assistant.content[0] = { ...assistant.content[0], name: "apply_patch", args: patch };
+
+    const ref = await adapter.write(session);
+    const db = new Database(dbPath, { readonly: true });
+    const content = db.query<{ content: string }, [string]>(
+      "SELECT json_extract(chat_message, '$.content') AS content FROM message_nodes WHERE session_id = ? AND json_extract(chat_message, '$.role') = 'assistant' LIMIT 1",
+    ).get(ref.nativeId)!.content;
+    db.close();
+    expect(content).toContain(`apply_patch(${patch})`);
+    expect(content).not.toContain("{\"input\":");
+    expect(content).not.toContain("\\n");
+  });
+
   test("drops source-provider reasoning state when writing across harnesses", async () => {
     const adapter = new DevinAdapter({ dbPath });
     const session = portableSession();

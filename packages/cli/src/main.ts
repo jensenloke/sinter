@@ -11,7 +11,7 @@ import { dirname } from "node:path";
 import { openLedger, type Ledger } from "@sinter/ledger";
 import { CliError, EXIT } from "./args";
 import { DynamicAdapterRegistry } from "./adapters";
-import { loadProfile, type SinterProfile } from "./config";
+import { bootstrapDefaultConfig, loadProfile, type SinterProfile } from "./config";
 import {
   cmdCompletion,
   cmdCompare,
@@ -34,9 +34,11 @@ import {
   cmdPrivacy,
   cmdRelink,
   cmdRecent,
+  cmdReceive,
   cmdRename,
   cmdResume,
   cmdScan,
+  cmdSend,
   cmdSetup,
   cmdSearch,
   cmdShow,
@@ -52,13 +54,13 @@ import {
 } from "./commands";
 import { colorEnabled, palette, termWidth } from "./format";
 import { canRunMenu } from "./tui/menu";
-import { maybePromptForUpdate } from "./update";
+import { cmdUpdate, maybePromptForUpdate } from "./update";
 import { trackTelemetry, type TelemetryEvent } from "./telemetry";
 
-export const VERSION = "0.2.0";
+export const VERSION = "0.4.1-rc.0";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
-const AUTO_SCAN_SKIP = new Set(["scan", "watch", "setup", "doctor", "capabilities", "ghosts", "tags", "privacy", "feedback", "telemetry", "completion", "config"]);
+const AUTO_SCAN_SKIP = new Set(["scan", "watch", "setup", "doctor", "capabilities", "ghosts", "tags", "privacy", "feedback", "telemetry", "completion", "config", "update"]);
 
 function skipsAutoScan(command: string, argv: string[]): boolean {
   if (AUTO_SCAN_SKIP.has(command)) return true;
@@ -95,6 +97,7 @@ async function autoScanLedger(ctx: Ctx, argv: string[]): Promise<void> {
 }
 
 const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = {
+  update: cmdUpdate,
   completion: cmdCompletion,
   compare: cmdCompare,
   capabilities: cmdCapabilities,
@@ -122,6 +125,8 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   export: cmdExport,
   import: cmdImport,
   port: cmdPort,
+  send: cmdSend,
+  receive: cmdReceive,
   projects: cmdProjects,
   resume: cmdResume,
   doctor: cmdDoctor,
@@ -177,10 +182,15 @@ move and continue
   port <id-prefix> --to <harness> [...]  create a new target-native session
   resume <id-prefix> [--in <harness>] [--exec]
                                          print (or run) the native resume command
+  receive --to <harness@instance> [...]  accept one encrypted LAN/Tailscale transfer
+  send <id-prefix> --to <locator> [...]  send encrypted context to that receiver
 
 setup and maintenance
   setup [--yes] [--no-menu]              detect stores, build the ledger, then open the menu
-  config [show|path|validate]            inspect and validate local profile configuration
+  config [show|path|validate|example|discover-shell]
+                                         inspect profiles or explicitly discover Claude aliases
+  update [--check] [--package-manager bun|npm] [--force] [--json]
+                                         install the exact latest published CLI build
   doctor [--json|--report [-o file]]     detect stores or create a privacy-safe report
   capabilities [--harness x] [--json]   show adapter read, write, and resume support
   ghosts [preview|prune] [...]          preview or prune disposable ghost rows
@@ -204,14 +214,56 @@ global flags:
   -h, --help        this help
   --version         print version
 
-profiles: one configured local store per harness. Run \`sinter privacy\` for
-storage, support limits, and an example configuration.
+profiles: the first operational run detects multiple Claude stores and creates
+config.toml only when missing. Run \`sinter help instances\` for the workflow.
 
-ids: any unambiguous native-id prefix, optionally harness-scoped (codex:0199ab).
+ids: any unambiguous native-id prefix, optionally instance-qualified
+(claude@personal:0199ab). Agent scripts should use the qualified form.
 `;
 
+const INSTANCE_HELP = `sinter named instances — use multiple accounts or stores for one harness
+
+Sinter automatically checks for ~/.claude/projects and ~/.claude-*/projects on
+the first operational run. If it finds two or more stores and config.toml does
+not exist, it creates a default profile and uses it immediately. Existing
+configuration is never overwritten.
+
+inspect configuration
+  sinter config path                    print the resolved config path
+  sinter config show                    show selected profile/store mappings
+  sinter config validate                validate every profile
+  sinter config example                 print editable TOML to stdout
+  sinter config discover-shell          opt-in preview of simple Claude aliases
+
+Shell alias discovery is never automatic. The explicit discover-shell command
+runs the selected zsh/bash login startup files only to list aliases, suppresses
+raw alias output, and previews safe instance tables. Use --write --yes only to
+create a missing config; an existing config is never modified.
+
+move between two Claude instances
+  sinter scan
+  sinter ls --harness claude
+  sinter port claude@personal:<id> --to claude@addvita --preview
+  sinter port claude@personal:<id> --to claude@addvita
+  sinter resume claude@addvita:<new-id>
+
+The source store is read-only. Port creates a new session in the target store.
+Reverse the two instance names to move context back.
+
+agent workflow
+  1. Run \`sinter config validate\`, then \`sinter scan\`.
+  2. Resolve the source with \`harness@instance:id\`; do not guess on ambiguity.
+  3. Run \`sinter port ... --preview\` before writing.
+  4. Run the port without --exec unless the user explicitly asks to launch it.
+  5. Report the new qualified ID and the printed native resume command.
+
+stdout contains requested results and machine data. Notices go to stderr.
+Usage or validation failures go to stderr and return a non-zero exit code.`;
+
 const COMMAND_HELP: Record<string, string> = {
-  config: "usage: sinter config [show|path|validate] [--config file] [--json]\n\nShows profile store roots, prints the resolved config path, or validates every profile.",
+  config: "usage: sinter config [show|path|validate|example] [--config file] [--json]\n       sinter config discover-shell [--shell <absolute-path>] [--write] [--yes] [--json]\n\nShows profile store roots, prints the resolved config path, validates every profile, or prints editable TOML. discover-shell is explicit and opt-in: it executes zsh/bash login startup files with argv [shell, '-lic', 'alias'], suppresses raw alias output, and previews only conservative CLAUDE_CONFIG_DIR instances. --write is create-only, never overwrites an existing config, and requires --yes outside an interactive terminal.",
+  update: "usage: sinter update [--check] [--package-manager bun|npm] [--force] [--json]\n\nQueries npm for an exact published version, then updates the matching global bun or npm installation. --check never installs. A newer local build is never downgraded unless --force is explicit. If installation ownership cannot be determined safely, pass --package-manager.",
+  instances: INSTANCE_HELP,
   scan: "usage: sinter scan [--harness claude,codex] [--json]\n\nRefreshes the local ledger. Reads local stores only.",
   ls: "usage: sinter ls [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]",
   recent: "usage: sinter recent [--harness x] [--cwd .] [--since 7d] [--limit n] [--json]\n\nLists the newest non-ghost parent sessions; defaults to 10.",
@@ -235,8 +287,10 @@ const COMMAND_HELP: Record<string, string> = {
   compare: "usage: sinter compare <left-id> <right-id> [--json]\n\nCompares structural counts without printing transcript content. Matching counts do not prove semantic equivalence.",
   export: "usage: sinter export <id-prefix> [-o file] [--slim]\n\nWithout -o, writes SIF JSON to stdout.",
   import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",
-  port: "usage: sinter port <id-prefix> --to <harness> [--mode full|slim|compact] [--preview [--json]] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.\n--preview reports target readiness and transfer impact without invoking the target writer.\n--dry-run asks the target writer to validate and describe its planned native output.\nHistorical tool calls are inert unless --live-tools is explicit.",
-  resume: "usage: sinter resume <id-prefix> [--in <harness>] [--exec]\n\n--exec hands this terminal to the target harness.",
+  port: "usage: sinter port <harness[@instance]:id> --to <harness[@instance]> [--mode full|slim|compact] [--preview [--json]] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source. Use qualified IDs when a harness has multiple instances.\n--preview reports target readiness and transfer impact without invoking the target writer.\n--dry-run asks the target writer to validate and describe its planned native output.\nHistorical tool calls are inert unless --live-tools is explicit.",
+  resume: "usage: sinter resume <harness[@instance]:id> [--in <harness[@instance]>] [--exec]\n\nPrints the native resume command to stdout. --exec hands this terminal to the exact target harness instance.",
+  send: "usage: sinter send <id-prefix> --to <sinter://transfer/...> [--mode compact|slim|full] [--preview] [--json]\n\nSends a one-use encrypted, context-only payload. The sender reports success only after the receiver accepts and imports it.",
+  receive: "usage: sinter receive --to <harness@instance> [--bind 0.0.0.0] [--advertise <LAN-or-Tailscale-IP>] [--port n] [--ttl 5m] [--cwd dir] [--yes]\n\nPrints a one-use locator, accepts one encrypted transfer, confirms it, and imports it into the exact target instance. Use --advertise with a Tailscale IP for tailnet transfer.",
   doctor: "usage: sinter doctor [--json|--report [-o file]]\n\nNormal output shows resolved local store paths. --json emits safe structured health. --report emits a reviewable support report that excludes paths, prompts, titles, session IDs, transcripts, and raw errors.",
   capabilities: "usage: sinter capabilities [--harness x] [--json]\n\nChecks adapter loading, local-store detection, write support, and native resume availability without reading transcripts or touching the ledger.",
   setup: "usage: sinter setup [--yes] [--no-menu]\n\nShows detected local stores. Interactive setup asks before scanning and opening the menu; --yes scans without opening it.",
@@ -282,6 +336,8 @@ export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile
     version: overrides.version ?? VERSION,
     interactive: overrides.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY),
     sleep: overrides.sleep ?? Bun.sleep,
+    update: overrides.update,
+    shellDiscovery: overrides.shellDiscovery,
   };
 }
 
@@ -299,7 +355,12 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     return EXIT.OK;
   }
   if (cmd === "help" || cmd === "--help" || cmd === "-h") {
-    ctx.out(HELP.trimEnd());
+    const topic = cmd === "help" ? rest[0] : undefined;
+    if (topic && !COMMAND_HELP[topic]) {
+      ctx.err(`unknown help topic: ${topic}\ntry: sinter help`);
+      return EXIT.ERROR;
+    }
+    ctx.out(topic ? helpFor(topic) : HELP.trimEnd());
     return EXIT.OK;
   }
   if (cmd === "--version" || cmd === "-v" || cmd === "version") {
@@ -342,7 +403,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
           JSON.stringify({
             schema: "sinter.error.v1",
             ok: false,
-            error: { code: err.code, kind: err.code === EXIT.AMBIGUOUS ? "resolution" : "usage", message: err.message },
+            error: { code: err.code, kind: err.kind ?? (err.code === EXIT.AMBIGUOUS ? "resolution" : "usage"), message: err.message },
           }),
         );
       } else {
@@ -361,14 +422,51 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
   }
 }
 
-export async function main(argv: string[] = Bun.argv.slice(2)): Promise<number> {
+export async function main(
+  argv: string[] = Bun.argv.slice(2),
+  overrides: Partial<Ctx> & { ledgerPath?: string; profile?: SinterProfile } = {},
+): Promise<number> {
   if (await maybePromptForUpdate(VERSION, { argv })) return EXIT.OK;
   const ledgerIndex = argv.findIndex((arg) => arg === "--ledger" || arg.startsWith("--ledger="));
   const ledgerPath = ledgerIndex < 0 ? undefined : argv[ledgerIndex]!.includes("=") ? argv[ledgerIndex]!.slice(argv[ledgerIndex]!.indexOf("=") + 1) : argv[ledgerIndex + 1];
   const noColor = argv.includes("--no-color");
-  const profile = loadProfile(argv);
-  const ctx = makeCtx({ ledgerPath, profile, pal: palette(noColor ? false : colorEnabled()) });
-  return run(argv, ctx);
+  const command = argv[0];
+  const informational =
+    command !== undefined &&
+    (["help", "--help", "-h", "--version", "-v", "version", "completion"].includes(command) ||
+      (command === "config" && ["path", "example"].includes(argv[1] ?? "show")));
+  const helpRequested = argv.includes("--help") || argv.includes("-h");
+  const standalone =
+    command !== undefined &&
+    (command === "update" || (command === "config" && argv[1] === "discover-shell"));
+  const operational = (!command || Boolean(COMMANDS[command])) && !informational && !helpRequested && !standalone;
+  let bootstrap: ReturnType<typeof bootstrapDefaultConfig> | undefined;
+  try {
+    if (operational) {
+      const configIndex = argv.findIndex((arg) => arg === "--config" || arg.startsWith("--config="));
+      const configPath =
+        configIndex < 0
+          ? undefined
+          : argv[configIndex]!.includes("=")
+            ? argv[configIndex]!.slice(argv[configIndex]!.indexOf("=") + 1)
+            : argv[configIndex + 1];
+      bootstrap = bootstrapDefaultConfig(configPath);
+    }
+    const profile = operational ? loadProfile(argv) : overrides.profile;
+    const ctx = makeCtx({
+      ...overrides,
+      ledgerPath: overrides.ledgerPath ?? ledgerPath,
+      profile,
+      pal: overrides.pal ?? palette(noColor ? false : colorEnabled()),
+    });
+    if (bootstrap?.created)
+      ctx.err(`created config: ${bootstrap.configPath} (instances: ${bootstrap.instances.join(", ")})`);
+    return run(argv, ctx);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(message + "\n");
+    return err instanceof CliError ? err.code : EXIT.ERROR;
+  }
 }
 
 if (import.meta.main) process.exit(await main());

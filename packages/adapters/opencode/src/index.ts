@@ -949,7 +949,7 @@ export async function resolveProvenance(
   nativeId: string,
   opts?: WriteOpts,
 ): Promise<SinterProvenance> {
-  const target: Hop = { harness: "opencode", nativeId };
+  const target: Hop = { harness: "opencode", nativeId, ...(opts?.instanceId ? { instanceId: opts.instanceId } : {}) };
   const preset = readProvenance(session.preserve?.[PRESERVE_KEY]);
   const tail = preset?.chain[preset.chain.length - 1];
   const presetTargetsThisWrite =

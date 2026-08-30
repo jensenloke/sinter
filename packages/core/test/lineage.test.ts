@@ -314,6 +314,16 @@ describe("readProvenance", () => {
 // ------------------------------------------------------------------ writing
 
 describe("buildProvenance", () => {
+  test("same harness and native id in different instances are distinct hops", () => {
+    const source = session("claude", "same");
+    source.origin.instanceId = "personal";
+    const built = build(source, { harness: "claude", instanceId: "addvita", nativeId: "same" });
+    expect(built.chain).toEqual([
+      { harness: "claude", instanceId: "personal", nativeId: "same" },
+      { harness: "claude", instanceId: "addvita", nativeId: "same" },
+    ]);
+  });
+
   test("starts a new thread when the source has never been ported", () => {
     const src = session("codex", "A");
     const prov = build(src, { harness: "omp", nativeId: "B" });
@@ -684,6 +694,15 @@ function baseProv(): SinterProvenance {
 // ------------------------------------------------------------- path safety
 
 describe("carrySidecarPath", () => {
+  test("names same-harness instance carries independently while preserving legacy paths", () => {
+    expect(carrySidecarPath("claude", "same", "/tmp/sinter-home")).toBe(
+      "/tmp/sinter-home/carry/claude/same.sif.json.gz",
+    );
+    expect(carrySidecarPath("claude", "same", "/tmp/sinter-home", "addvita")).toBe(
+      "/tmp/sinter-home/carry/claude/addvita__same.sif.json.gz",
+    );
+  });
+
   test("puts a plain session under <root>/carry/<harness>/", () => {
     const path = carrySidecarPath("omp", "abc123", "/tmp/sinter-home");
     expect(path).toBe("/tmp/sinter-home/carry/omp/abc123.sif.json.gz");

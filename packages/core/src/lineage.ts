@@ -16,7 +16,7 @@
  * `session.preserve[PRESERVE_KEY]`.
  */
 
-import type { HarnessId, SifSession } from "./sif";
+import { DEFAULT_INSTANCE_ID, type HarnessId, type InstanceId, type SifSession } from "./sif";
 import { mintSifId } from "./util";
 
 /** Where a round-tripped provenance record lives on a SIF session. */
@@ -28,6 +28,8 @@ export const LINEAGE_VERSION = 1;
 /** One session in a thread's ancestry. */
 export interface Hop {
   harness: HarnessId;
+  /** Configured harness instance. Omitted in legacy records and means `default`. */
+  instanceId?: InstanceId;
   nativeId: string;
   host?: string;
 }
@@ -71,6 +73,11 @@ export function mintThreadId(): string {
 function isHop(x: unknown): x is Hop {
   const h = x as Hop | undefined;
   return !!h && typeof h === "object" && typeof h.harness === "string" && typeof h.nativeId === "string";
+}
+
+function sameHop(a: Hop | undefined, b: Hop): boolean {
+  return !!a && a.harness === b.harness && (a.instanceId ?? DEFAULT_INSTANCE_ID) ===
+    (b.instanceId ?? DEFAULT_INSTANCE_ID) && a.nativeId === b.nativeId;
 }
 
 /**
@@ -139,11 +146,12 @@ export function provenanceOf(session: SifSession): SinterProvenance | undefined 
 
   const self: Hop = {
     harness: session.origin.harness,
+    ...(session.origin.instanceId ? { instanceId: session.origin.instanceId } : {}),
     nativeId: session.origin.nativeId,
     ...(session.origin.host ? { host: session.origin.host } : {}),
   };
   const last = prov.chain[prov.chain.length - 1];
-  if (last && last.harness === self.harness && last.nativeId === self.nativeId) return prov;
+  if (sameHop(last, self)) return prov;
 
   const chain = [...prov.chain, self];
   return { ...prov, chain, hop: chain.length - 1, from: chain[chain.length - 2] };
@@ -173,6 +181,7 @@ export function buildProvenance(opts: BuildProvenanceOpts): SinterProvenance {
   const prior = provenanceOf(opts.source);
   const self: Hop = {
     harness: opts.source.origin.harness,
+    ...(opts.source.origin.instanceId ? { instanceId: opts.source.origin.instanceId } : {}),
     nativeId: opts.source.origin.nativeId,
     ...(opts.source.origin.host ? { host: opts.source.origin.host } : {}),
   };
@@ -200,7 +209,7 @@ export function buildProvenance(opts: BuildProvenanceOpts): SinterProvenance {
 /** Append `self` to `chain` unless it is already the last element. */
 function dedupeTail(chain: Hop[], self: Hop): Hop[] {
   const last = chain[chain.length - 1];
-  if (last && last.harness === self.harness && last.nativeId === self.nativeId) return chain;
+  if (sameHop(last, self)) return chain;
   return [...chain, self];
 }
 
@@ -233,9 +242,15 @@ export function encodeCarry(session: SifSession, maxBytes = CARRY_MAX_BYTES): st
 }
 
 /** `~/.sinter/carry/<harness>/<nativeId>.sif.json.gz` — sinter's own directory. */
-export function carrySidecarPath(harness: HarnessId, nativeId: string, root?: string): string {
+export function carrySidecarPath(
+  harness: HarnessId,
+  nativeId: string,
+  root?: string,
+  instanceId: InstanceId = DEFAULT_INSTANCE_ID,
+): string {
   const home = root ?? `${process.env.SINTER_HOME ?? `${process.env.HOME}/.sinter`}`;
-  return `${home}/carry/${harness}/${nativeId.replace(/[/\\]/g, "_")}.sif.json.gz`;
+  const instancePrefix = instanceId === DEFAULT_INSTANCE_ID ? "" : `${instanceId.replace(/[/\\]/g, "_")}__`;
+  return `${home}/carry/${harness}/${instancePrefix}${nativeId.replace(/[/\\]/g, "_")}.sif.json.gz`;
 }
 
 export function decodeCarry(encoded: string | undefined): SifSession | undefined {
@@ -266,7 +281,7 @@ export async function storeCarry(
   const carryBytes = JSON.stringify(session).length;
   if (encoded.length <= CARRY_INLINE_MAX) return { carry: encoded, carryBytes };
 
-  const path = carrySidecarPath(target.harness, target.nativeId, opts.root);
+  const path = carrySidecarPath(target.harness, target.nativeId, opts.root, target.instanceId);
   await Bun.write(path, Buffer.from(encoded, "base64"));
   return { carryRef: path, carryBytes };
 }

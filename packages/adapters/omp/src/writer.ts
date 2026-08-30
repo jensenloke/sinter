@@ -255,7 +255,7 @@ export function buildNativeBody(
   // The record carries BOTH shapes: the v0 marker fields anything already
   // reading them still finds, and the v1 lineage chain `readProvenance`
   // upgrades to. `data` is mutated below to record the ported window.
-  const target: Hop = { harness: dialect.harness, nativeId };
+  const target: Hop = { harness: dialect.harness, nativeId, ...(opts.instanceId ? { instanceId: opts.instanceId } : {}) };
   const provenance = provenanceFor(session, target, opts, now);
   const provData: Record<string, unknown> = {
     // `sinter` (the version string) is a v0 field too — it comes in with the
@@ -430,7 +430,7 @@ export async function writeNativeSession(
   // The native id is minted BEFORE the body so the carry payload can be filed
   // under the target hop it belongs to.
   const nativeId = opts.nativeId ?? Bun.randomUUIDv7();
-  const target: Hop = { harness: dialect.harness, nativeId };
+  const target: Hop = { harness: dialect.harness, nativeId, ...(opts.instanceId ? { instanceId: opts.instanceId } : {}) };
   const provenance = await attachCarry(provenanceFor(session, target, opts, now), session, target, opts);
   const built = buildNativeBody(session, dialect, { ...opts, now, nativeId, provenance });
   const cwd = opts.cwd ?? session.cwd;

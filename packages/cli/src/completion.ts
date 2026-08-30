@@ -25,8 +25,11 @@ const COMMANDS = [
   ["export", "export a SIF session"],
   ["import", "import a SIF session"],
   ["port", "port a session to another harness"],
+  ["send", "send an encrypted session directly"],
+  ["receive", "receive an encrypted session directly"],
   ["resume", "print or run a native resume command"],
   ["setup", "detect stores and build the ledger"],
+  ["update", "install the latest published CLI build"],
   ["doctor", "report store and ledger health"],
   ["capabilities", "show adapter support matrix"],
   ["privacy", "explain local data handling"],
@@ -71,7 +74,7 @@ ${commands}
 
   case $words[2] in
     scan) _arguments $global_args '--harness=[comma-separated harnesses]:harnesses' '--json' ;;
-    config) _arguments $global_args '1:action:(show path validate)' '--json' ;;
+    config) _arguments $global_args '1:action:(show path validate example discover-shell)' '--shell=[absolute zsh/bash executable]:shell:_files' '--write[create config only if missing]' '--yes[confirm non-interactive config creation]' '--json[emit versioned JSON]' ;;
     ls) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
     recent) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' ;;
     watch) _arguments $global_args '1:view:(recent projects)' '--interval=[refresh interval]:duration' '--count=[snapshot count]:count' '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-clear' ;;
@@ -94,8 +97,11 @@ ${commands}
     export) _arguments $global_args '1:session id' '(-o --output)'{-o,--output}'=[output file]:file:_files' '--slim' ;;
     import) _arguments $global_args '1:SIF file:_files' '--to=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--dry-run' '--live-tools' ;;
     port) _arguments $global_args '1:session id' '--to=[target harness]:harness:($harnesses)' '--mode=[transfer mode]:mode:($modes)' '--cwd=[target directory]:directory:_directories' '--preview' '--json' '--dry-run' '--live-tools' ;;
+    send) _arguments $global_args '1:session id' '--to=[one-use transfer locator]:locator' '--mode=[transfer mode]:mode:($modes)' '--preview' '--json' ;;
+    receive) _arguments $global_args '--to=[target harness instance]:instance' '--bind=[listen address]:address' '--advertise=[LAN or Tailscale address]:address' '--port=[listen port]:port' '--ttl=[locator lifetime]:duration' '--cwd=[target directory]:directory:_directories' '--yes' '--json' ;;
     resume) _arguments $global_args '1:session id' '--in=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--exec' '--dry-run' '--live-tools' ;;
     setup) _arguments $global_args '--yes' '--no-menu' ;;
+    update) _arguments $global_args '--check[check without installing]' '--package-manager=[global installer]:package manager:(bun npm)' '--force[allow installing an older published version]' '--json[emit versioned JSON]' ;;
     doctor) _arguments $global_args '--json' '--report' '(-o --output)'{-o,--output}'=[diagnostic report file]:file:_files' ;;
     capabilities) _arguments $global_args '--harness=[filter by harness]:harness:($harnesses)' '--json' ;;
     feedback) _arguments $global_args '--title=[issue title]:title' '--no-open' ;;
@@ -128,14 +134,19 @@ function bash(): string {
   case "$previous" in
     --to|--in) COMPREPLY=( $(compgen -W '${HARNESSES.join(" ")}' -- "$current") ); return ;;
     --mode) COMPREPLY=( $(compgen -W '${MODES.join(" ")}' -- "$current") ); return ;;
-    --cwd|--config|--ledger|-o|--output) COMPREPLY=( $(compgen -f -- "$current") ); return ;;
+    --package-manager) COMPREPLY=( $(compgen -W 'bun npm' -- "$current") ); return ;;
+    --cwd|--config|--ledger|--shell|-o|--output) COMPREPLY=( $(compgen -f -- "$current") ); return ;;
   esac
   if [[ $command == completion ]]; then
     COMPREPLY=( $(compgen -W 'zsh bash fish' -- "$current") )
     return
   fi
   if [[ $command == config ]]; then
-    COMPREPLY=( $(compgen -W 'show path validate --json' -- "$current") )
+    COMPREPLY=( $(compgen -W 'show path validate example discover-shell --shell --write --yes --json' -- "$current") )
+    return
+  fi
+  if [[ $command == update ]]; then
+    COMPREPLY=( $(compgen -W '--check --package-manager --force --json bun npm' -- "$current") )
     return
   fi
   COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --all-harnesses --cwd --all-cwd --since --all-time --older-than --interval --count --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open --yes --ghosts --no-ghosts --subagents --no-subagents --force --all --clear --no-clear' -- "$current") )
@@ -149,11 +160,26 @@ function fish(): string {
   for (const [name, description] of COMMANDS)
     lines.push(`complete -c sinter -n '__fish_use_subcommand' -a '${name}' -d '${description}'`);
   lines.push(
-    `complete -c sinter -n '__fish_seen_subcommand_from port import' -l to -xa '${HARNESSES.join(" ")}' -d 'Target harness'`,
+    `complete -c sinter -n '__fish_seen_subcommand_from port import receive' -l to -xa '${HARNESSES.join(" ")}' -d 'Target harness or instance'`,
+    "complete -c sinter -n '__fish_seen_subcommand_from send' -l to -r -d 'One-use transfer locator'",
+    `complete -c sinter -n '__fish_seen_subcommand_from send' -l mode -xa '${MODES.join(" ")}' -d 'Transfer mode'`,
+    "complete -c sinter -n '__fish_seen_subcommand_from receive' -l bind -r -d 'Listen address'",
+    "complete -c sinter -n '__fish_seen_subcommand_from receive' -l advertise -r -d 'LAN or Tailscale address'",
+    "complete -c sinter -n '__fish_seen_subcommand_from receive' -l port -r -d 'Listen port'",
+    "complete -c sinter -n '__fish_seen_subcommand_from receive' -l ttl -r -d 'Locator lifetime'",
+    "complete -c sinter -n '__fish_seen_subcommand_from receive' -l yes -d 'Accept without prompting'",
     `complete -c sinter -n '__fish_seen_subcommand_from resume' -l in -xa '${HARNESSES.join(" ")}' -d 'Target harness'`,
     `complete -c sinter -n '__fish_seen_subcommand_from port menu' -l mode -xa '${MODES.join(" ")}' -d 'Transfer mode'`,
-    "complete -c sinter -n '__fish_seen_subcommand_from config' -a 'show path validate' -d 'Action'",
+    "complete -c sinter -n '__fish_seen_subcommand_from config' -a 'show path validate example discover-shell' -d 'Action'",
+    "complete -c sinter -n '__fish_seen_subcommand_from config' -l shell -r -d 'Absolute zsh/bash executable'",
+    "complete -c sinter -n '__fish_seen_subcommand_from config' -l write -d 'Create config only if missing'",
+    "complete -c sinter -n '__fish_seen_subcommand_from config' -l yes -d 'Confirm non-interactive config creation'",
+    "complete -c sinter -n '__fish_seen_subcommand_from config' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from completion' -a 'zsh bash fish' -d 'Shell'",
+    "complete -c sinter -n '__fish_seen_subcommand_from update' -l check -d 'Check without installing'",
+    "complete -c sinter -n '__fish_seen_subcommand_from update' -l package-manager -xa 'bun npm' -d 'Global installer'",
+    "complete -c sinter -n '__fish_seen_subcommand_from update' -l force -d 'Allow an older published version'",
+    "complete -c sinter -n '__fish_seen_subcommand_from update' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from port' -l preview -d 'Preview without writing'",
     "complete -c sinter -n '__fish_seen_subcommand_from doctor' -l report -d 'Generate a privacy-safe report'",
     `complete -c sinter -n '__fish_seen_subcommand_from capabilities' -l harness -xa '${HARNESSES.join(" ")}' -d 'Filter by harness'`,

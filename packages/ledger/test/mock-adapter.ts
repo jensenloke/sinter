@@ -5,6 +5,7 @@
 import type {
   HarnessAdapter,
   HarnessId,
+  InstanceId,
   NativeRef,
   SessionRef,
   SessionSummary,
@@ -16,6 +17,7 @@ import { SIF_VERSION, buildProvenance, withProvenance } from "@sinter/core";
 
 export interface MockOpts {
   id?: HarnessId;
+  instanceId?: InstanceId;
   summaries?: SessionSummary[];
   sessions?: Record<string, SifSession>;
   throwOnList?: string;
@@ -24,6 +26,7 @@ export interface MockOpts {
 
 export class MockAdapter implements HarnessAdapter {
   readonly id: HarnessId;
+  readonly instanceId?: InstanceId;
   summaries: SessionSummary[];
   sessions: Record<string, SifSession>;
   throwOnList?: string;
@@ -32,6 +35,7 @@ export class MockAdapter implements HarnessAdapter {
 
   constructor(opts: MockOpts = {}) {
     this.id = opts.id ?? "claude";
+    this.instanceId = opts.instanceId;
     this.summaries = opts.summaries ?? [];
     this.sessions = opts.sessions ?? {};
     this.throwOnList = opts.throwOnList;
@@ -70,7 +74,7 @@ export class MockAdapter implements HarnessAdapter {
     const nativeId = `new-${this.id}-${this.written.length}`;
     const provenance = buildProvenance({
       source: session,
-      target: { harness: this.id, nativeId },
+      target: { harness: this.id, nativeId, ...(opts?.instanceId ? { instanceId: opts.instanceId } : {}) },
       sinterVersion: "0.1.0-mock",
       portedAt: new Date().toISOString(),
       mode: opts?.mode,

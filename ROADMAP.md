@@ -80,10 +80,9 @@ from `main`. GitHub CI now verifies the locked dependency install, full test
 suite, TypeScript, production CLI build, and built entrypoint on every pull
 request and push to `main`.
 
-The encrypted-capsule prototype in draft PR #10 is intentionally excluded from
-this release candidate until its security review is resolved. Cloud accounts,
-sync, telemetry enablement, npm publication, and deployment are also outside
-this checkpoint.
+Direct encrypted context transfer and named same-harness instances are now
+implemented on the feature branch for the next checkpoint. Cloud accounts,
+hosted sync, npm publication, and deployment remain outside this checkpoint.
 
 ## Evidence before expansion
 
@@ -148,6 +147,16 @@ arbitrary workspace files. `inspect` and a secret/redaction review are release
 requirements, not later hardening.
 
 ## Phase 2: encrypted device transfer
+
+The first local-first slice is implemented: `sinter receive` creates a short-
+lived, one-use encrypted locator and `sinter send` connects directly over LAN
+or Tailscale. An authenticated success receipt is returned only after the
+receiver validates, approves, and imports the context into an exact named
+harness instance. It requires no account, SSH daemon, relay, or discovery
+service. Context transfer intentionally excludes workspace files and secrets.
+
+Next steps are device identity, optional discovery, durable inbox semantics,
+revocation, and a relay for devices that cannot connect directly.
 
 Introduce accounts only when they solve a concrete transport problem:
 

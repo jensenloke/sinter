@@ -1,5 +1,9 @@
 import { createInterface } from "node:readline/promises";
+import { existsSync } from "node:fs";
+import { networkInterfaces } from "node:os";
+import { resolve } from "node:path";
 import type {
+  InstanceId,
   HarnessAdapter,
   HarnessId,
   NativeRef,
@@ -8,7 +12,7 @@ import type {
   SifEntry,
   SifSession,
 } from "@sinter/core";
-import { provenanceOf, validateSession } from "@sinter/core";
+import { DEFAULT_INSTANCE_ID, provenanceOf, validateSession } from "@sinter/core";
 import type { Ledger, LedgerRow, LineageRow, ListOpts } from "@sinter/ledger";
 import {
   CliError,
@@ -17,13 +21,21 @@ import {
   flagString,
   parseArgs,
   parseHarness,
+  parseHarnessTarget,
   parseSince,
   type ParsedArgs,
 } from "./args";
-import type { AdapterRegistry } from "./adapters";
+import type { AdapterBinding, AdapterRegistry } from "./adapters";
 import { adapterCapabilities, CAPABILITIES_SCHEMA } from "./capabilities";
 import { compareSessions, CONTENT_TYPES, ENTRY_KINDS } from "./compare";
-import { defaultConfigPath, inspectConfig, PROFILE_EXAMPLE, type SinterProfile } from "./config";
+import { createOwnerOnlyConfig, defaultConfigPath, inspectConfig, PROFILE_EXAMPLE, type SinterProfile } from "./config";
+import {
+  discoverClaudeShellAliases,
+  SHELL_DISCOVERY_REASON_LABELS,
+  SHELL_DISCOVERY_SCHEMA,
+  type ShellDiscoveryDependencies,
+  type ShellDiscoveryResult,
+} from "./shell-discovery";
 
 import {
   displayId,
@@ -40,6 +52,8 @@ import { transcriptRecords } from "./ndjson";
 import { PROJECTS_SCHEMA, projectSummaries } from "./projects";
 import { renderSupportReport, supportPlatform, type SupportHarnessStatus } from "./support-report";
 import { applyTransfer, fmtBytes, TRANSFER_MODES, type TransferMode } from "./transfer";
+import { sendTransfer, startTransferReceiver, type ReceivedTransfer } from "./network";
+import type { UpdateDependencies } from "./update";
 
 export interface Ctx {
   registry: AdapterRegistry;
@@ -69,6 +83,10 @@ export interface Ctx {
   /** Terminal capabilities and delay are injectable so long-running commands stay testable. */
   interactive?: boolean;
   sleep?: (ms: number) => Promise<void>;
+  /** Registry, process, and installation-layout seams for the explicit update command. */
+  update?: UpdateDependencies;
+  /** Runner/environment/path seams for explicit, opt-in shell-alias discovery. */
+  shellDiscovery?: ShellDiscoveryDependencies;
 }
 
 // ------------------------------------------------------------------ helpers
@@ -77,7 +95,6 @@ function filterOpts(args: ParsedArgs, now: number): ListOpts {
   const opts: ListOpts = {};
   const harness = flagString(args, "harness");
   if (harness) opts.harness = harness.split(",").map((h) => parseHarness(h)) as HarnessId[];
-
   const cwd = flagString(args, "cwd");
   if (cwd) opts.cwd = cwd === "." ? process.cwd() : cwd.replace(/\/$/, "");
 
@@ -103,7 +120,7 @@ export function rowsTable(rows: LedgerRow[], ctx: Ctx): string {
     const metadata = [r.tags?.map((tag) => `#${tag}`).join(" "), r.note ? "✎" : ""].filter(Boolean).join(" ");
     return [
       r.ghost ? p.dim(displayId(r.nativeId)) : p.bold(displayId(r.nativeId)),
-      p.cyan(r.harness),
+      p.cyan(instanceLabel(r.harness, r.instanceId)),
       p.dim(humanAge(r.updatedAt ?? r.createdAt, ctx.now)),
       p.dim(shortenPath(r.cwd, 28)),
       formatCount(r.messageCount),
@@ -162,6 +179,7 @@ function summarize(ref: NativeRef, session: SifSession, cwd: string | undefined)
   firstPrompt = firstPrompt ?? session.title?.text ?? undefined;
   return {
     harness: ref.harness,
+    ...(ref.instanceId ? { instanceId: ref.instanceId } : {}),
     nativeId: ref.nativeId,
     nativePath: ref.nativePath,
     cwd: cwd || session.cwd,
@@ -186,7 +204,7 @@ export function resolveRow(ctx: Ctx, prefix: string): LedgerRow {
     .slice(0, 10)
     .map(
       (c) =>
-        `  ${truncate(c.nativeId, idWidth).padEnd(idWidth)}  ${c.harness}  ${truncate(
+        `  ${truncate(c.nativeId, idWidth).padEnd(idWidth)}  ${instanceLabel(c.harness, c.instanceId)}  ${truncate(
           c.title ?? c.firstPrompt ?? "",
           Math.max(20, ctx.width - idWidth - 16),
         )}`,
@@ -194,7 +212,7 @@ export function resolveRow(ctx: Ctx, prefix: string): LedgerRow {
   throw new CliError(
     `ambiguous id "${prefix}" — ${candidates.length} matches:\n${lines.join("\n")}` +
       (candidates.length > 10 ? `\n  …and ${candidates.length - 10} more` : "") +
-      `\nnarrow it with a longer prefix or harness:id`,
+      `\nnarrow it with a longer prefix or harness:id (or harness@instance:id)`,
     EXIT.AMBIGUOUS,
   );
 }
@@ -203,10 +221,30 @@ function quoteArgv(argv: string[]): string {
   return argv.map((a) => (/[\s"'$`\\]/.test(a) ? `'${a.replace(/'/g, `'\\''`)}'` : a)).join(" ");
 }
 
-function printResume(ctx: Ctx, adapter: HarnessAdapter, ref: { harness: HarnessId; nativeId: string; nativePath?: string }): string {
+function instanceLabel(harness: HarnessId, instanceId?: InstanceId): string {
+  return instanceId && instanceId !== DEFAULT_INSTANCE_ID ? `${harness}@${instanceId}` : harness;
+}
+
+async function bindingForRow(ctx: Ctx, row: LedgerRow): Promise<AdapterBinding> {
+  return ctx.registry.getBinding(row.harness, row.instanceId ?? DEFAULT_INSTANCE_ID);
+}
+
+async function resolveTargetBinding(ctx: Ctx, value: string): Promise<AdapterBinding> {
+  const target = parseHarnessTarget(value);
+  if (target.instanceId) return ctx.registry.getBinding(target.harness, target.instanceId);
+  const matches = (await ctx.registry.bindings()).filter((binding) => binding.harness === target.harness);
+  if (matches.length === 1) return matches[0]!;
+  if (matches.length > 1)
+    throw new CliError(
+      `multiple ${target.harness} instances are selected (${matches.map((binding) => binding.instanceId).join(", ")}); use --to ${target.harness}@<instance>`,
+    );
+  throw new CliError(`adapter not available: ${target.harness} (not selected or not installed)`);
+}
+
+function printResume(ctx: Ctx, binding: AdapterBinding, ref: SessionRef): string {
   let argv: string[];
   try {
-    argv = adapter.resumeCommand(ref);
+    argv = binding.resumeCommand(ref);
   } catch (err) {
     ctx.err(`no resume command for ${ref.harness}: ${err instanceof Error ? err.message : String(err)}`);
     return "";
@@ -219,8 +257,18 @@ function printResume(ctx: Ctx, adapter: HarnessAdapter, ref: { harness: HarnessI
 }
 
 async function readSession(ctx: Ctx, row: LedgerRow): Promise<SifSession> {
-  const adapter = await ctx.registry.get(row.harness);
-  return adapter.read({ harness: row.harness, nativeId: row.nativeId, nativePath: row.nativePath });
+  const binding = await bindingForRow(ctx, row);
+  const ref: SessionRef = {
+    harness: row.harness,
+    instanceId: row.instanceId ?? DEFAULT_INSTANCE_ID,
+    nativeId: row.nativeId,
+    nativePath: row.nativePath,
+  };
+  const session = await binding.adapter.read(ref);
+  return {
+    ...session,
+    origin: { ...session.origin, instanceId: row.instanceId ?? DEFAULT_INSTANCE_ID },
+  };
 }
 
 /**
@@ -230,8 +278,13 @@ async function readSession(ctx: Ctx, row: LedgerRow): Promise<SifSession> {
  * receiving harness's inert transcript.
  */
 async function readSessionForPort(ctx: Ctx, row: LedgerRow): Promise<SifSession> {
-  const adapter = await ctx.registry.get(row.harness);
-  const ref: SessionRef = { harness: row.harness, nativeId: row.nativeId, nativePath: row.nativePath };
+  const { adapter } = await bindingForRow(ctx, row);
+  const ref: SessionRef = {
+    harness: row.harness,
+    instanceId: row.instanceId ?? DEFAULT_INSTANCE_ID,
+    nativeId: row.nativeId,
+    nativePath: row.nativePath,
+  };
   const withCarry = adapter as HarnessAdapter & { readWithCarry?: (ref: SessionRef) => Promise<SifSession> };
   let session: SifSession;
   if (withCarry.readWithCarry) session = await withCarry.readWithCarry(ref);
@@ -245,21 +298,164 @@ async function readSessionForPort(ctx: Ctx, row: LedgerRow): Promise<SifSession>
 
 // ----------------------------------------------------------------- commands
 
+interface ShellDiscoveryReport extends ShellDiscoveryResult {
+  schema: typeof SHELL_DISCOVERY_SCHEMA;
+  ok: boolean;
+  status: "preview" | "created" | "manual_merge";
+  configPath: string;
+  writeRequested: boolean;
+  manualMerge?: string;
+}
+
+function shellDiscoveryReport(
+  discovery: ShellDiscoveryResult,
+  configPath: string,
+  writeRequested: boolean,
+  status: ShellDiscoveryReport["status"],
+): ShellDiscoveryReport {
+  const manualMerge = status === "manual_merge"
+    ? `Config already exists. Copy the previewed instance tables into ${configPath} manually; Sinter will not overwrite it.`
+    : undefined;
+  return {
+    schema: SHELL_DISCOVERY_SCHEMA,
+    ok: status !== "manual_merge",
+    status,
+    configPath,
+    writeRequested,
+    ...discovery,
+    ...(manualMerge ? { manualMerge } : {}),
+  };
+}
+
+function renderShellDiscovery(report: ShellDiscoveryReport, ctx: Ctx): void {
+  ctx.out(`shell alias discovery ${report.status.replace("_", " ")} (${report.shell})`);
+  ctx.out(`accepted: ${report.candidates.length}`);
+  for (const candidate of report.candidates) {
+    ctx.out(`instance: ${candidate.instance}`);
+    ctx.out(`  store: ${candidate.store}`);
+    ctx.out(`  command: ${JSON.stringify(candidate.command)}`);
+  }
+  if (report.rejections.total) {
+    ctx.out(`ignored: ${report.rejections.total}`);
+    for (const [reason, count] of Object.entries(report.rejections.reasons))
+      ctx.out(`  ${SHELL_DISCOVERY_REASON_LABELS[reason as keyof typeof SHELL_DISCOVERY_REASON_LABELS]}: ${count}`);
+  }
+  if (report.toml) {
+    ctx.out("");
+    ctx.out("mergeable TOML:");
+    ctx.out(report.toml.trimEnd());
+  }
+  if (report.manualMerge) ctx.out(`\nmanual merge required: ${report.manualMerge}`);
+  else if (report.status === "preview" && report.candidates.length)
+    ctx.out("\npreview only; rerun with --write --yes to create a missing config");
+  else if (report.status === "created") ctx.out(`\ncreated owner-only config: ${report.configPath}`);
+}
+
+async function confirmShellDiscoveryWrite(ctx: Ctx, configPath: string): Promise<boolean> {
+  const question = `Create owner-only config at ${configPath}? [y/N]`;
+  if (ctx.confirm) return ctx.confirm(question);
+  if (!process.stdin.isTTY) throw new CliError("config discover-shell --write needs --yes when non-interactive", 1, "shell_discovery");
+  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await readline.question(`${question} `)).trim().toLowerCase();
+    return answer === "y" || answer === "yes";
+  } finally {
+    readline.close();
+  }
+}
+
+async function cmdDiscoverShell(args: ParsedArgs, ctx: Ctx): Promise<number> {
+  const json = flagBool(args, "json");
+  const write = flagBool(args, "write");
+  const yes = flagBool(args, "yes");
+  if (yes && !write) throw new CliError("--yes requires --write", 1, "shell_discovery");
+
+  const dependencies = ctx.shellDiscovery ?? {};
+  const configPath = resolve(flagString(args, "config") ?? dependencies.configPath ?? defaultConfigPath());
+  if (!json)
+    ctx.err("warning: this explicit opt-in command executes zsh/bash startup files to list aliases; raw alias output is never displayed");
+  const discovery = await discoverClaudeShellAliases(flagString(args, "shell"), dependencies);
+
+  if (!write) {
+    const report = shellDiscoveryReport(discovery, configPath, false, "preview");
+    if (json) ctx.out(JSON.stringify(report, null, 2));
+    else renderShellDiscovery(report, ctx);
+    return EXIT.OK;
+  }
+
+  if (existsSync(configPath)) {
+    const report = shellDiscoveryReport(discovery, configPath, true, "manual_merge");
+    if (json) ctx.out(JSON.stringify(report, null, 2));
+    else {
+      renderShellDiscovery(report, ctx);
+      ctx.err("config already exists; it was not modified. Manually merge the previewed TOML.");
+    }
+    return EXIT.ERROR;
+  }
+  if (!discovery.candidates.length) {
+    const report = shellDiscoveryReport(discovery, configPath, true, "preview");
+    if (json) ctx.out(JSON.stringify({ ...report, ok: false }, null, 2));
+    else {
+      renderShellDiscovery(report, ctx);
+      ctx.err("no safe shell aliases were found; config was not created");
+    }
+    return EXIT.ERROR;
+  }
+  if (!yes) {
+    if (json || !ctx.interactive)
+      throw new CliError("config discover-shell --write needs --yes when non-interactive or using --json", 1, "shell_discovery");
+    const preview = shellDiscoveryReport(discovery, configPath, true, "preview");
+    renderShellDiscovery(preview, ctx);
+    if (!(await confirmShellDiscoveryWrite(ctx, configPath))) {
+      ctx.err("config creation cancelled; no file was written");
+      return EXIT.ERROR;
+    }
+  }
+
+  if (!createOwnerOnlyConfig(configPath, discovery.toml)) {
+    const report = shellDiscoveryReport(discovery, configPath, true, "manual_merge");
+    if (json) ctx.out(JSON.stringify(report, null, 2));
+    else {
+      if (yes) renderShellDiscovery(report, ctx);
+      ctx.err("config appeared during discovery; it was not modified. Manually merge the previewed TOML.");
+    }
+    return EXIT.ERROR;
+  }
+
+  const report = shellDiscoveryReport(discovery, configPath, true, "created");
+  if (json) ctx.out(JSON.stringify(report, null, 2));
+  else if (yes) renderShellDiscovery(report, ctx);
+  else ctx.out(`created owner-only config: ${configPath}`);
+  return EXIT.OK;
+}
+
 export async function cmdConfig(argv: string[], ctx: Ctx): Promise<number> {
-  const args = parseArgs(argv, { strings: ["config"], booleans: ["json"] });
+  const args = parseArgs(argv, { strings: ["config", "shell"], booleans: ["json", "write", "yes"] });
   const action = args._[0] ?? "show";
-  if (args._.length > 1 || !["show", "path", "validate"].includes(action))
-    throw new CliError("usage: sinter config [show|path|validate] [--config file] [--json]");
+  const usage = "usage: sinter config [show|path|validate|example|discover-shell] [--config file] [--json]";
+  if (args._.length > 1 || !["show", "path", "validate", "example", "discover-shell"].includes(action))
+    throw new CliError(usage);
+  if (action === "discover-shell") return cmdDiscoverShell(args, ctx);
+  if (flagString(args, "shell") || flagBool(args, "write") || flagBool(args, "yes")) throw new CliError(usage);
+
   const configPath = flagString(args, "config") ?? defaultConfigPath();
   if (action === "path") {
     if (flagBool(args, "json")) ctx.out(JSON.stringify({ configPath }, null, 2));
     else ctx.out(configPath);
     return EXIT.OK;
   }
+  if (action === "example") {
+    if (flagBool(args, "json")) ctx.out(JSON.stringify({ configPath, example: PROFILE_EXAMPLE }, null, 2));
+    else ctx.out(PROFILE_EXAMPLE.trimEnd());
+    return EXIT.OK;
+  }
 
   const summary = inspectConfig(configPath);
   if (action === "validate") {
-    const stores = summary.profiles.reduce((total, profile) => total + Object.keys(profile.stores).length, 0);
+    const stores = summary.profiles.reduce(
+      (total, profile) => total + Object.keys(profile.stores).length + (profile.instances?.length ?? 0),
+      0,
+    );
     if (flagBool(args, "json")) {
       ctx.out(JSON.stringify({ valid: true, configPath, profiles: summary.profiles.length, stores }, null, 2));
     } else {
@@ -273,9 +469,14 @@ export async function cmdConfig(argv: string[], ctx: Ctx): Promise<number> {
     return EXIT.OK;
   }
   ctx.out(`config: ${configPath}`);
-  const rows = summary.profiles.flatMap((profile) =>
-    Object.entries(profile.stores).map(([harness, path]) => [profile.name, harness, path ?? ""]),
-  );
+  const rows = summary.profiles.flatMap((profile) => [
+    ...Object.entries(profile.stores).map(([harness, path]) => [profile.name, harness, path ?? ""]),
+    ...(profile.instances ?? []).map((instance) => [
+      profile.name,
+      `${instance.harness}@${instance.id}`,
+      instance.store,
+    ]),
+  ]);
   ctx.out(
     renderTable(
       [{ header: "PROFILE" }, { header: "HARNESS" }, { header: "STORE ROOT", flex: true }],
@@ -490,7 +691,7 @@ export async function cmdPin(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv);
   if (args._.length !== 1) throw new CliError("usage: sinter pin <id-prefix>");
   const row = resolveRow(ctx, args._[0]!);
-  ctx.ledger().setPinned(row.harness, row.nativeId, true);
+  ctx.ledger().setPinned(row.harness, row.nativeId, true, new Date(ctx.now).toISOString(), row.instanceId ?? DEFAULT_INSTANCE_ID);
   ctx.out(`pinned ${row.harness}:${displayId(row.nativeId)}`);
   return EXIT.OK;
 }
@@ -499,7 +700,7 @@ export async function cmdUnpin(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv);
   if (args._.length !== 1) throw new CliError("usage: sinter unpin <id-prefix>");
   const row = resolveRow(ctx, args._[0]!);
-  ctx.ledger().setPinned(row.harness, row.nativeId, false);
+  ctx.ledger().setPinned(row.harness, row.nativeId, false, new Date(ctx.now).toISOString(), row.instanceId ?? DEFAULT_INSTANCE_ID);
   ctx.out(`unpinned ${row.harness}:${displayId(row.nativeId)}`);
   return EXIT.OK;
 }
@@ -520,7 +721,7 @@ export async function cmdTag(argv: string[], ctx: Ctx): Promise<number> {
   if (args._.length < 2) throw new CliError("usage: sinter tag <id-prefix> <tag...>");
   const row = resolveRow(ctx, args._[0]!);
   const tags = normalizedTags(args._.slice(1));
-  ctx.ledger().addTags(row.harness, row.nativeId, tags);
+  ctx.ledger().addTags(row.harness, row.nativeId, tags, row.instanceId ?? DEFAULT_INSTANCE_ID);
   ctx.out(`tagged ${row.harness}:${displayId(row.nativeId)} ${tags.map((tag) => `#${tag}`).join(" ")}`);
   return EXIT.OK;
 }
@@ -531,7 +732,7 @@ export async function cmdUntag(argv: string[], ctx: Ctx): Promise<number> {
     throw new CliError("usage: sinter untag <id-prefix> <tag...>|--all");
   const row = resolveRow(ctx, args._[0]);
   const tags = flagBool(args, "all") ? undefined : normalizedTags(args._.slice(1));
-  ctx.ledger().removeTags(row.harness, row.nativeId, tags);
+  ctx.ledger().removeTags(row.harness, row.nativeId, tags, row.instanceId ?? DEFAULT_INSTANCE_ID);
   ctx.out(tags ? `removed ${tags.map((tag) => `#${tag}`).join(" ")} from ${row.harness}:${displayId(row.nativeId)}` : `cleared tags for ${row.harness}:${displayId(row.nativeId)}`);
   return EXIT.OK;
 }
@@ -544,7 +745,7 @@ export async function cmdNote(argv: string[], ctx: Ctx): Promise<number> {
   if (!flagBool(args, "clear") && !text) throw new CliError("sinter note needs text (or --clear)");
   if (text.length > 4000) throw new CliError("note is too long (maximum 4000 characters)");
   const row = resolveRow(ctx, args._[0]);
-  ctx.ledger().setNote(row.harness, row.nativeId, text || undefined, new Date(ctx.now).toISOString());
+  ctx.ledger().setNote(row.harness, row.nativeId, text || undefined, new Date(ctx.now).toISOString(), row.instanceId ?? DEFAULT_INSTANCE_ID);
   ctx.out(text ? `noted ${row.harness}:${displayId(row.nativeId)}` : `cleared note for ${row.harness}:${displayId(row.nativeId)}`);
   return EXIT.OK;
 }
@@ -870,6 +1071,7 @@ export async function cmdView(argv: string[], ctx: Ctx): Promise<number> {
 interface ThreadHopView {
   hop: number;
   harness: HarnessId;
+  instanceId?: InstanceId;
   nativeId: string;
   parentHarness?: HarnessId;
   parentNativeId?: string;
@@ -886,16 +1088,20 @@ interface ThreadHopView {
 }
 
 function threadHop(link: LineageRow, selected: LedgerRow, ledger: Ledger): ThreadHopView {
-  const row = ledger.get(link.harness, link.nativeId);
+  const row = ledger.get(link.harness, link.nativeId, link.instanceId ?? DEFAULT_INSTANCE_ID);
   return {
     hop: link.hop,
     harness: link.harness,
+    ...(link.instanceId && link.instanceId !== DEFAULT_INSTANCE_ID ? { instanceId: link.instanceId } : {}),
     nativeId: link.nativeId,
     parentHarness: link.parentHarness,
     parentNativeId: link.parentNativeId,
     mode: link.mode,
     portedAt: link.portedAt,
-    selected: link.harness === selected.harness && link.nativeId === selected.nativeId,
+    selected:
+      link.harness === selected.harness &&
+      (link.instanceId ?? DEFAULT_INSTANCE_ID) === (selected.instanceId ?? DEFAULT_INSTANCE_ID) &&
+      link.nativeId === selected.nativeId,
     present: !!row,
     ghost: row?.ghost || undefined,
     resumable: !!row && !row.ghost && !row.isSubagent,
@@ -912,26 +1118,31 @@ export async function cmdThread(argv: string[], ctx: Ctx): Promise<number> {
   if (args._.length !== 1) throw new CliError("usage: sinter thread <id-prefix> [--json]");
   const selected = resolveRow(ctx, args._[0]!);
   const ledger = ctx.ledger();
-  const cachedThreadId = ledger.threadIdOf(selected.harness, selected.nativeId);
+  const cachedThreadId = ledger.threadIdOf(selected.harness, selected.nativeId, selected.instanceId ?? DEFAULT_INSTANCE_ID);
   const links: LineageRow[] = cachedThreadId
     ? ledger.lineageFor(cachedThreadId)
-    : [{ harness: selected.harness, nativeId: selected.nativeId, threadId: `${selected.harness}:${selected.nativeId}`, hop: 0 }];
+    : [{ harness: selected.harness, instanceId: selected.instanceId ?? DEFAULT_INSTANCE_ID, nativeId: selected.nativeId, threadId: `${instanceLabel(selected.harness, selected.instanceId)}:${selected.nativeId}`, hop: 0 }];
   const hops = links.map((link) => threadHop(link, selected, ledger));
   const tip = [...hops].reverse().find((hop) => hop.resumable);
-  const threadId = cachedThreadId ?? `${selected.harness}:${selected.nativeId}`;
+  const threadId = cachedThreadId ?? `${instanceLabel(selected.harness, selected.instanceId)}:${selected.nativeId}`;
   const result = {
     schema: "sinter.thread.v1",
     threadId,
     lineageCached: !!cachedThreadId,
     ported: links.length > 1,
-    selected: { harness: selected.harness, nativeId: selected.nativeId },
+    selected: {
+      harness: selected.harness,
+      ...(selected.instanceId && selected.instanceId !== DEFAULT_INSTANCE_ID ? { instanceId: selected.instanceId } : {}),
+      nativeId: selected.nativeId,
+    },
     hops,
     resumableTip: tip
       ? {
           hop: tip.hop,
           harness: tip.harness,
+          ...(tip.instanceId && tip.instanceId !== DEFAULT_INSTANCE_ID ? { instanceId: tip.instanceId } : {}),
           nativeId: tip.nativeId,
-          command: ["sinter", "resume", `${tip.harness}:${tip.nativeId}`],
+          command: ["sinter", "resume", `${instanceLabel(tip.harness, tip.instanceId)}:${tip.nativeId}`],
         }
       : null,
   };
@@ -954,7 +1165,7 @@ export async function cmdThread(argv: string[], ctx: Ctx): Promise<number> {
       ],
       hops.map((hop) => [
         String(hop.hop),
-        `${hop.selected ? "→ " : "  "}${hop.harness}:${displayId(hop.nativeId)}`,
+        `${hop.selected ? "→ " : "  "}${instanceLabel(hop.harness, hop.instanceId)}:${displayId(hop.nativeId)}`,
         hop.hop === 0 ? "origin" : (hop.mode ?? "unknown"),
         humanAge(hop.updatedAt ?? hop.portedAt, ctx.now),
         !hop.present ? "metadata only" : hop.ghost ? "ghost" : hop.resumable ? "resumable" : "sidechain",
@@ -965,8 +1176,8 @@ export async function cmdThread(argv: string[], ctx: Ctx): Promise<number> {
   );
   if (tip) {
     ctx.out("");
-    ctx.out(`resumable tip: ${ctx.pal.bold(`${tip.harness}:${tip.nativeId}`)}`);
-    ctx.out(ctx.pal.dim(`resume with: sinter resume ${tip.harness}:${tip.nativeId}`));
+    ctx.out(`resumable tip: ${ctx.pal.bold(`${instanceLabel(tip.harness, tip.instanceId)}:${tip.nativeId}`)}`);
+    ctx.out(ctx.pal.dim(`resume with: sinter resume ${instanceLabel(tip.harness, tip.instanceId)}:${tip.nativeId}`));
   } else {
     ctx.err("no resumable session remains in this thread");
   }
@@ -1021,19 +1232,24 @@ export async function cmdLast(argv: string[], ctx: Ctx): Promise<number> {
     return EXIT.OK;
   }
   if (flagBool(args, "id")) {
-    ctx.out(`${row.harness}:${row.nativeId}`);
+    ctx.out(`${instanceLabel(row.harness, row.instanceId)}:${row.nativeId}`);
     return EXIT.OK;
   }
 
-  const adapter = await ctx.registry.get(row.harness);
-  const ref = { harness: row.harness, nativeId: row.nativeId, nativePath: row.nativePath };
+  const binding = await bindingForRow(ctx, row);
+  const ref: SessionRef = {
+    harness: row.harness,
+    instanceId: row.instanceId ?? DEFAULT_INSTANCE_ID,
+    nativeId: row.nativeId,
+    nativePath: row.nativePath,
+  };
   if (flagBool(args, "exec")) {
     if (!ctx.exec) throw new CliError("--exec is not available in this context");
-    const resumeArgv = adapter.resumeCommand(ref);
+    const resumeArgv = binding.resumeCommand(ref);
     ctx.err(ctx.pal.dim(`exec: ${quoteArgv(resumeArgv)}`));
     return await ctx.exec(resumeArgv);
   }
-  printResume(ctx, adapter, ref);
+  printResume(ctx, binding, ref);
   return EXIT.OK;
 }
 
@@ -1058,7 +1274,7 @@ export async function cmdRename(argv: string[], ctx: Ctx): Promise<number> {
   const alias = args._.slice(1).join(" ").trim();
   if (!alias && !flagBool(args, "clear"))
     throw new CliError("sinter rename needs an alias (or --clear)");
-  ctx.ledger().setAlias(row.harness, row.nativeId, alias || undefined);
+  ctx.ledger().setAlias(row.harness, row.nativeId, alias || undefined, row.instanceId ?? DEFAULT_INSTANCE_ID);
   ctx.out(alias ? `${row.harness}:${displayId(row.nativeId)} → ${alias}` : `cleared alias for ${row.harness}:${displayId(row.nativeId)}`);
   return EXIT.OK;
 }
@@ -1181,39 +1397,42 @@ export async function cmdExport(argv: string[], ctx: Ctx): Promise<number> {
 
 async function writeInto(
   ctx: Ctx,
-  target: HarnessId,
+  binding: AdapterBinding,
   session: SifSession,
   args: ParsedArgs,
   mode?: string,
 ): Promise<number> {
-  const adapter = await ctx.registry.get(target);
+  const { adapter } = binding;
+  const target = instanceLabel(binding.harness, binding.instanceId);
   if (!adapter.write) throw new CliError(`${target} adapter cannot write sessions yet`);
 
   const cwd = flagString(args, "cwd");
   const dryRun = flagBool(args, "dry-run");
   const resolvedCwd = cwd === "." ? process.cwd() : cwd;
   const ref = await adapter.write(session, {
+    instanceId: binding.instanceId,
     cwd: resolvedCwd,
     mode,
     liveTools: flagBool(args, "live-tools"),
     dryRun,
   });
+  const instanceRef: NativeRef = { ...ref, instanceId: binding.instanceId };
 
   ctx.err(
-    `${dryRun ? "would write" : "wrote"} ${target}:${ref.nativeId}` +
+    `${dryRun ? "would write" : "wrote"} ${target}:${instanceRef.nativeId}` +
       (ref.created?.length ? ` (${ref.created.length} file(s))` : ""),
   );
   for (const c of ref.created ?? []) ctx.err(ctx.pal.dim(`  ${c}`));
 
   // Cache the lineage link the writer stamped into the target store. A dry run
   // wrote nothing, so there is nothing to remember.
-  if (!dryRun && ref.provenance) {
+  if (!dryRun && instanceRef.provenance) {
     try {
-      ctx.ledger().recordProvenance(ref.provenance);
+      ctx.ledger().recordProvenance(instanceRef.provenance);
       ctx.err(
         ctx.pal.dim(
-          `  thread ${shortId(ref.provenance.threadId, 12)} · hop ${ref.provenance.hop} of ${
-            ref.provenance.chain.length - 1
+          `  thread ${shortId(instanceRef.provenance.threadId, 12)} · hop ${instanceRef.provenance.hop} of ${
+            instanceRef.provenance.chain.length - 1
           }`,
         ),
       );
@@ -1229,15 +1448,15 @@ async function writeInto(
   // later scan. Index it now so it is immediately resolvable.
   if (!dryRun) {
     try {
-      ctx.ledger().upsert(summarize(ref, session, resolvedCwd));
+      ctx.ledger().upsert(summarize(instanceRef, session, resolvedCwd));
     } catch (err) {
       // Indexing is best-effort: the port succeeded and the target is usable.
       ctx.err(ctx.pal.dim(`  (ledger not updated: ${err instanceof Error ? err.message : String(err)})`));
     }
   }
 
-  ctx.out(`${ref.harness}:${ref.nativeId}`);
-  printResume(ctx, adapter, ref);
+  ctx.out(`${target}:${instanceRef.nativeId}`);
+  printResume(ctx, binding, instanceRef);
   return EXIT.OK;
 }
 
@@ -1250,7 +1469,7 @@ export async function cmdImport(argv: string[], ctx: Ctx): Promise<number> {
   if (!file) throw new CliError("usage: sinter import <file.sif.json> --to <harness>");
   const to = flagString(args, "to");
   if (!to) throw new CliError("sinter import needs --to <harness>");
-  const target = parseHarness(to);
+  const target = await resolveTargetBinding(ctx, to);
 
   let session: SifSession;
   try {
@@ -1273,7 +1492,7 @@ export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
     throw new CliError("--json is currently available with --preview");
   const to = flagString(args, "to");
   if (!to) throw new CliError("sinter port needs --to <harness>");
-  const target = parseHarness(to);
+  const target = await resolveTargetBinding(ctx, to);
 
   const row = resolveRow(ctx, prefix);
   const source = await readSessionForPort(ctx, row);
@@ -1285,7 +1504,7 @@ export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
   validateSession(session);
   if (flagBool(args, "preview")) {
     if (flagBool(args, "dry-run")) throw new CliError("--preview and --dry-run are separate modes; choose one");
-    const adapter = await ctx.registry.get(target);
+    const adapter = target.adapter;
     if (!adapter.write) throw new CliError(`${target} adapter cannot write sessions yet`);
     let store: "detected" | "absent" | "check failed" = "absent";
     try {
@@ -1299,8 +1518,8 @@ export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
       ? Math.max(0, Math.round((1 - transfer.stats.bytesAfter / transfer.stats.bytesBefore) * 100))
       : 0;
     const preview = {
-      source: { harness: row.harness, nativeId: row.nativeId },
-      target: { harness: target, adapter: "write-capable", store },
+      source: { harness: row.harness, instanceId: row.instanceId ?? DEFAULT_INSTANCE_ID, nativeId: row.nativeId },
+      target: { harness: target.harness, instanceId: target.instanceId, adapter: "write-capable", store },
       mode,
       cwd,
       entries: { before: source.entries.length, after: session.entries.length },
@@ -1321,8 +1540,8 @@ export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
       return EXIT.OK;
     }
     const rows = [
-      ["source", `${row.harness}:${row.nativeId}`],
-      ["target", `${target} (${store}, write-capable)`],
+      ["source", `${instanceLabel(row.harness, row.instanceId)}:${row.nativeId}`],
+      ["target", `${instanceLabel(target.harness, target.instanceId)} (${store}, write-capable)`],
       ["mode", mode],
       ["working directory", cwd],
       ["entries", `${preview.entries.before} → ${preview.entries.after}`],
@@ -1336,8 +1555,156 @@ export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
     ctx.out(renderTable([{ header: "FIELD" }, { header: "VALUE", flex: true }], rows, { width: ctx.width, pal: ctx.pal }));
     return EXIT.OK;
   }
-  ctx.err(`porting ${row.harness}:${shortId(row.nativeId, 12)} → ${target}`);
+  ctx.err(`porting ${instanceLabel(row.harness, row.instanceId)}:${shortId(row.nativeId, 12)} → ${instanceLabel(target.harness, target.instanceId)}`);
   return writeInto(ctx, target, session, args, mode);
+}
+
+function networkSafeSession(session: SifSession): SifSession {
+  const sanitize = (value: SifSession): SifSession => {
+    const { preserve: _preserve, additionalDirs: _additionalDirs, ...rest } = value;
+    return {
+      ...rest,
+      origin: {
+        harness: value.origin.harness,
+        ...(value.origin.instanceId ? { instanceId: value.origin.instanceId } : {}),
+        nativeId: value.origin.nativeId,
+        ...(value.origin.host ? { host: value.origin.host } : {}),
+      },
+      entries: value.entries.map(({ raw: _raw, ...entry }) => entry as SifEntry),
+      ...(value.subsessions ? { subsessions: value.subsessions.map(sanitize) } : {}),
+    };
+  };
+  return sanitize(session);
+}
+
+function transferTtl(value: string | undefined): number {
+  const input = value ?? "5m";
+  const match = /^(\d+(?:\.\d+)?)\s*(s|m|h)$/i.exec(input.trim());
+  if (!match) throw new CliError(`bad --ttl: ${input} (try 5m, 30s, or 1h)`);
+  const unit = match[2]!.toLowerCase();
+  const ms = Number(match[1]) * (unit === "h" ? 3_600_000 : unit === "m" ? 60_000 : 1_000);
+  if (!Number.isFinite(ms) || ms < 10_000 || ms > 3_600_000)
+    throw new CliError("--ttl must be between 10s and 1h");
+  return Math.floor(ms);
+}
+
+function advertiseAddress(bindHost: string, explicit?: string): string {
+  if (explicit) return explicit;
+  if (bindHost !== "0.0.0.0" && bindHost !== "::") return bindHost;
+  const addresses = Object.values(networkInterfaces()).flatMap((items) => items ?? []);
+  const lan = addresses.find(
+    (item) =>
+      item.family === "IPv4" &&
+      !item.internal &&
+      (/^10\./.test(item.address) || /^192\.168\./.test(item.address) || /^172\.(1[6-9]|2\d|3[01])\./.test(item.address)),
+  );
+  if (lan) return lan.address;
+  throw new CliError("no private LAN address found; pass --advertise <LAN-or-Tailscale-IP>");
+}
+
+async function confirmReceive(ctx: Ctx, transfer: ReceivedTransfer, target: string): Promise<boolean> {
+  const question = `Accept ${fmtBytes(transfer.bytes.byteLength)} into ${target}? [y/N]`;
+  if (ctx.confirm) return ctx.confirm(question);
+  if (!process.stdin.isTTY) throw new CliError("receive needs an interactive terminal; use --yes for unattended receipt");
+  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await readline.question(`${question} `)).trim().toLowerCase();
+    return answer === "y" || answer === "yes";
+  } finally {
+    readline.close();
+  }
+}
+
+/** Send a context-only, encrypted one-shot session payload to a receiver locator. */
+export async function cmdSend(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, { strings: ["to", "mode"], booleans: ["preview", "json"] });
+  const prefix = args._[0];
+  const locator = flagString(args, "to");
+  if (!prefix || !locator) throw new CliError("usage: sinter send <id-prefix> --to <sinter://transfer/...> [--mode compact|slim|full]");
+  const row = resolveRow(ctx, prefix);
+  const source = await readSessionForPort(ctx, row);
+  const mode = (flagString(args, "mode") ?? "compact") as TransferMode;
+  if (!TRANSFER_MODES.includes(mode))
+    throw new CliError(`unknown --mode: ${mode} (known: ${TRANSFER_MODES.join(", ")})`);
+  const transferred = applyTransfer(source, mode);
+  const session = networkSafeSession(transferred.session);
+  validateSession(session);
+  const bytes = new TextEncoder().encode(JSON.stringify(session));
+  if (flagBool(args, "preview")) {
+    const preview = {
+      source: { harness: row.harness, instanceId: row.instanceId ?? DEFAULT_INSTANCE_ID, nativeId: row.nativeId },
+      mode,
+      entries: session.entries.length,
+      bytes: bytes.byteLength,
+      encrypted: true,
+      sends: false,
+    };
+    if (flagBool(args, "json")) ctx.out(JSON.stringify(preview, null, 2));
+    else ctx.out(`would send ${session.entries.length} entries (${fmtBytes(bytes.byteLength)}), encrypted; no connection made`);
+    return EXIT.OK;
+  }
+  const receipt = await sendTransfer(locator, bytes, {
+    metadata: {
+      schema: "sinter.session.v1",
+      mode,
+      sourceHarness: row.harness,
+      sourceInstance: row.instanceId ?? DEFAULT_INSTANCE_ID,
+    },
+  });
+  if (flagBool(args, "json")) ctx.out(JSON.stringify({ ok: true, transferId: receipt.transferId, bytes: bytes.byteLength }));
+  else ctx.out(`sent ${fmtBytes(bytes.byteLength)} · accepted as ${receipt.transferId}`);
+  return EXIT.OK;
+}
+
+/** Receive one encrypted transfer and import it only into the selected instance. */
+export async function cmdReceive(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["to", "bind", "advertise", "port", "ttl", "cwd"],
+    booleans: ["yes", "json"],
+  });
+  const to = flagString(args, "to");
+  if (!to) throw new CliError("usage: sinter receive --to <harness@instance> [--advertise <LAN-or-Tailscale-IP>] [--yes]");
+  const binding = await resolveTargetBinding(ctx, to);
+  if (!binding.adapter.write) throw new CliError(`${instanceLabel(binding.harness, binding.instanceId)} adapter cannot write sessions yet`);
+  const bindHost = flagString(args, "bind") ?? "0.0.0.0";
+  const advertised = advertiseAddress(bindHost, flagString(args, "advertise"));
+  const portValue = flagString(args, "port");
+  const port = portValue === undefined ? 0 : Number(portValue);
+  if (!Number.isInteger(port) || port < 0 || port > 65_535) throw new CliError(`bad --port: ${portValue}`);
+  const target = instanceLabel(binding.harness, binding.instanceId);
+  const receiver = startTransferReceiver({
+    bindHost,
+    advertiseHost: advertised,
+    port,
+    ttlMs: transferTtl(flagString(args, "ttl")),
+    async accept(transfer) {
+      if (transfer.metadata.schema !== "sinter.session.v1") throw new CliError("unsupported transfer payload");
+      let session: SifSession;
+      try {
+        session = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(transfer.bytes)) as SifSession;
+      } catch {
+        throw new CliError("received payload is not valid SIF JSON");
+      }
+      validateSession(session);
+      if (!flagBool(args, "yes") && !(await confirmReceive(ctx, transfer, target)))
+        throw new CliError("transfer declined");
+      await writeInto(ctx, binding, networkSafeSession(session), args, `network-${transfer.metadata.mode ?? "compact"}`);
+    },
+  });
+  ctx.out(receiver.locator);
+  ctx.err(`listening on ${bindHost}:${receiver.port} for one encrypted transfer → ${target}`);
+  try {
+    const received = await receiver.received;
+    if (flagBool(args, "json"))
+      ctx.out(JSON.stringify({ ok: true, transferId: received.transferId, bytes: received.bytes.byteLength, target }));
+    else ctx.err(`received and imported ${fmtBytes(received.bytes.byteLength)} · ${received.transferId}`);
+    // `received` resolves when the authenticated Response is created. Give Bun
+    // one event-loop turn to flush that receipt before closing the one-shot server.
+    await (ctx.sleep ?? Bun.sleep)(50);
+  } finally {
+    receiver.close();
+  }
+  return EXIT.OK;
 }
 
 export async function cmdResume(argv: string[], ctx: Ctx): Promise<number> {
@@ -1349,53 +1716,65 @@ export async function cmdResume(argv: string[], ctx: Ctx): Promise<number> {
   if (!prefix) throw new CliError("usage: sinter resume <id-prefix> [--in <harness>]");
   const row = resolveRow(ctx, prefix);
   const inFlag = flagString(args, "in");
-  const target = inFlag ? parseHarness(inFlag) : row.harness;
+  const sourceBinding = await bindingForRow(ctx, row);
+  const targetBinding = inFlag ? await resolveTargetBinding(ctx, inFlag) : sourceBinding;
+  const sameInstance =
+    targetBinding.harness === row.harness &&
+    targetBinding.instanceId === (row.instanceId ?? DEFAULT_INSTANCE_ID);
 
-  let ref: { harness: HarnessId; nativeId: string; nativePath?: string };
-  let adapter: HarnessAdapter;
+  let ref: NativeRef | SessionRef;
+  let binding: AdapterBinding;
 
-  if (target === row.harness) {
+  if (sameInstance) {
     if (row.ghost)
       throw new CliError(
         `${shortId(row.nativeId)} is a ghost row — the ${row.harness} transcript is gone, port it instead`,
         EXIT.AMBIGUOUS,
       );
-    adapter = await ctx.registry.get(row.harness);
-    ref = { harness: row.harness, nativeId: row.nativeId, nativePath: row.nativePath };
+    binding = sourceBinding;
+    ref = {
+      harness: row.harness,
+      instanceId: row.instanceId ?? DEFAULT_INSTANCE_ID,
+      nativeId: row.nativeId,
+      nativePath: row.nativePath,
+    };
   } else {
     const session = await readSessionForPort(ctx, row);
     validateSession(session);
-    const targetAdapter = await ctx.registry.get(target);
+    const targetAdapter = targetBinding.adapter;
+    const target = instanceLabel(targetBinding.harness, targetBinding.instanceId);
     if (!targetAdapter.write) throw new CliError(`${target} adapter cannot write sessions yet`);
-    ctx.err(`porting ${row.harness}:${shortId(row.nativeId, 12)} → ${target}`);
+    ctx.err(`porting ${instanceLabel(row.harness, row.instanceId)}:${shortId(row.nativeId, 12)} → ${target}`);
     const native = await targetAdapter.write(session, {
+      instanceId: targetBinding.instanceId,
       cwd: flagString(args, "cwd") === "." ? process.cwd() : flagString(args, "cwd"),
       mode: "full",
       liveTools: flagBool(args, "live-tools"),
       dryRun: flagBool(args, "dry-run"),
     });
+    const instanceNative: NativeRef = { ...native, instanceId: targetBinding.instanceId };
     for (const c of native.created ?? []) ctx.err(ctx.pal.dim(`  ${c}`));
-    adapter = targetAdapter;
-    ref = native;
+    binding = targetBinding;
+    ref = instanceNative;
     // Same as writeInto: index the freshly-written cross-harness target so a
     // subsequent `sinter resume <id>` resolves it without a separate scan.
     if (!flagBool(args, "dry-run")) {
       try {
         const crossCwd = flagString(args, "cwd") === "." ? process.cwd() : flagString(args, "cwd");
-        ctx.ledger().upsert(summarize(native, session, crossCwd));
+        ctx.ledger().upsert(summarize(instanceNative, session, crossCwd));
       } catch (err) {
         ctx.err(ctx.pal.dim(`  (ledger not updated: ${err instanceof Error ? err.message : String(err)})`));
       }
     }
   }
 
-  const argv2 = adapter.resumeCommand(ref);
+  const argv2 = binding.resumeCommand(ref);
   if (flagBool(args, "exec")) {
     if (!ctx.exec) throw new CliError("--exec is not available in this context");
     ctx.err(ctx.pal.dim(`exec: ${quoteArgv(argv2)}`));
     return await ctx.exec(argv2);
   }
-  printResume(ctx, adapter, ref);
+  printResume(ctx, binding, ref);
   return EXIT.OK;
 }
 
@@ -1417,10 +1796,10 @@ export async function cmdRelink(argv: string[], ctx: Ctx): Promise<number> {
     .map((h) => parseHarness(h)) as HarnessId[] | undefined;
 
   const loads = await ctx.registry.load();
-  const targets = loads
+  const targetLoads = loads
     .filter((l) => l.adapter && typeof l.adapter.write === "function")
-    .filter((l) => !only || only.includes(l.id))
-    .map((l) => l.id);
+    .filter((l) => !only || only.includes(l.id));
+  const targets = [...new Set(targetLoads.map((load) => load.id))];
 
   if (!targets.length) {
     ctx.err("no write-capable adapters available — nothing could hold a sinter provenance record");
@@ -1443,9 +1822,10 @@ export async function cmdRelink(argv: string[], ctx: Ctx): Promise<number> {
 
   for (const row of rows) {
     try {
-      const adapter = await ctx.registry.get(row.harness);
-      const session = await adapter.read({
+      const binding = await bindingForRow(ctx, row);
+      const session = await binding.adapter.read({
         harness: row.harness,
+        instanceId: row.instanceId ?? DEFAULT_INSTANCE_ID,
         nativeId: row.nativeId,
         nativePath: row.nativePath,
       });
@@ -1487,7 +1867,7 @@ export async function cmdSetup(argv: string[], ctx: Ctx): Promise<number> {
   for (const load of loads) {
     if (!load.adapter) continue;
     const store = await load.adapter.detect();
-    if (store) detected.push(`${load.id}: ${(store.paths ?? []).join(", ")}`);
+    if (store) detected.push(`${instanceLabel(load.harness, load.instanceId)}: ${(store.paths ?? []).join(", ")}`);
   }
 
   ctx.out("Sinter indexes local coding-agent session stores. It does not upload transcripts.");
@@ -1798,7 +2178,7 @@ export async function cmdGui(argv: string[], ctx: Ctx): Promise<number> {
       const out: string[] = [];
       const err: string[] = [];
       const actionCtx: Ctx = { ...ctx, out: (line) => out.push(line), err: (line) => err.push(line) };
-      const id = `${action.harness}:${action.nativeId}`;
+      const id = `${action.harness}@${action.instanceId ?? DEFAULT_INSTANCE_ID}:${action.nativeId}`;
       try {
         const code =
           action.action === "port"

@@ -1,6 +1,7 @@
 {
   "name": "@jensenloke/sinter",
-  "version": "0.2.0",
+  "private": true,
+  "version": "0.4.1-rc.0",
   "description": "Port and resume coding-agent sessions across harnesses.",
   "license": "Apache-2.0",
   "repository": {
@@ -9,6 +10,9 @@
   },
   "homepage": "https://github.com/jensenloke/sinter#readme",
   "bugs": "https://github.com/jensenloke/sinter/issues",
+  "publishConfig": {
+    "tag": "next"
+  },
   "keywords": [
     "coding-agent",
     "claude-code",
@@ -24,9 +28,12 @@
     "sinter": "dist/main.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "devDependencies": {
+    "@sinter/core": "workspace:*",
     "@sinter/adapter-claude": "workspace:*",
     "@sinter/adapter-codex": "workspace:*",
     "@sinter/adapter-devin": "workspace:*",
@@ -38,6 +45,7 @@
   },
   "scripts": {
     "build": "bun run scripts/build.ts",
-    "prepack": "bun run build"
+    "prepack": "bun run scripts/verify-cloud-free.ts source && bun run build && bun run scripts/verify-cloud-free.ts dist",
+    "prepublishOnly": "bun run scripts/verify-cloud-free.ts source && bun run scripts/prepublish-guard.ts"
   }
 }

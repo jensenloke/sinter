@@ -1,4 +1,4 @@
-import type { HarnessId, SifEntry } from "@sinter/core";
+import { DEFAULT_INSTANCE_ID, type HarnessId, type InstanceId, type SifEntry } from "@sinter/core";
 import type { LedgerRow } from "@sinter/ledger";
 import type { Ctx } from "./commands";
 import { buildThreads } from "./tui/threads";
@@ -6,8 +6,9 @@ import { buildThreads } from "./tui/threads";
 export interface GuiAction {
   action: "port" | "resume";
   harness: HarnessId;
+  instanceId?: InstanceId;
   nativeId: string;
-  target?: HarnessId;
+  target?: string;
   mode?: "full" | "slim" | "compact";
 }
 
@@ -31,6 +32,7 @@ function json(value: unknown, status = 200): Response {
 function publicRow(row: LedgerRow) {
   return {
     harness: row.harness,
+    instanceId: row.instanceId ?? DEFAULT_INSTANCE_ID,
     nativeId: row.nativeId,
     cwd: row.cwd,
     title: row.alias ?? row.title ?? row.firstPrompt ?? "Untitled session",
@@ -103,17 +105,17 @@ export function guiHtml(): string {
   <div class="notice" id="notice"></div>
   <script>
     const token = new URLSearchParams(location.search).get('token') || '';
-    let all = [], harness = 'all', selected = null;
+    let all = [], targets = [], harness = 'all', selected = null;
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const api = async (path, options={}) => { const join = path.includes('?') ? '&' : '?'; const r = await fetch(path + join + 'token=' + encodeURIComponent(token), options); const x = await r.json(); if (!r.ok) throw new Error(x.error || r.statusText); return x; };
     const ago = iso => { if (!iso) return ''; const s=(Date.now()-new Date(iso))/1000; if(s<3600)return Math.max(1,Math.floor(s/60))+'m'; if(s<86400)return Math.floor(s/3600)+'h'; return Math.floor(s/86400)+'d'; };
     function renderFilters(){ const counts={}; all.forEach(t=>t.hops.forEach(h=>counts[h.harness]=(counts[h.harness]||0)+1)); document.querySelector('#filters').innerHTML=['all',...Object.keys(counts).sort()].map(h=>'<button class="filter '+(h===harness?'active':'')+'" data-h="'+h+'">'+(h==='all'?'All sessions':esc(h))+' <b>'+(h==='all'?all.length:counts[h])+'</b></button>').join(''); document.querySelectorAll('.filter').forEach(b=>b.onclick=()=>{harness=b.dataset.h;renderFilters();renderSessions()}); }
     function visible(){ const q=document.querySelector('#search').value.toLowerCase().trim(); return all.filter(t=>(harness==='all'||t.hops.some(x=>x.harness===harness))&&(!q||JSON.stringify(t).toLowerCase().includes(q))); }
     function renderSessions(){ document.querySelector('#sessions').innerHTML=visible().map(t=>'<article class="session '+(selected===t.id?'active':'')+'" data-id="'+esc(t.id)+'"><div class="title">'+esc(t.tip.title)+'</div><div class="meta"><span class="pill">'+esc(t.tip.harness)+'</span><span>'+ago(t.tip.updatedAt)+'</span><span>'+(t.tip.messageCount||0)+' messages</span></div><div class="meta">'+esc(t.chain)+'</div></article>').join('')||'<div class="empty">No sessions match.</div>'; document.querySelectorAll('.session').forEach(x=>x.onclick=()=>openSession(x.dataset.id)); }
-    async function openSession(id){ selected=id; renderSessions(); const t=all.find(x=>x.id===id), row=t.tip; document.querySelector('#detail').innerHTML='<div class="empty">Loading transcript…</div>'; try { const data=await api('/api/session?harness='+encodeURIComponent(row.harness)+'&id='+encodeURIComponent(row.nativeId)); const targets=['claude','codex','devin','opencode','omp','pi'].filter(x=>x!==row.harness); document.querySelector('#detail').innerHTML='<div class="detail-head"><div class="detail-title"><h2>'+esc(row.title)+'</h2><div>'+esc(row.cwd||'')+' · '+esc(t.chain)+'</div></div><div class="actions"><button id="resume">Resume</button><select id="target">'+targets.map(x=>'<option>'+x+'</option>').join('')+'</select><select id="mode"><option>full</option><option>slim</option><option>compact</option></select><button class="primary" id="port">Port</button></div></div><div class="transcript">'+data.entries.map(e=>'<article class="entry '+esc(e.kind)+'"><div class="role">'+esc(e.kind)+(e.model?' · '+esc(e.model):'')+'</div><pre>'+esc(e.text)+'</pre></article>').join('')+'</div>'; document.querySelector('#resume').onclick=()=>act('resume',row); document.querySelector('#port').onclick=()=>act('port',row); } catch(e){ document.querySelector('#detail').innerHTML='<div class="empty">'+esc(e.message)+'</div>'; } }
-    async function act(action,row){ try { const body={action,harness:row.harness,nativeId:row.nativeId}; if(action==='port'){body.target=document.querySelector('#target').value;body.mode=document.querySelector('#mode').value} const result=await api('/api/action',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); notice((result.out||result.err||'Done').trim()); if(action==='port') await load(); } catch(e){ notice(e.message); } }
+    async function openSession(id){ selected=id; renderSessions(); const t=all.find(x=>x.id===id), row=t.tip; document.querySelector('#detail').innerHTML='<div class="empty">Loading transcript…</div>'; try { const data=await api('/api/session?harness='+encodeURIComponent(row.harness)+'&instance='+encodeURIComponent(row.instanceId||'default')+'&id='+encodeURIComponent(row.nativeId)); const availableTargets=targets.filter(x=>x!==row.harness+'@'+(row.instanceId||'default')); document.querySelector('#detail').innerHTML='<div class="detail-head"><div class="detail-title"><h2>'+esc(row.title)+'</h2><div>'+esc(row.cwd||'')+' · '+esc(t.chain)+'</div></div><div class="actions"><button id="resume">Resume</button><select id="target">'+availableTargets.map(x=>'<option>'+esc(x)+'</option>').join('')+'</select><select id="mode"><option>full</option><option>slim</option><option>compact</option></select><button class="primary" id="port">Port</button></div></div><div class="transcript">'+data.entries.map(e=>'<article class="entry '+esc(e.kind)+'"><div class="role">'+esc(e.kind)+(e.model?' · '+esc(e.model):'')+'</div><pre>'+esc(e.text)+'</pre></article>').join('')+'</div>'; document.querySelector('#resume').onclick=()=>act('resume',row); document.querySelector('#port').onclick=()=>act('port',row); } catch(e){ document.querySelector('#detail').innerHTML='<div class="empty">'+esc(e.message)+'</div>'; } }
+    async function act(action,row){ try { const body={action,harness:row.harness,instanceId:row.instanceId,nativeId:row.nativeId}; if(action==='port'){body.target=document.querySelector('#target').value;body.mode=document.querySelector('#mode').value} const result=await api('/api/action',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); notice((result.out||result.err||'Done').trim()); if(action==='port') await load(); } catch(e){ notice(e.message); } }
     function notice(s){ const n=document.querySelector('#notice');n.textContent=s;n.style.display='block';setTimeout(()=>n.style.display='none',7000); }
-    async function load(){ const data=await api('/api/sessions');all=data.threads;renderFilters();renderSessions();if(!selected&&all.length)openSession(all[0].id); }
+    async function load(){ const data=await api('/api/sessions');all=data.threads;targets=data.targets||[];renderFilters();renderSessions();if(!selected&&all.length)openSession(all[0].id); }
     document.querySelector('#search').oninput=renderSessions; load().catch(e=>notice(e.message));
   </script>
 </body></html>`;
@@ -139,17 +141,21 @@ export function startGuiServer(ctx: Ctx, options: GuiServerOptions = {}) {
       if (url.searchParams.get("token") !== token) return json({ error: "unauthorized" }, 401);
       if (url.pathname === "/api/sessions" && request.method === "GET") {
         const threads = buildThreads(ctx.ledger().list({ includeSubagents: false }), ctx.ledger().lineage());
-        return json({ threads: threads.map((thread) => ({ id: thread.id, chain: thread.hops.map((h) => h.harness).join(" → "), tip: publicRow(thread.tip), hops: thread.hops.map(publicRow) })) });
+        const targets = (await ctx.registry.bindings())
+          .filter((binding) => typeof binding.adapter.write === "function")
+          .map((binding) => `${binding.harness}@${binding.instanceId}`);
+        return json({ targets, threads: threads.map((thread) => ({ id: thread.id, chain: thread.hops.map((h) => h.instanceId && h.instanceId !== DEFAULT_INSTANCE_ID ? `${h.harness}@${h.instanceId}` : h.harness).join(" → "), tip: publicRow(thread.tip), hops: thread.hops.map(publicRow) })) });
       }
       if (url.pathname === "/api/session" && request.method === "GET") {
         const harness = url.searchParams.get("harness") as HarnessId | null;
+        const instanceId = url.searchParams.get("instance") ?? DEFAULT_INSTANCE_ID;
         const nativeId = url.searchParams.get("id");
         if (!harness || !nativeId) return json({ error: "harness and id are required" }, 400);
-        const row = ctx.ledger().get(harness, nativeId);
+        const row = ctx.ledger().get(harness, nativeId, instanceId);
         if (!row) return json({ error: "session not found" }, 404);
         try {
-          const adapter = await ctx.registry.get(harness);
-          const session = await adapter.read({ harness, nativeId, nativePath: row.nativePath });
+          const adapter = await ctx.registry.getInstance(harness, instanceId);
+          const session = await adapter.read({ harness, instanceId, nativeId, nativePath: row.nativePath });
           return json({ entries: session.entries.map((entry) => ({ kind: entry.kind, model: entry.kind === "assistant" ? entry.model?.id : entry.kind === "modelChange" ? entry.model : undefined, text: entryText(entry) })) });
         } catch (error) {
           return json({ error: error instanceof Error ? error.message : String(error) }, 500);

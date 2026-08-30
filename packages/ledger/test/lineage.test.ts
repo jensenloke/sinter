@@ -278,6 +278,48 @@ CREATE TABLE IF NOT EXISTS meta (
 `;
 
 describe("additive schema migration", () => {
+  test("v7 transaction preserves legacy metadata and opens the identity for collisions", async () => {
+    const dir = `/tmp/sinter-v7-migration-${Bun.randomUUIDv7()}`;
+    const path = `${dir}/ledger.db`;
+    await Bun.$`mkdir -p ${dir}`.quiet();
+    const old = new Database(path, { create: true });
+    old.exec(V1_SCHEMA_SQL);
+    old.exec(`
+      CREATE TABLE session_aliases(harness TEXT NOT NULL,native_id TEXT NOT NULL,alias TEXT NOT NULL,PRIMARY KEY(harness,native_id));
+      CREATE TABLE session_pins(harness TEXT NOT NULL,native_id TEXT NOT NULL,pinned_at TEXT NOT NULL,PRIMARY KEY(harness,native_id));
+      CREATE TABLE session_notes(harness TEXT NOT NULL,native_id TEXT NOT NULL,note TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(harness,native_id));
+      CREATE TABLE session_tags(harness TEXT NOT NULL,native_id TEXT NOT NULL,tag TEXT NOT NULL COLLATE NOCASE,PRIMARY KEY(harness,native_id,tag));
+      CREATE TABLE lineage(harness TEXT NOT NULL,native_id TEXT NOT NULL,thread_id TEXT NOT NULL,hop INTEGER NOT NULL DEFAULT 0,parent_harness TEXT,parent_native_id TEXT,ported_at TEXT,mode TEXT,recorded_at TEXT,PRIMARY KEY(harness,native_id));
+      CREATE TABLE saved_views(name TEXT PRIMARY KEY COLLATE NOCASE,harnesses TEXT,cwd TEXT,since_window TEXT,row_limit INTEGER,include_ghost INTEGER NOT NULL DEFAULT 0,include_subagents INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL);
+      INSERT INTO sessions(harness,native_id,title,first_prompt,is_subagent,ghost) VALUES('claude','collision','legacy title','legacy prompt',0,0);
+      INSERT INTO sessions_fts(harness,native_id,title,first_prompt) VALUES('claude','collision','legacy alias','legacy note');
+      INSERT INTO session_aliases VALUES('claude','collision','legacy alias');
+      INSERT INTO session_pins VALUES('claude','collision','2026-01-01T00:00:00Z');
+      INSERT INTO session_notes VALUES('claude','collision','legacy note','2026-01-01T00:00:00Z');
+      INSERT INTO session_tags VALUES('claude','collision','legacy-tag');
+      INSERT INTO lineage VALUES('claude','collision','legacy-thread',0,NULL,NULL,NULL,NULL,'2026-01-01T00:00:00Z');
+    `);
+    old.close();
+
+    const l = new Ledger(path);
+    expect(l.get("claude", "collision")).toMatchObject({
+      instanceId: "default", alias: "legacy alias", pinnedAt: "2026-01-01T00:00:00Z",
+      note: "legacy note", tags: ["legacy-tag"],
+    });
+    expect(l.search("legacy note")).toHaveLength(1);
+    expect(l.threadIdOf("claude", "collision")).toBe("legacy-thread");
+    l.upsert(summary({ nativeId: "collision", instanceId: "addvita", title: "new independent row" }));
+    expect(l.list({ harness: "claude" })).toHaveLength(2);
+    expect(l.get("claude", "collision", "addvita")?.title).toBe("new independent row");
+    l.close();
+
+    const reopened = new Ledger(path);
+    expect(reopened.list({ harness: "claude" })).toHaveLength(2);
+    expect(reopened.get("claude", "collision")?.alias).toBe("legacy alias");
+    reopened.close();
+    await Bun.$`rm -rf ${dir}`.quiet();
+  });
+
   test("upgrades an existing v1 database in place, preserving every row", async () => {
     const dir = `/tmp/sinter-lineage-migration-${Bun.randomUUIDv7()}`;
     const path = `${dir}/ledger.db`;
@@ -335,7 +377,7 @@ describe("additive schema migration", () => {
       value: string;
     };
     expect(v.value).toBe(String(SCHEMA_VERSION));
-    expect(SCHEMA_VERSION).toBe(6);
+    expect(SCHEMA_VERSION).toBe(7);
 
     // reopening again is still non-destructive
     l.close();

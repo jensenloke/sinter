@@ -1,9 +1,10 @@
 import type { SinterProvenance } from "./lineage";
-import type { HarnessId, SessionSummary, SifSession } from "./sif";
+import type { HarnessId, InstanceId, SessionSummary, SifSession } from "./sif";
 
 /** Where a harness keeps its sessions, as detected on this machine. */
 export interface StoreInfo {
   harness: HarnessId;
+  instanceId?: InstanceId;
   /** Root path(s) of the store, e.g. ~/.claude/projects or the SQLite file. */
   paths: string[];
   /** Harness version if cheaply knowable (from records/db rows, not by running it). */
@@ -14,11 +15,15 @@ export interface StoreInfo {
 /** How to address one native session. */
 export interface SessionRef {
   harness: HarnessId;
+  /** Configured harness instance. Omitted means the stable default instance. */
+  instanceId?: InstanceId;
   nativeId: string;
   nativePath?: string;
 }
 
 export interface WriteOpts {
+  /** Exact configured target store namespace. Omitted means `default`. */
+  instanceId?: InstanceId;
   /** Target cwd for the synthesized session; defaults to the SIF session cwd. */
   cwd?: string;
   /** Transfer mode stamped into port provenance for later lineage inspection. */
@@ -59,6 +64,8 @@ export interface NativeRef extends SessionRef {
  */
 export interface HarnessAdapter {
   readonly id: HarnessId;
+  /** Stable configured store namespace. Omitted means `default`. */
+  readonly instanceId?: InstanceId;
   detect(): Promise<StoreInfo | null>;
   /** Cheap enumeration — use native indexes / head windows, not full parses. */
   list(): AsyncIterable<SessionSummary>;

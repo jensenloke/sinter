@@ -23,11 +23,15 @@ sinter --help
 
 Interactive runs check npm at most once per day and offer to install a newer release. Use `--no-update-check` or set `SINTER_NO_UPDATE_CHECK=1` to disable this; scripts, CI, and non-interactive output never prompt.
 
-See the [v0.2.0 release notes](docs/releases/v0.2.0.md) for the latest changes.
+npm `latest` remains `0.4.0`. This branch prepares a private Cloud-free
+`0.4.1-rc.0` terminal maintenance candidate; it is not published. See the
+[v0.4.1 release notes](docs/releases/v0.4.1.md) for candidate scope.
 
 ## Quick start
 
 ```sh
+sinter update --check
+sinter config discover-shell
 sinter scan
 sinter scan --json
 sinter ls --since 7d
@@ -53,9 +57,15 @@ sinter show <id-prefix> --tail 20       # render only the latest entries
 sinter port <id-prefix> --to codex --mode compact --preview
 sinter port <id-prefix> --to omp
 sinter resume <id-prefix> --in omp --exec
+sinter receive --to claude@work --advertise 100.64.0.12
+sinter send <id-prefix> --to 'sinter://transfer/v1?...'
 sinter feedback
 sinter gui
 ```
+
+The `0.4.1` line is terminal-only. It intentionally excludes Cloud account,
+device, capsule, hosted application, and Storage functionality. Source and
+built-output gates enforce that boundary before packing or publication.
 
 Commands with `--json` or `--ndjson` keep stdout machine-readable and return
 errors on stderr using the versioned `sinter.error.v1` envelope. Transcript
@@ -138,7 +148,65 @@ Inspect profile configuration without starting a scan:
 sinter config path
 sinter config show
 sinter config validate
+sinter config example
+sinter help instances
 ```
+
+On the first operational run, Sinter checks for `~/.claude/projects` and
+`~/.claude-*/projects`. When it finds multiple stores and no config exists, it
+creates a private `config.toml` with a `default` profile and uses it
+automatically. Sinter never overwrites an existing config. Other harnesses keep
+their normal default discovery.
+
+The generated shape is equivalent to:
+
+```toml
+[instances.personal]
+harness = "claude"
+store = "/Users/me/.claude/projects"
+command = ["claude"]
+
+[instances.work]
+harness = "claude"
+store = "/Users/me/.claude-work/projects"
+command = ["env", "CLAUDE_CONFIG_DIR=/Users/me/.claude-work", "claude"]
+
+[profiles.default]
+include_defaults = true
+instances = ["personal", "work"]
+```
+
+Select exact stores with `claude@personal:<id>` and targets with
+`--to claude@work`. Legacy one-store profiles continue to use the `default`
+instance. Requested results and machine data are written to stdout; notices
+and errors use stderr, and failures return a non-zero exit code.
+
+## Direct device transfer
+
+On the receiving device, create a one-use encrypted locator:
+
+```sh
+# LAN address is selected automatically when available
+sinter receive --to claude@claude-work
+
+# Or advertise the device's Tailscale IP explicitly
+sinter receive --to claude@claude-work --advertise 100.64.0.12
+```
+
+Copy the printed `sinter://transfer/v1?...` locator to the sending device:
+
+```sh
+sinter send <id-prefix> --to 'sinter://transfer/v1?...'
+```
+
+The capability in the locator encrypts and authenticates one transfer, expires
+after five minutes by default, and is never sent to the receiver as an HTTP
+credential. The sender reports success only after the receiver validates,
+confirms, and imports the session. Network payloads exclude raw adapter
+records, provider-private state, native store paths, and extra workspace
+directories. This transfers conversation context, not repository files or
+credentials. LAN and Tailscale use the same direct protocol; no SSH or cloud
+account is required.
 
 ## Feedback
 
@@ -199,6 +267,7 @@ directory managed by your shell or dotfiles.
 - On POSIX systems, the local SQLite ledger and sidecar files are restricted to the current user (`0600`).
 - Anonymous product telemetry is off by default and never contains session data.
 - Source stores are read-only. A port creates a new target-native session.
+- Direct device transfer is end-to-end encrypted and one-use; the locator itself is a secret capability.
 - Historical tool calls are rendered inert by default. Use `--live-tools` only when that behavior is explicitly required.
 - `sinter privacy` describes local data handling and `sinter doctor` reports detected stores.
 - `sinter doctor --report -o sinter-diagnostics.md` creates a reviewable support report without paths, prompts, titles, session IDs, transcripts, or raw adapter errors.
@@ -220,6 +289,9 @@ directory managed by your shell or dotfiles.
 See [ROADMAP.md](ROADMAP.md) for planned CLI improvements, encrypted
 cross-device session transfer, Sinter Cloud, team handoffs, and the longer-term
 cloud-execution research path.
+
+Maintainers and resumed coding agents should start with [AGENTS.md](AGENTS.md)
+and the dated [current status handoff](docs/current-status.md).
 
 ## Development
 
