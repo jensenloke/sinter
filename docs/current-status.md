@@ -9,15 +9,18 @@ operations.
 
 ## Release state
 
-- Cloud-free release candidate: `@jensenloke/sinter@0.4.1-rc.0`.
-- The candidate is `private: true`, uses npm tag `next`, and is not published.
-- Latest published npm package and `latest`: `@jensenloke/sinter@0.4.0`.
-- npm `0.4.1` is available but must not be published until the explicit final
-  approval and stable-release conversion described below.
-- Candidate notes: [releases/v0.4.1.md](releases/v0.4.1.md).
+- Stable Cloud-free release preparation: `@jensenloke/sinter@0.4.1`.
+- Scoped public access and npm tag `latest` are explicit; publication remains
+  pending the tagged-clean-main gate.
+- Latest published npm package and `latest`: `@jensenloke/sinter@0.4.0` until
+  the final publication step succeeds.
+- npm `0.4.1` and GitHub release/tag `v0.4.1` were absent before preparation.
+- Release notes: [releases/v0.4.1.md](releases/v0.4.1.md).
 
 ## Git state at handoff
 
+- Stable preparation branch `release/v0.4.1` starts from clean public `main` at
+  `158d7f1`.
 - PR #26 merged the terminal-only candidate into its public base as `b44c195`.
 - PR #24 then merged that base into `main` as `8afda31`; refreshed macOS and
   Ubuntu checks passed before merge.
@@ -44,7 +47,7 @@ npm view @jensenloke/sinter version dist-tags --json
 Do not infer that npm publication means GitHub was updated; these are separate
 release operations.
 
-## v0.4.1 terminal-only candidate
+## v0.4.1 terminal-only release
 
 - `sinter update --check` compares strict semantic versions without installing;
   explicit update resolves Bun/npm ownership, uses exact argv without a shell,
@@ -62,11 +65,12 @@ release operations.
   publication.
 - Publication additionally requires explicit approval, clean tagged stable
   `main`, package/runtime version parity, and proof that npm v0.4.1 is absent.
-- The candidate passed 695 tests and 9,047 assertions, TypeScript, production
-  build, built-help Cloud exclusion, frozen lockfile, Cloud-free source/dist
-  checks, package inspection, isolated Bun/npm installs, and `git diff --check`.
-  The 23-file candidate tarball contains only `dist`, package metadata, README,
-  and license; shasum `cafc6477e76af8e2de8ac72618820107c538cf8c`.
+- The stable release passed 695 tests and 9,047 assertions, TypeScript,
+  production build, built-help Cloud exclusion, frozen lockfile, Cloud-free
+  source/dist checks, package inspection, isolated Bun/npm installs, and
+  `git diff --check`. The 23-file stable tarball contains only `dist`, package
+  metadata, README, and license; shasum
+  `4c944de67e826899e137c9a06aa571ea9e32d472`.
 
 ## Completed in v0.3.1
 
@@ -240,11 +244,12 @@ bunx @jensenloke/sinter@0.3.1 --version
 
 ## Recommended next actions
 
-1. Review merged `main`, the completed release-candidate gate, exact tarball
-   inventory, and independent Cloud-free assessment.
-2. Do not publish the `0.4.1-rc.0` package.
-3. After explicit final npm approval, convert package/runtime to stable `0.4.1`,
-   remove `private`, review scoped-package public access and dist-tag, create the
-   exact `v0.4.1` tag, rerun every gate on clean `main`, and publish once.
+1. Review the stable metadata diff, exact tarball inventory, and completed
+   Cloud-free release gate.
+2. Merge `release/v0.4.1` through normal review, then create and push the exact
+   `v0.4.1` tag from clean `main`.
+3. Publish `@jensenloke/sinter@0.4.1` once with public access and npm tag
+   `latest`, create the matching GitHub release, and verify registry/source
+   parity.
 4. Continue terminal improvements publicly. Keep Sinter Cloud private and hold
    repository-bound direct-transfer v2 for the v0.5.0 test/review cycle.
