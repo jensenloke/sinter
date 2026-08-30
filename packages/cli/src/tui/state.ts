@@ -15,7 +15,7 @@ import type { LedgerRow } from "@sinter/ledger";
 import { displayId } from "../format";
 import { MODE_HINT, TRANSFER_MODES, type TransferMode } from "../transfer";
 import type { Key } from "./keys";
-import { harnessesIn, type Thread } from "./threads";
+import type { Thread } from "./threads";
 export type Screen = "sessions" | "actions";
 export type Scope = "cwd" | "all";
 
@@ -178,19 +178,23 @@ export function buildActions(thread: Thread, caps: HarnessCaps[]): MenuAction[] 
   const id = displayId(tip.nativeId);
   const actions: MenuAction[] = [];
   const own = capOf(caps, tip.harness, tip.instanceId);
-  const visited = harnessesIn(thread);
+  const ownLabel = capLabel({ id: tip.harness, instanceId: tip.instanceId });
+  const visited = new Set(
+    thread.hops.map((hop) => capLabel({ id: hop.harness, instanceId: hop.instanceId })),
+  );
 
   let resumeDisabled: string | undefined;
   if (tip.ghost) resumeDisabled = "transcript is gone (ghost row)";
   else if (!own?.available) resumeDisabled = own?.error ?? "adapter not available";
-  else if (!own.onPath) resumeDisabled = `\`${tip.harness}\` is not on PATH`;
+  else if (!own.onPath) resumeDisabled = `\`${ownLabel}\` is not on PATH`;
 
   actions.push({
     kind: "resume",
     harness: tip.harness,
-    label: `resume in ${tip.harness}`,
+    instanceId: tip.instanceId ?? DEFAULT_INSTANCE_ID,
+    label: `resume in ${ownLabel}`,
     hint: own?.experimental ? "native · resume command unverified" : "native · nothing is written",
-    command: `sinter resume ${id} --exec`,
+    command: `sinter resume ${ownLabel}:${id} --exec`,
     disabled: resumeDisabled,
   });
 
@@ -209,7 +213,7 @@ export function buildActions(thread: Thread, caps: HarnessCaps[]): MenuAction[] 
     else if (!cap.canWrite) disabled = "no writer yet";
     else if (!cap.onPath) disabled = `\`${targetLabel}\` is not on PATH`;
 
-    const revisit = visited.has(target) ? "back to " : "";
+    const revisit = visited.has(targetLabel) ? "back to " : "";
     actions.push({
       kind: "port",
       harness: target,

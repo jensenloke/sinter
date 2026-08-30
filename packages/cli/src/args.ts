@@ -2,9 +2,11 @@
 
 export class CliError extends Error {
   code: number;
-  constructor(message: string, code = 1) {
+  kind?: string;
+  constructor(message: string, code = 1, kind?: string) {
     super(message);
     this.code = code;
+    this.kind = kind;
   }
 }
 

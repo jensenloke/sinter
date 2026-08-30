@@ -1,5 +1,7 @@
 import { createInterface } from "node:readline/promises";
+import { existsSync } from "node:fs";
 import { networkInterfaces } from "node:os";
+import { resolve } from "node:path";
 import type {
   InstanceId,
   HarnessAdapter,
@@ -26,7 +28,14 @@ import {
 import type { AdapterBinding, AdapterRegistry } from "./adapters";
 import { adapterCapabilities, CAPABILITIES_SCHEMA } from "./capabilities";
 import { compareSessions, CONTENT_TYPES, ENTRY_KINDS } from "./compare";
-import { defaultConfigPath, inspectConfig, PROFILE_EXAMPLE, type SinterProfile } from "./config";
+import { createOwnerOnlyConfig, defaultConfigPath, inspectConfig, PROFILE_EXAMPLE, type SinterProfile } from "./config";
+import {
+  discoverClaudeShellAliases,
+  SHELL_DISCOVERY_REASON_LABELS,
+  SHELL_DISCOVERY_SCHEMA,
+  type ShellDiscoveryDependencies,
+  type ShellDiscoveryResult,
+} from "./shell-discovery";
 
 import {
   displayId,
@@ -44,6 +53,7 @@ import { PROJECTS_SCHEMA, projectSummaries } from "./projects";
 import { renderSupportReport, supportPlatform, type SupportHarnessStatus } from "./support-report";
 import { applyTransfer, fmtBytes, TRANSFER_MODES, type TransferMode } from "./transfer";
 import { sendTransfer, startTransferReceiver, type ReceivedTransfer } from "./network";
+import type { UpdateDependencies } from "./update";
 
 export interface Ctx {
   registry: AdapterRegistry;
@@ -73,6 +83,10 @@ export interface Ctx {
   /** Terminal capabilities and delay are injectable so long-running commands stay testable. */
   interactive?: boolean;
   sleep?: (ms: number) => Promise<void>;
+  /** Registry, process, and installation-layout seams for the explicit update command. */
+  update?: UpdateDependencies;
+  /** Runner/environment/path seams for explicit, opt-in shell-alias discovery. */
+  shellDiscovery?: ShellDiscoveryDependencies;
 }
 
 // ------------------------------------------------------------------ helpers
@@ -284,11 +298,146 @@ async function readSessionForPort(ctx: Ctx, row: LedgerRow): Promise<SifSession>
 
 // ----------------------------------------------------------------- commands
 
+interface ShellDiscoveryReport extends ShellDiscoveryResult {
+  schema: typeof SHELL_DISCOVERY_SCHEMA;
+  ok: boolean;
+  status: "preview" | "created" | "manual_merge";
+  configPath: string;
+  writeRequested: boolean;
+  manualMerge?: string;
+}
+
+function shellDiscoveryReport(
+  discovery: ShellDiscoveryResult,
+  configPath: string,
+  writeRequested: boolean,
+  status: ShellDiscoveryReport["status"],
+): ShellDiscoveryReport {
+  const manualMerge = status === "manual_merge"
+    ? `Config already exists. Copy the previewed instance tables into ${configPath} manually; Sinter will not overwrite it.`
+    : undefined;
+  return {
+    schema: SHELL_DISCOVERY_SCHEMA,
+    ok: status !== "manual_merge",
+    status,
+    configPath,
+    writeRequested,
+    ...discovery,
+    ...(manualMerge ? { manualMerge } : {}),
+  };
+}
+
+function renderShellDiscovery(report: ShellDiscoveryReport, ctx: Ctx): void {
+  ctx.out(`shell alias discovery ${report.status.replace("_", " ")} (${report.shell})`);
+  ctx.out(`accepted: ${report.candidates.length}`);
+  for (const candidate of report.candidates) {
+    ctx.out(`instance: ${candidate.instance}`);
+    ctx.out(`  store: ${candidate.store}`);
+    ctx.out(`  command: ${JSON.stringify(candidate.command)}`);
+  }
+  if (report.rejections.total) {
+    ctx.out(`ignored: ${report.rejections.total}`);
+    for (const [reason, count] of Object.entries(report.rejections.reasons))
+      ctx.out(`  ${SHELL_DISCOVERY_REASON_LABELS[reason as keyof typeof SHELL_DISCOVERY_REASON_LABELS]}: ${count}`);
+  }
+  if (report.toml) {
+    ctx.out("");
+    ctx.out("mergeable TOML:");
+    ctx.out(report.toml.trimEnd());
+  }
+  if (report.manualMerge) ctx.out(`\nmanual merge required: ${report.manualMerge}`);
+  else if (report.status === "preview" && report.candidates.length)
+    ctx.out("\npreview only; rerun with --write --yes to create a missing config");
+  else if (report.status === "created") ctx.out(`\ncreated owner-only config: ${report.configPath}`);
+}
+
+async function confirmShellDiscoveryWrite(ctx: Ctx, configPath: string): Promise<boolean> {
+  const question = `Create owner-only config at ${configPath}? [y/N]`;
+  if (ctx.confirm) return ctx.confirm(question);
+  if (!process.stdin.isTTY) throw new CliError("config discover-shell --write needs --yes when non-interactive", 1, "shell_discovery");
+  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await readline.question(`${question} `)).trim().toLowerCase();
+    return answer === "y" || answer === "yes";
+  } finally {
+    readline.close();
+  }
+}
+
+async function cmdDiscoverShell(args: ParsedArgs, ctx: Ctx): Promise<number> {
+  const json = flagBool(args, "json");
+  const write = flagBool(args, "write");
+  const yes = flagBool(args, "yes");
+  if (yes && !write) throw new CliError("--yes requires --write", 1, "shell_discovery");
+
+  const dependencies = ctx.shellDiscovery ?? {};
+  const configPath = resolve(flagString(args, "config") ?? dependencies.configPath ?? defaultConfigPath());
+  if (!json)
+    ctx.err("warning: this explicit opt-in command executes zsh/bash startup files to list aliases; raw alias output is never displayed");
+  const discovery = await discoverClaudeShellAliases(flagString(args, "shell"), dependencies);
+
+  if (!write) {
+    const report = shellDiscoveryReport(discovery, configPath, false, "preview");
+    if (json) ctx.out(JSON.stringify(report, null, 2));
+    else renderShellDiscovery(report, ctx);
+    return EXIT.OK;
+  }
+
+  if (existsSync(configPath)) {
+    const report = shellDiscoveryReport(discovery, configPath, true, "manual_merge");
+    if (json) ctx.out(JSON.stringify(report, null, 2));
+    else {
+      renderShellDiscovery(report, ctx);
+      ctx.err("config already exists; it was not modified. Manually merge the previewed TOML.");
+    }
+    return EXIT.ERROR;
+  }
+  if (!discovery.candidates.length) {
+    const report = shellDiscoveryReport(discovery, configPath, true, "preview");
+    if (json) ctx.out(JSON.stringify({ ...report, ok: false }, null, 2));
+    else {
+      renderShellDiscovery(report, ctx);
+      ctx.err("no safe shell aliases were found; config was not created");
+    }
+    return EXIT.ERROR;
+  }
+  if (!yes) {
+    if (json || !ctx.interactive)
+      throw new CliError("config discover-shell --write needs --yes when non-interactive or using --json", 1, "shell_discovery");
+    const preview = shellDiscoveryReport(discovery, configPath, true, "preview");
+    renderShellDiscovery(preview, ctx);
+    if (!(await confirmShellDiscoveryWrite(ctx, configPath))) {
+      ctx.err("config creation cancelled; no file was written");
+      return EXIT.ERROR;
+    }
+  }
+
+  if (!createOwnerOnlyConfig(configPath, discovery.toml)) {
+    const report = shellDiscoveryReport(discovery, configPath, true, "manual_merge");
+    if (json) ctx.out(JSON.stringify(report, null, 2));
+    else {
+      if (yes) renderShellDiscovery(report, ctx);
+      ctx.err("config appeared during discovery; it was not modified. Manually merge the previewed TOML.");
+    }
+    return EXIT.ERROR;
+  }
+
+  const report = shellDiscoveryReport(discovery, configPath, true, "created");
+  if (json) ctx.out(JSON.stringify(report, null, 2));
+  else if (yes) renderShellDiscovery(report, ctx);
+  else ctx.out(`created owner-only config: ${configPath}`);
+  return EXIT.OK;
+}
+
 export async function cmdConfig(argv: string[], ctx: Ctx): Promise<number> {
-  const args = parseArgs(argv, { strings: ["config"], booleans: ["json"] });
+  const args = parseArgs(argv, { strings: ["config", "shell"], booleans: ["json", "write", "yes"] });
   const action = args._[0] ?? "show";
-  if (args._.length > 1 || !["show", "path", "validate", "example"].includes(action))
-    throw new CliError("usage: sinter config [show|path|validate|example] [--config file] [--json]");
+  const usage = "usage: sinter config [show|path|validate|example|discover-shell] [--config file] [--json]";
+  if (args._.length > 1 || !["show", "path", "validate", "example", "discover-shell"].includes(action))
+    throw new CliError(usage);
+  if (action === "discover-shell") return cmdDiscoverShell(args, ctx);
+  if (flagString(args, "shell") || flagBool(args, "write") || flagBool(args, "yes")) throw new CliError(usage);
+
   const configPath = flagString(args, "config") ?? defaultConfigPath();
   if (action === "path") {
     if (flagBool(args, "json")) ctx.out(JSON.stringify({ configPath }, null, 2));

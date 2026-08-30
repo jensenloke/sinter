@@ -328,14 +328,45 @@ describe("reduce", () => {
 });
 
 describe("actions", () => {
-  test("lists another instance of the same harness as an exact port target", () => {
+  test("labels the current instance and lists another instance as a new exact target", () => {
     const thread = buildThreads([{ ...ROWS[0]!, instanceId: "personal" }])[0]!;
     const instanceCaps: HarnessCaps[] = [
       { id: "claude", instanceId: "personal", available: true, canWrite: true, onPath: true },
       { id: "claude", instanceId: "work", available: true, canWrite: true, onPath: true },
     ];
-    const action = buildActions(thread, instanceCaps).find((item) => item.label === "port → back to claude@work");
+    const actions = buildActions(thread, instanceCaps);
+    expect(actions[0]).toMatchObject({
+      kind: "resume",
+      instanceId: "personal",
+      label: "resume in claude@personal",
+      command: expect.stringContaining("claude@personal:"),
+    });
+    const action = actions.find((item) => item.label === "port → claude@work");
     expect(action).toMatchObject({ harness: "claude", instanceId: "work", command: expect.stringContaining("--in claude@work") });
+  });
+
+  test("marks only an exact previously visited instance as a return target", () => {
+    const rows = [
+      { ...ROWS[0]!, nativeId: "personal-source", instanceId: "personal", updatedAt: "2026-08-15T08:00:00.000Z" },
+      { ...ROWS[0]!, nativeId: "work-tip", instanceId: "work", updatedAt: "2026-08-15T09:00:00.000Z" },
+    ];
+    const links = rows.map((item, hop) => ({
+      threadId: "instance-thread",
+      harness: item.harness,
+      instanceId: item.instanceId,
+      nativeId: item.nativeId,
+      hop,
+    }));
+    const thread = buildThreads(rows, links)[0]!;
+    const instanceCaps: HarnessCaps[] = [
+      { id: "claude", instanceId: "personal", available: true, canWrite: true, onPath: true },
+      { id: "claude", instanceId: "work", available: true, canWrite: true, onPath: true },
+      { id: "claude", instanceId: "addvita", available: true, canWrite: true, onPath: true },
+    ];
+    const labels = buildActions(thread, instanceCaps).map((item) => item.label);
+    expect(labels).toContain("resume in claude@work");
+    expect(labels).toContain("port → back to claude@personal");
+    expect(labels).toContain("port → claude@addvita");
   });
 
   test("unavailable targets stay listed with the reason", () => {

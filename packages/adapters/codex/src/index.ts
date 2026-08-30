@@ -1211,12 +1211,13 @@ export class CodexAdapter implements HarnessAdapter {
             }
 
             case "function_call": {
+              const rawArgs = String(p.arguments ?? "{}");
               let args: Record<string, unknown> | string;
               try {
-                const parsed = JSON.parse(String(p.arguments ?? "{}"));
-                args = parsed && typeof parsed === "object" ? parsed : { input: p.arguments };
+                const parsed = JSON.parse(rawArgs);
+                args = parsed && typeof parsed === "object" ? parsed : rawArgs;
               } catch {
-                args = { input: String(p.arguments ?? "") };
+                args = rawArgs;
               }
               toolCall(
                 line,
@@ -1229,13 +1230,7 @@ export class CodexAdapter implements HarnessAdapter {
             }
 
             case "custom_tool_call": {
-              let args: Record<string, unknown> | string;
-              try {
-                const parsed = JSON.parse(String(p.input ?? ""));
-                args = parsed && typeof parsed === "object" ? parsed : { input: p.input };
-              } catch {
-                args = { input: String(p.input ?? "") };
-              }
+              const args = String(p.input ?? "");
               toolCall(
                 line,
                 ts,

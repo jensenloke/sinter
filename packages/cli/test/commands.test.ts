@@ -1251,7 +1251,7 @@ describe("dispatch", () => {
     expect(h.out()).toContain("usage: sinter [command]");
     h.stdout.length = 0;
     expect(await run(["--version"], h.ctx)).toBe(0);
-    expect(h.out()).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(h.out()).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
   });
 
   test("per-command --help", async () => {
