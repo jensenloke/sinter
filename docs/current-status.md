@@ -21,6 +21,8 @@ operations.
 
 - Working branch: `feat/repository-binding-v2-public`, based directly on the
   already-public `origin/feat/multi-instance-lan` commit `dd46ad1`.
+- Cloud-free implementation commit `8c4bfae` is pushed and the branch tracks
+  `origin/feat/repository-binding-v2-public`.
 - The branch contains no private Cloud ancestry. It ports only repository-bound
   direct transfer, Cloud-free packaging gates, tests, and public documentation.
 - GitHub repository `jensenloke/sinter` is public. Never push the local private
@@ -249,8 +251,8 @@ bunx @jensenloke/sinter@0.3.1 --version
 
 ## Recommended next actions
 
-1. Review the Cloud-free branch diff and package inventory, then push only
-   `feat/repository-binding-v2-public` to the public origin.
+1. Review pushed commit `8c4bfae` and this evidence update. Do not open or merge
+   a PR until the public base ordering and human review plan are agreed.
 2. Keep the package private and unpublished. Before any npm release, complete a
    hash-matched physical MacBook/Mac Mini transfer from this exact public branch,
    obtain human privacy/security review, merge its public base, and rerun the
