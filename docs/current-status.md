@@ -18,8 +18,10 @@ operations.
 
 ## Git state at handoff
 
-- Working branch: local `release/v0.4.1-terminal`, based directly on the
-  already-public `origin/feat/multi-instance-lan` commit `dd46ad1`.
+- Working branch: `release/v0.4.1-terminal`, based directly on the already-public
+  `origin/feat/multi-instance-lan` commit `dd46ad1`.
+- Candidate commit `8e9c4bd` is pushed and the branch tracks
+  `origin/release/v0.4.1-terminal`.
 - It ports only public-safe terminal improvements: explicit self-update, safe
   Claude shell-alias discovery, exact TUI instance actions, and readable Codex
   tool input.
@@ -242,10 +244,9 @@ bunx @jensenloke/sinter@0.3.1 --version
 
 ## Recommended next actions
 
-1. Complete the full release-candidate gate, inspect the exact tarball, and
-   independently verify that source, history, and built output are Cloud-free.
-2. Commit and push `release/v0.4.1-terminal` for review; do not publish the
-   `0.4.1-rc.0` package.
+1. Review the completed release-candidate gate, exact tarball inventory, and
+   independent Cloud-free assessment.
+2. Review pushed candidate `8e9c4bd`; do not publish the `0.4.1-rc.0` package.
 3. Merge the required public base and candidate through normal review so stable
    publication can occur from clean `main`, as required by the guard.
 4. After explicit final npm approval, convert package/runtime to stable `0.4.1`,
