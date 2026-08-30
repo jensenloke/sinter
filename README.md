@@ -23,9 +23,9 @@ sinter --help
 
 Interactive runs check npm at most once per day and offer to install a newer release. Use `--no-update-check` or set `SINTER_NO_UPDATE_CHECK=1` to disable this; scripts, CI, and non-interactive output never prompt.
 
-npm `latest` remains `0.4.0`. This branch prepares a private Cloud-free
-`0.4.1-rc.0` terminal maintenance candidate; it is not published. See the
-[v0.4.1 release notes](docs/releases/v0.4.1.md) for candidate scope.
+npm `latest` remains `0.4.0` until the verified Cloud-free `0.4.1` terminal
+maintenance release is tagged and published from `main`. See the
+[v0.4.1 release notes](docs/releases/v0.4.1.md) for release scope.
 
 ## Quick start
 
