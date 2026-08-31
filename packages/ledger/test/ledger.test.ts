@@ -1,11 +1,68 @@
 import { describe, expect, test } from "bun:test";
 import { chmodSync, statSync } from "node:fs";
+import { capsuleReplayKey } from "@sinter/core";
 import { Ledger } from "../src/index";
 import { MockAdapter, summary } from "./mock-adapter";
 
 function ledger(): Ledger {
   return new Ledger(":memory:");
 }
+
+function replayKey(suffix = "0"): string {
+  return capsuleReplayKey({
+    header: { capsuleId: Buffer.alloc(16, Number(suffix)).toString("base64url") },
+    manifest: { ciphertextSha256: "b".repeat(64) },
+    payload: { ciphertextSha256: "c".repeat(64) },
+  } as never, "a".repeat(64));
+}
+
+describe("capsule replay", () => {
+  test("atomically rejects duplicates and persists acceptance across reopen", async () => {
+    const dir = `/tmp/sinter-capsule-replay-${Bun.randomUUIDv7()}`;
+    const path = `${dir}/ledger.db`;
+    await Bun.$`mkdir -p ${dir}`.quiet();
+    const first = new Ledger(path);
+    const second = new Ledger(path);
+    expect(first.acceptCapsuleReplay(replayKey())).toBe(true);
+    expect(second.acceptCapsuleReplay(replayKey())).toBe(false);
+    expect((first.db.query("SELECT count(*) AS count FROM capsule_replays").get() as { count: number }).count).toBe(1);
+    first.close();
+    second.close();
+
+    const reopened = new Ledger(path);
+    expect(reopened.acceptCapsuleReplay(replayKey())).toBe(false);
+    expect(reopened.acceptCapsuleReplay(replayKey("1"))).toBe(true);
+    reopened.close();
+    await Bun.$`rm -rf ${dir}`.quiet();
+  });
+
+  test("releases one valid claim exactly once", () => {
+    const l = ledger();
+    const key = replayKey();
+    expect(l.acceptCapsuleReplay(key)).toBe(true);
+    expect(l.releaseCapsuleReplay(key)).toBe(true);
+    expect(l.releaseCapsuleReplay(key)).toBe(false);
+    expect(l.acceptCapsuleReplay(key)).toBe(true);
+    l.close();
+  });
+
+  test("rejects malformed, noncanonical, and oversized replay keys without mutation", () => {
+    const l = ledger();
+    for (const value of [
+      "",
+      replayKey().toUpperCase(),
+      `${"a".repeat(64)}:${"_".repeat(22)}:${"b".repeat(64)}:${"c".repeat(64)}`,
+      `${replayKey()}:extra`,
+      "x".repeat(218),
+      null,
+    ]) {
+      expect(() => l.acceptCapsuleReplay(value as never)).toThrow(/malformed|oversized/);
+      expect(() => l.releaseCapsuleReplay(value as never)).toThrow(/malformed|oversized/);
+    }
+    expect((l.db.query("SELECT count(*) AS count FROM capsule_replays").get() as { count: number }).count).toBe(0);
+    l.close();
+  });
+});
 
 describe("upsert", () => {
   test("inserts, then reports unchanged, then updated", () => {

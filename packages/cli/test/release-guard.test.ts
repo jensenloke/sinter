@@ -8,30 +8,30 @@ function releasable(overrides: Partial<PublishGuardState> = {}): PublishGuardSta
     approved: true,
     branch: "main",
     clean: true,
-    tags: ["v0.4.1"],
-    version: "0.4.1",
-    runtimeVersion: "0.4.1",
+    tags: ["v0.5.0"],
+    version: "0.5.0",
+    runtimeVersion: "0.5.0",
     registry: "absent",
     ...overrides,
   };
 }
 
 describe("release publication guard", () => {
-  test("keeps source, package, and stable release state aligned", () => {
+  test("keeps source, package, and development publication state aligned", () => {
     expect(VERSION).toBe(pkg.version);
-    expect(pkg.version).toBe("0.4.1");
-    expect("private" in pkg).toBe(false);
-    expect(pkg.publishConfig).toEqual({ access: "public", tag: "latest" });
+    expect(pkg.version).toBe("0.5.0-dev.0");
+    expect(pkg.private).toBe(true);
+    expect(pkg.publishConfig).toEqual({ tag: "next" });
   });
 
   test("permits only an explicitly approved clean tagged stable main build absent from npm", () => {
     expect(publishGuardFailure(releasable())).toBeUndefined();
     expect(publishGuardFailure(releasable({ approved: false }))).toContain("SINTER_RELEASE_APPROVED=1");
-    expect(publishGuardFailure(releasable({ branch: "release/v0.4.1-terminal" }))).toContain("only from main");
+    expect(publishGuardFailure(releasable({ branch: "feat/repository-binding-v2" }))).toContain("only from main");
     expect(publishGuardFailure(releasable({ clean: false }))).toContain("clean worktree");
-    expect(publishGuardFailure(releasable({ runtimeVersion: "0.4.2" }))).toContain("versions do not match");
-    expect(publishGuardFailure(releasable({ version: "0.4.1-rc.0", runtimeVersion: "0.4.1-rc.0", tags: ["v0.4.1-rc.0"] }))).toContain("development versions");
-    expect(publishGuardFailure(releasable({ tags: [] }))).toContain("exact v0.4.1 tag");
+    expect(publishGuardFailure(releasable({ runtimeVersion: "0.5.1" }))).toContain("versions do not match");
+    expect(publishGuardFailure(releasable({ version: "0.5.0-dev.0", runtimeVersion: "0.5.0-dev.0", tags: ["v0.5.0-dev.0"] }))).toContain("development versions");
+    expect(publishGuardFailure(releasable({ tags: [] }))).toContain("exact v0.5.0 tag");
     expect(publishGuardFailure(releasable({ registry: "present" }))).toContain("already published");
     expect(publishGuardFailure(releasable({ registry: "unavailable" }))).toContain("could not be verified");
   });

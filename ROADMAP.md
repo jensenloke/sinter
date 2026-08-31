@@ -152,10 +152,15 @@ The first local-first slice is implemented: `sinter receive` creates a short-
 lived, one-use encrypted locator and `sinter send` connects directly over LAN
 or Tailscale. An authenticated success receipt is returned only after the
 receiver validates, approves, and imports the context into an exact named
-harness instance. It requires no account, SSH daemon, relay, or discovery
-service. Context transfer intentionally excludes workspace files and secrets.
+harness instance. The `0.5.0-dev.0` development path additionally binds a
+sanitized source repository identity to an explicitly selected target checkout,
+rejects legacy unbound payloads, and rewrites the imported session to a
+target-local monorepo directory without mutating Git or workspace files. It
+requires no account, SSH daemon, relay, or discovery service. Context transfer
+intentionally excludes workspace files and secrets.
 
-Next steps are device identity, optional discovery, durable inbox semantics,
+The physical synthetic repository-bound transfer matrix passed. Next steps are
+human privacy/security review, optional discovery, durable inbox semantics,
 revocation, and a relay for devices that cannot connect directly.
 
 Introduce accounts only when they solve a concrete transport problem:
@@ -176,12 +181,21 @@ transfers remain distinct.
 
 ## Phase 3: Sinter Cloud
 
-Build the relay into a zero-knowledge personal session library:
+The implementation inventory, Vercel/Supabase architecture, security gates,
+data model, deployment ladder, and monetization checkpoints are tracked in
+[docs/sinter-cloud-inventory.md](docs/sinter-cloud-inventory.md).
 
-- encrypted sync and backup across registered devices;
+The local `0.5.0-dev.0` owner-only MVP now implements encrypted push/list/
+inspect/pull/delete across registered devices, private ciphertext Storage,
+signed device requests, durable replay, atomic quotas, retryable cleanup,
+permanent deletion, and repository-bound restore. The hosted migration and real
+upload gate remain off until explicit deployment approval and physical testing.
+
+Continue the zero-knowledge personal session library with:
+
+- physical owner-only sync verification across registered devices;
 - cross-device search, thread lineage, and version history;
-- a Sinter Inbox and “continue on another device” workflow;
-- explicit retention and permanent deletion controls;
+- a richer Sinter Inbox and “continue on another device” workflow;
 - recovery design that does not give the service transcript access.
 
 The open-source CLI remains fully useful without a cloud account. Personal

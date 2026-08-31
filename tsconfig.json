@@ -12,5 +12,6 @@
       "@sinter/core/*": ["./packages/core/src/*"]
     }
   },
-  "include": ["packages"]
+  "include": ["packages"],
+  "exclude": ["packages/cloud"]
 }

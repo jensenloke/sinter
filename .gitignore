@@ -1,5 +1,9 @@
 node_modules/
+.env
+.env.*
+!.env.example
 packages/cli/dist/
 *.db-wal
 *.db-shm
 .DS_Store
+.vercel

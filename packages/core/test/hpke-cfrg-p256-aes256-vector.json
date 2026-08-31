@@ -1,0 +1,25 @@
+{
+  "provenance": {
+    "kind": "cfrg-published",
+    "standard": "RFC 9180 final CFRG test vectors",
+    "source": "https://github.com/cfrg/draft-irtf-cfrg-hpke/blob/5f503c564da00b0687b3de75f1dfbdfc4079ad31/test-vectors.json",
+    "sourceSha256": "61fc662f01996cd06d713dacf5e133167bd309a1f329442d53f1e21a47b3ede6",
+    "note": "Authoritative base-mode P-256/HKDF-SHA256/AES-256-GCM vector selected from the final CFRG JSON cited by RFC 9180; this is the exact Sinter HPKE suite."
+  },
+  "mode": 0,
+  "kemId": 16,
+  "kdfId": 1,
+  "aeadId": 2,
+  "info": "4f6465206f6e2061204772656369616e2055726e",
+  "ikmR": "a0ce15d49e28bd47a18a97e147582d814b08cbe00109fed5ec27d1b4e9f6f5e3",
+  "ikmE": "a90d3417c3da9cb6c6ae19b4b5dd6cc9529a4cc24efb7ae0ace1f31887a8cd6c",
+  "publicKey": "04abc7e49a4c6b3566d77d0304addc6ed0e98512ffccf505e6a8e3eb25c685136f853148544876de76c0f2ef99cdc3a05ccf5ded7860c7c021238f9e2073d2356c",
+  "privateKey": "317f915db7bc629c48fe765587897e01e282d3e8445f79f27f65d031a88082b2",
+  "encapsulation": "04c06b4f6bebc7bb495cb797ab753f911aff80aefb86fd8b6fcc35525f3ab5f03e0b21bd31a86c6048af3cb2d98e0d3bf01da5cc4c39ff5370d331a4f1f7d5a4e0",
+  "aad": "436f756e742d30",
+  "plaintext": "4265617574792069732074727574682c20747275746820626561757479",
+  "ciphertext": "58c61a45059d0c5704560e9d88b564a8b63f1364b8d1fcb3c4c6ddc1d291742465e902cd216f8908da49f8f96f",
+  "exporterContext": "",
+  "exporterLength": 32,
+  "exportedValue": "7a4c2b89e1909fb0e3ca42d5040f4c2d8346dc0643d787b8474e804f8f72798e"
+}

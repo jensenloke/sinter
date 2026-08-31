@@ -16,15 +16,19 @@ import {
   cmdCompletion,
   cmdCompare,
   cmdCapabilities,
+  cmdCloud,
   cmdConfig,
   cmdDoctor,
+  cmdDevices,
   cmdExport,
   cmdFeedback,
   cmdGhosts,
   cmdGui,
   cmdImport,
   cmdLast,
+  cmdLogin,
   cmdLs,
+  cmdLogout,
   cmdMenu,
   cmdNote,
   cmdPin,
@@ -50,6 +54,7 @@ import {
   cmdUntag,
   cmdView,
   cmdWatch,
+  cmdWhoami,
   type Ctx,
 } from "./commands";
 import { colorEnabled, palette, termWidth } from "./format";
@@ -57,13 +62,14 @@ import { canRunMenu } from "./tui/menu";
 import { cmdUpdate, maybePromptForUpdate } from "./update";
 import { trackTelemetry, type TelemetryEvent } from "./telemetry";
 
-export const VERSION = "0.4.1";
+export const VERSION = "0.5.0-dev.0";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
-const AUTO_SCAN_SKIP = new Set(["scan", "watch", "setup", "doctor", "capabilities", "ghosts", "tags", "privacy", "feedback", "telemetry", "completion", "config", "update"]);
+const AUTO_SCAN_SKIP = new Set(["scan", "watch", "setup", "doctor", "capabilities", "ghosts", "tags", "privacy", "feedback", "telemetry", "completion", "config", "login", "whoami", "logout", "devices", "update"]);
 
 function skipsAutoScan(command: string, argv: string[]): boolean {
   if (AUTO_SCAN_SKIP.has(command)) return true;
+  if (command === "cloud") return (argv[0] ?? "list") !== "push";
   // Saved-view definitions are ledger metadata; only executing a view needs fresh sessions.
   return command === "view" && (argv[0] ?? "list") !== "run";
 }
@@ -102,6 +108,11 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   compare: cmdCompare,
   capabilities: cmdCapabilities,
   config: cmdConfig,
+  cloud: cmdCloud,
+  devices: cmdDevices,
+  login: cmdLogin,
+  whoami: cmdWhoami,
+  logout: cmdLogout,
   scan: cmdScan,
   ls: cmdLs,
   list: cmdLs,
@@ -182,7 +193,8 @@ move and continue
   port <id-prefix> --to <harness> [...]  create a new target-native session
   resume <id-prefix> [--in <harness>] [--exec]
                                          print (or run) the native resume command
-  receive --to <harness@instance> [...]  accept one encrypted LAN/Tailscale transfer
+  receive --to <harness@instance> --cwd <repository-root>
+                                         accept one repository-bound encrypted transfer
   send <id-prefix> --to <locator> [...]  send encrypted context to that receiver
 
 setup and maintenance
@@ -195,6 +207,21 @@ setup and maintenance
   capabilities [--harness x] [--json]   show adapter read, write, and resume support
   ghosts [preview|prune] [...]          preview or prune disposable ghost rows
   relink [--harness x] [--limit n]       rebuild thread lineage from target stores
+
+cloud account (optional)
+  login [--no-open] [--timeout 10m]      approve this CLI through Auth0 device login
+  whoami [--json]                        verify and print the current Cloud identity
+  logout [--json]                        revoke and remove this device's Cloud login
+  devices register [--name name] [--no-wait] [--timeout 5m]
+                                         register and wait for device approval
+  devices list|pending [--json]          list devices or enrollment requests
+  devices rename|revoke|approve ...      manage Cloud device identity
+  devices capsule-test create|open ...   verify a synthetic-only local capsule file
+  cloud push <id-prefix> [--mode ...]    encrypt and retain a session capsule (default compact)
+  cloud list|inspect [...]               list metadata or decrypt one capsule locally
+  cloud pull <id> --to <harness@instance> --cwd <repository-root>
+                                         restore into one repository-bound target
+  cloud delete <id> [--yes]              permanently delete a retained capsule
 
 support and interfaces
   privacy                                explain local storage and support limits
@@ -289,13 +316,23 @@ const COMMAND_HELP: Record<string, string> = {
   import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",
   port: "usage: sinter port <harness[@instance]:id> --to <harness[@instance]> [--mode full|slim|compact] [--preview [--json]] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source. Use qualified IDs when a harness has multiple instances.\n--preview reports target readiness and transfer impact without invoking the target writer.\n--dry-run asks the target writer to validate and describe its planned native output.\nHistorical tool calls are inert unless --live-tools is explicit.",
   resume: "usage: sinter resume <harness[@instance]:id> [--in <harness[@instance]>] [--exec]\n\nPrints the native resume command to stdout. --exec hands this terminal to the exact target harness instance.",
-  send: "usage: sinter send <id-prefix> --to <sinter://transfer/...> [--mode compact|slim|full] [--preview] [--json]\n\nSends a one-use encrypted, context-only payload. The sender reports success only after the receiver accepts and imports it.",
-  receive: "usage: sinter receive --to <harness@instance> [--bind 0.0.0.0] [--advertise <LAN-or-Tailscale-IP>] [--port n] [--ttl 5m] [--cwd dir] [--yes]\n\nPrints a one-use locator, accepts one encrypted transfer, confirms it, and imports it into the exact target instance. Use --advertise with a Tailscale IP for tailnet transfer.",
+  send: "usage: sinter send <id-prefix> --to <sinter://transfer/...> [--mode compact|slim|full] [--repo-remote <name>] [--preview] [--json]\n\nSends a one-use encrypted, context-only v2 payload. Source repository identity is sanitized inside the encrypted payload; the source absolute working directory and raw Git URL are not transferred. If several hosted remotes remain possible and the session does not identify one, --repo-remote must select the intended Git remote by name. The sender reports success only after the receiver validates, accepts, and imports it.",
+  receive: "usage: sinter receive --to <harness@instance> --cwd <repository-root> [--bind 0.0.0.0] [--advertise <LAN-or-Tailscale-IP>] [--port n] [--ttl 5m] [--allow-repo-mismatch] [--allow-missing-commit] [--yes] [--json]\n\nAccepts only repository-bound direct-transfer v2 payloads and rejects legacy v1 session payloads. --cwd must explicitly select the target Git repository root. After decryption, Sinter compares sanitized remotes, verifies the source commit is present, validates the repository-relative subdirectory, reports dirty state, and shows a no-write preview before confirmation or import. It never fetches, checks out, resets, patches, or modifies repository files. A mismatch or missing commit requires its dedicated explicit override; --yes only skips the final receipt prompt and cannot bypass repository checks. --json emits one versioned listener record followed by one versioned completion record, with human preview details on stderr. Use --advertise with a Tailscale IP for tailnet transfer.",
   doctor: "usage: sinter doctor [--json|--report [-o file]]\n\nNormal output shows resolved local store paths. --json emits safe structured health. --report emits a reviewable support report that excludes paths, prompts, titles, session IDs, transcripts, and raw errors.",
   capabilities: "usage: sinter capabilities [--harness x] [--json]\n\nChecks adapter loading, local-store detection, write support, and native resume availability without reading transcripts or touching the ledger.",
   setup: "usage: sinter setup [--yes] [--no-menu]\n\nShows detected local stores. Interactive setup asks before scanning and opening the menu; --yes scans without opening it.",
   privacy: "usage: sinter privacy\n\nExplains local storage, profile limits, and harness support.",
   feedback: "usage: sinter feedback [--title text] [--no-open]\n\nOpens a prefilled GitHub issue with safe diagnostics only.",
+  login: "usage: sinter login [--no-open] [--timeout 10m] [--json]\n\nStarts an OAuth device authorization, opens Auth0 in the browser, prints the confirmation code for headless/SSH use, validates the returned Sinter Cloud identity, and stores rotating credentials in macOS Keychain (or an owner-only file when no native credential store is available). It does not upload sessions.",
+  whoami: "usage: sinter whoami [--json]\n\nRefreshes the Cloud session when needed and verifies the identity with Sinter Cloud. It never scans local sessions.",
+  logout: "usage: sinter logout [--json]\n\nRevokes the current Cloud session when reachable, then removes the local credential even if the network is unavailable.",
+  devices: "usage: sinter devices register [--name name] [--no-wait] [--timeout 5m] [--json]\n       sinter devices <list|rename|revoke|pending|approve> ...\n       sinter devices capsule-test create --output <new-file> [--json]\n       sinter devices capsule-test open --input <file> [--json]\n\nRegistration waits for an existing device to approve the enrollment, then saves the approved device ID automatically. --no-wait returns approval-required immediately for scripts. --timeout accepts 5s through 15m and never extends past the server expiry; without it, registration waits through the enrollment window. Progress is written to stderr, and --json writes one final versioned document to stdout. Ctrl+C stops waiting without removing the request or local keys.\n\nCapsule-test is an explicit account-only, synthetic-only local-file diagnostic. Create requires at least two current active initialized exact-suite registered devices, self-verifies decrypt and replay rejection, and writes a new owner-only file without overwriting. Open requires the local recipient and signed sender to remain active in the current registry and verifies the exact fixed fixture plus same-process replay rejection. It never scans sessions, reads the ledger or native stores, bootstraps config, includes transcript/workspace content, or transfers/uploads the file automatically. Copy the created file between approved devices yourself.\n\nPrivate P-256 keys remain in macOS Keychain (or a separate owner-only file on other platforms); only public JWKs are sent to Sinter Cloud. Safe output contains fingerprints, capsule/file metadata, and verification booleans—not keys, ciphertext, device names, emails, tokens, or decrypted fixture content. Device commands never scan local sessions or create profile configuration.",
+  cloud: "usage: sinter cloud <push|list|inspect|pull|delete> ...\n\nPush encrypts a repository-bound session-transfer v2 object to active registered devices before upload. List exposes only content-free server metadata. Inspect and pull download, hash-check, verify, and decrypt locally; inspect does not consume replay. Pull repeats repository checks before its exact-instance writer, and --yes never bypasses mismatch or missing-commit checks. Delete requires confirmation or --yes. Aliases: list=ls, delete=rm.",
+  "cloud:push": "usage: sinter cloud push <id-prefix> [--mode compact|slim|full] [--repo-remote <name>] [--to all|<device-id-or-fingerprint>] [--preview] [--json]\n\nReads the source store without modifying it, applies the existing repository-binding and metadata-stripping pipeline, encrypts to active exact-suite recipients, and uploads only after an exact reservation. --mode defaults to compact. --preview performs no capsule upload.",
+  "cloud:list": "usage: sinter cloud list [--json]\n\nLists sanitized retained-capsule metadata only. Alias: ls.",
+  "cloud:inspect": "usage: sinter cloud inspect <capsule-id> [--json]\n\nDownloads with an exact 24 MiB local budget, verifies metadata, sender signature, and local recipient, then decrypts locally without consuming replay.",
+  "cloud:pull": "usage: sinter cloud pull <capsule-id> --to <harness@instance> --cwd <repository-root> [--allow-repo-mismatch] [--allow-missing-commit] [--dry-run] [--yes] [--json]\n\nShows and repeats repository checks before any target writer or replay-ledger side effect. --dry-run does not consume replay. --yes skips only confirmation.",
+  "cloud:delete": "usage: sinter cloud delete <capsule-id> [--yes] [--json]\n\nPermanently deletes one capsule and requires final deleted state. Alias: rm.",
   telemetry: "usage: sinter telemetry [status|enable|disable] [--endpoint https://…]\n\nOpt-in anonymous active-use measurement. CI and non-interactive commands never emit events.",
   gui: "usage: sinter gui [--port n] [--no-open]\n\nRuns a token-protected workspace on 127.0.0.1; transcripts never leave this machine.",
   completion: "usage: sinter completion <zsh|bash|fish>\n\nPrints a native completion script to stdout; does not modify shell configuration.",
@@ -303,8 +340,10 @@ const COMMAND_HELP: Record<string, string> = {
   menu: "usage: sinter menu [--all] [--mode full|slim|compact]\n\nRequires an interactive terminal.",
 };
 
-function helpFor(command: string): string {
-  return `${COMMAND_HELP[command] ?? HELP.trimEnd()}\n\nGlobal flags: --profile <name>, --config <path>, --ledger <path>, --no-color, --no-scan, --no-update-check, -h/--help`;
+function helpFor(command: string, subcommand?: string): string {
+  const normalized = command === "cloud" && subcommand === "ls" ? "list" : command === "cloud" && subcommand === "rm" ? "delete" : subcommand;
+  const key = normalized ? `${command}:${normalized}` : command;
+  return `${COMMAND_HELP[key] ?? COMMAND_HELP[command] ?? HELP.trimEnd()}\n\nGlobal flags: --profile <name>, --config <path>, --ledger <path>, --no-color, --no-scan, --no-update-check, -h/--help`;
 }
 
 export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile?: SinterProfile } = {}): Ctx {
@@ -338,6 +377,11 @@ export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile
     sleep: overrides.sleep ?? Bun.sleep,
     update: overrides.update,
     shellDiscovery: overrides.shellDiscovery,
+    cloudAuth: overrides.cloudAuth,
+    cloudDevices: overrides.cloudDevices,
+    capsuleTest: overrides.capsuleTest,
+    cloudCapsules: overrides.cloudCapsules,
+    repositoryBinding: overrides.repositoryBinding,
   };
 }
 
@@ -360,7 +404,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       ctx.err(`unknown help topic: ${topic}\ntry: sinter help`);
       return EXIT.ERROR;
     }
-    ctx.out(topic ? helpFor(topic) : HELP.trimEnd());
+    ctx.out(topic ? helpFor(topic, rest[1]) : HELP.trimEnd());
     return EXIT.OK;
   }
   if (cmd === "--version" || cmd === "-v" || cmd === "version") {
@@ -378,7 +422,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     return EXIT.ERROR;
   }
   if (rest.includes("--help") || rest.includes("-h")) {
-    ctx.out(helpFor(cmd));
+    ctx.out(helpFor(cmd, rest[0]));
     return EXIT.OK;
   }
 
@@ -438,7 +482,9 @@ export async function main(
   const helpRequested = argv.includes("--help") || argv.includes("-h");
   const standalone =
     command !== undefined &&
-    (command === "update" || (command === "config" && argv[1] === "discover-shell"));
+    (["login", "whoami", "logout", "devices", "update"].includes(command) ||
+      (command === "cloud" && [undefined, "list", "ls", "inspect", "delete", "rm"].includes(argv[1])) ||
+      (command === "config" && argv[1] === "discover-shell"));
   const operational = (!command || Boolean(COMMANDS[command])) && !informational && !helpRequested && !standalone;
   let bootstrap: ReturnType<typeof bootstrapDefaultConfig> | undefined;
   try {

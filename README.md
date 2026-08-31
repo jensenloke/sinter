@@ -23,14 +23,15 @@ sinter --help
 
 Interactive runs check npm at most once per day and offer to install a newer release. Use `--no-update-check` or set `SINTER_NO_UPDATE_CHECK=1` to disable this; scripts, CI, and non-interactive output never prompt.
 
-npm `latest` is the verified Cloud-free `0.4.1` terminal maintenance release.
-See the [v0.4.1 release notes](docs/releases/v0.4.1.md) for release scope.
+npm `latest` is the Cloud-free terminal release `0.4.1`. Repository-bound direct
+transfer v2 and owner-only encrypted Cloud sync are available only from the
+private `0.5.0-dev.0` source/tarball on its development branch; normal npm/Bun
+installation does not install them yet. See the
+[v0.4.1 release notes](docs/releases/v0.4.1.md) for the latest published changes.
 
 ## Quick start
 
 ```sh
-sinter update --check
-sinter config discover-shell
 sinter scan
 sinter scan --json
 sinter ls --since 7d
@@ -56,21 +57,22 @@ sinter show <id-prefix> --tail 20       # render only the latest entries
 sinter port <id-prefix> --to codex --mode compact --preview
 sinter port <id-prefix> --to omp
 sinter resume <id-prefix> --in omp --exec
-sinter receive --to claude@work --advertise 100.64.0.12
+sinter receive --to claude@work --cwd ~/Code/project --advertise 100.64.0.12
 sinter send <id-prefix> --to 'sinter://transfer/v1?...'
+sinter login                    # optional Sinter Cloud browser login
+sinter whoami                   # verify the current Cloud identity
+sinter logout                   # revoke and remove this device's login
 sinter feedback
 sinter gui
 ```
 
-The `0.4.1` line is terminal-only. It intentionally excludes Cloud account,
-device, capsule, hosted application, and Storage functionality. Source and
-built-output gates enforce that boundary before packing or publication.
-
 Commands with `--json` or `--ndjson` keep stdout machine-readable and return
 errors on stderr using the versioned `sinter.error.v1` envelope. Transcript
 streams use `sinter.transcript.ndjson.v1`: session metadata first, then ordered
-entries, followed by linked nested sessions. Structural comparisons use
-`sinter.compare.v1` and never include transcript content.
+entries, followed by linked nested sessions. Direct receive emits a versioned
+listener record followed by a versioned completion record; preview tables remain
+on stderr. Structural comparisons use `sinter.compare.v1` and never include
+transcript content.
 
 Inspect the support Sinter can actually use on this machine without reading
 transcripts or opening the ledger:
@@ -180,16 +182,49 @@ Select exact stores with `claude@personal:<id>` and targets with
 instance. Requested results and machine data are written to stdout; notices
 and errors use stderr, and failures return a non-zero exit code.
 
+## Owner-only Cloud development
+
+Published `0.4.1` is terminal-only. The private `0.5.0-dev.0` build adds Cloud
+account, device, and encrypted session-capsule commands for owner-only testing:
+
+```sh
+sinter login
+sinter devices register --name "My Mac"
+sinter cloud push <id-prefix> --preview
+sinter cloud push <id-prefix>
+sinter cloud list
+sinter cloud inspect <capsule-id>
+sinter cloud pull <capsule-id> --to claude@work --cwd ~/Code/project
+sinter cloud delete <capsule-id>
+```
+
+The CLI reads the source session without modifying it, applies transfer mode and
+repository sanitization, encrypts locally to active registered devices, and
+uploads only ciphertext through a signed Storage reservation. List returns
+content-free metadata. Inspect and pull download, hash-check, verify the signed
+sender, and decrypt locally. Pull repeats repository checks before writing a new
+session into the exact target instance and records durable local replay.
+
+Every capsule API request also carries an ECDSA device proof over its exact
+method, path, body hash, timestamp, and nonce. The server enforces account/device
+ownership, active owner entitlement, atomic storage/session quotas, private
+Storage, retryable cleanup, and permanent deletion. The migration, owner-only
+enablement, and hash-matched physical sync matrix are complete. Public signup and
+non-owner entitlements remain disabled. The CLI remains fully useful without an
+account.
+
 ## Direct device transfer
 
-On the receiving device, create a one-use encrypted locator:
+In the `0.5.0-dev.0` source build, install the identical tarball on both devices.
+On the receiver, explicitly select the root of the target Git checkout and create
+a one-use encrypted locator:
 
 ```sh
 # LAN address is selected automatically when available
-sinter receive --to claude@claude-work
+sinter receive --to claude@claude-work --cwd ~/Code/project
 
 # Or advertise the device's Tailscale IP explicitly
-sinter receive --to claude@claude-work --advertise 100.64.0.12
+sinter receive --to claude@claude-work --cwd ~/Code/project --advertise 100.64.0.12
 ```
 
 Copy the printed `sinter://transfer/v1?...` locator to the sending device:
@@ -198,14 +233,28 @@ Copy the printed `sinter://transfer/v1?...` locator to the sending device:
 sinter send <id-prefix> --to 'sinter://transfer/v1?...'
 ```
 
-The capability in the locator encrypts and authenticates one transfer, expires
-after five minutes by default, and is never sent to the receiver as an HTTP
-credential. The sender reports success only after the receiver validates,
-confirms, and imports the session. Network payloads exclude raw adapter
-records, provider-private state, native store paths, and extra workspace
-directories. This transfers conversation context, not repository files or
-credentials. LAN and Tailscale use the same direct protocol; no SSH or cloud
-account is required.
+The locator and encrypted transport framing remain version 1; the encrypted
+session envelope is repository-bound version 2. The sender derives a sanitized
+remote identity, source commit, branch hint, and monorepo-relative directory
+from the local checkout. If several remotes remain possible, select one by name
+with `send --repo-remote <name>`.
+
+After decryption, the receiver compares sanitized remotes, checks that the
+source commit exists locally, validates the relative directory, reports dirty
+state, and shows a no-write preview before confirmation. Repository mismatches
+and missing commits fail closed unless their dedicated
+`--allow-repo-mismatch` or `--allow-missing-commit` option is explicit; `--yes`
+cannot bypass those checks. Legacy unbound session payloads are rejected.
+Sinter never fetches, checks out, resets, patches, or changes repository files.
+It rewrites the imported session to the target-local directory.
+
+The capability encrypts and authenticates one transfer, expires after five
+minutes by default, and is never sent to the receiver as an HTTP credential.
+Network payloads exclude the source absolute working directory, raw Git URL,
+raw adapter records, provider-private state, native store paths, and extra
+workspace directories. This transfers conversation context, not repository
+files or credentials. LAN and Tailscale use the same direct protocol; no SSH or
+Cloud account is required.
 
 ## Feedback
 

@@ -13,6 +13,29 @@ describe("shell completions", () => {
     expect(script).toContain("port");
     expect(script).toContain("compare");
     expect(script).toContain("feedback");
+    expect(script).toContain("login");
+    expect(script).toContain("whoami");
+    expect(script).toContain("logout");
+    expect(script).toContain("devices");
+    expect(script).toContain("cloud");
+    expect(script).toContain("push");
+    expect(script).toContain("inspect");
+    expect(script).toContain("pull");
+    expect(script).toContain("delete");
+    expect(script).toContain("dry-run");
+    expect(script).toContain("approve");
+    expect(script).toContain("capsule-test");
+    expect(script).toContain("create");
+    expect(script).toContain("open");
+    expect(script).toContain("output");
+    expect(script).toContain("input");
+    expect(script).toContain("no-wait");
+    expect(script).toContain("help");
+    expect(script).toContain("version");
+    expect(script).toContain("timeout");
+    expect(script).toContain("repo-remote");
+    expect(script).toContain("allow-repo-mismatch");
+    expect(script).toContain("allow-missing-commit");
     expect(script).toContain("gui");
     expect(script).toContain("recent");
     expect(script).toContain("watch");
@@ -44,6 +67,8 @@ describe("shell completions", () => {
   test("zsh output is a native compdef function", () => {
     expect(completionScript("zsh")).toStartWith("#compdef sinter");
     expect(completionScript("zsh")).toContain("compdef _sinter sinter");
+    expect(completionScript("zsh")).toContain("show command or topic help");
+    expect(completionScript("zsh")).toContain("print the CLI version");
   });
 
   test("bash output registers a completion function", () => {

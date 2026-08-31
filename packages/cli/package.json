@@ -1,6 +1,7 @@
 {
   "name": "@jensenloke/sinter",
-  "version": "0.4.1",
+  "private": true,
+  "version": "0.5.0-dev.0",
   "description": "Port and resume coding-agent sessions across harnesses.",
   "license": "Apache-2.0",
   "repository": {
@@ -10,8 +11,7 @@
   "homepage": "https://github.com/jensenloke/sinter#readme",
   "bugs": "https://github.com/jensenloke/sinter/issues",
   "publishConfig": {
-    "access": "public",
-    "tag": "latest"
+    "tag": "next"
   },
   "keywords": [
     "coding-agent",
@@ -45,7 +45,7 @@
   },
   "scripts": {
     "build": "bun run scripts/build.ts",
-    "prepack": "bun run scripts/verify-cloud-free.ts source && bun run build && bun run scripts/verify-cloud-free.ts dist",
-    "prepublishOnly": "bun run scripts/verify-cloud-free.ts source && bun run scripts/prepublish-guard.ts"
+    "prepack": "bun run build",
+    "prepublishOnly": "bun run scripts/prepublish-guard.ts"
   }
 }

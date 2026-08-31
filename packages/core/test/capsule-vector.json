@@ -1,0 +1,34 @@
+{
+  "provenance": {
+    "kind": "project-generated",
+    "scope": "stable unsigned input from one project-generated synthetic product capsule and one generated signature",
+    "generator": "@sinter/core createSyntheticCapsule",
+    "implementation": "@hpke/core@1.9.0 and WebCrypto",
+    "standard": "RFC 9180 plus Sinter capsule signature contract",
+    "suite": "P-256/HKDF-SHA256/AES-256-GCM",
+    "suiteIds": {
+      "mode": 0,
+      "kem": 16,
+      "kdf": 1,
+      "aead": 2
+    },
+    "signature": "ECDSA P-256 SHA-256 IEEE-P1363",
+    "note": "This is a project-generated AES-256 product fixture, not an RFC vector. Its unsigned signature input is pinned and its checked-in signature is verified rather than reproduced because production creation and ECDSA signing are intentionally nondeterministic."
+  },
+  "senderEncryptionPublicKey": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "HVLU3oCz3PH6d_9ZCcTXwL3CRN3JEhz7-hzOf1r7_js",
+    "y": "N7ZyWMB_jGEt260BvB_bE10KOeYNZGQLTfxrAOUZWFA"
+  },
+  "senderSigningPublicKey": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "S-dpWGnc_pn1jLVydE6LjlNZLNzKKqdoLSqMrEe72hM",
+    "y": "8Lc2YPRfk_pzc1mZxxye9F142g5mZxKs_GQPvamTnY8"
+  },
+  "senderFingerprint": "ea73cc1069a603cc7dbe9abe9b62e99db097c15175209701cdcbc635556ba5e5",
+  "signatureInputUtf8Base64Url": "eyJoZWFkZXIiOnsiY2Fwc3VsZUlkIjoiWjAxYkFBbndERm1iUzhuUnhFaHJqZyIsImNyZWF0ZWRBdCI6IjIwMjYtMDgtMjZUMDE6NTI6MjYuMjE2WiIsInNjaGVtYSI6InNpbnRlci5jYXBzdWxlLmhlYWRlci52MSIsInN1aXRlIjoiSFBLRS12MS1CYXNlLURIS0VNKFAtMjU2LEhLREYtU0hBMjU2KS1IS0RGLVNIQTI1Ni1BRVMtMjU2LUdDTSJ9LCJtYW5pZmVzdCI6eyJjaXBoZXJ0ZXh0Qnl0ZXMiOjQxMTIsImNpcGhlcnRleHRTaGEyNTYiOiJlZWIyYmU5ZmJiYzFlODk5NjYwZWFkNWUyZTRkMWY4Yjc0ODNkNDQzMDcxZTdmNmYyM2RmYjA5NTQxMTFlZGYzIiwia2luZCI6Im1hbmlmZXN0Iiwibm9uY2UiOiJwWHZGeEtPQWJmX3ZReGRKIiwic2NoZW1hIjoic2ludGVyLmNhcHN1bGUucGFydC52MSJ9LCJwYXlsb2FkIjp7ImNpcGhlcnRleHRCeXRlcyI6NDMyLCJjaXBoZXJ0ZXh0U2hhMjU2IjoiNjRkYzVhNWRlNTg5MTgwMDY3ZWEyNTNmOTNkYjgwNzk1MzVjZjcxNDVmZDkxM2UzYTEwNTM2ZWExZTE5MGEwYyIsImtpbmQiOiJwYXlsb2FkIiwibm9uY2UiOiJzWVVxamNBd2dRZE16RUdnIiwic2NoZW1hIjoic2ludGVyLmNhcHN1bGUucGFydC52MSJ9LCJyZWNpcGllbnRGaW5nZXJwcmludHMiOlsiYTI3OTc5MjE4MTc1MWI5MmE1NzMzN2FkNGRlNTgyYTQzOWNlOGRkNDc1ZjJjYjM1YmViMTg0ZjRkNTUyMzg2YiJdLCJzY2hlbWEiOiJzaW50ZXIuY2Fwc3VsZS5zaWduYXR1cmUtaW5wdXQudjEiLCJzZW5kZXIiOnsiZW5jcnlwdGlvblB1YmxpY0tleSI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6IkhWTFUzb0N6M1BINmRfOVpDY1RYd0wzQ1JOM0pFaHo3LWh6T2YxcjdfanMiLCJ5IjoiTjdaeVdNQl9qR0V0MjYwQnZCX2JFMTBLT2VZTlpHUUxUZnhyQU9VWldGQSJ9LCJmaW5nZXJwcmludCI6ImVhNzNjYzEwNjlhNjAzY2M3ZGJlOWFiZTliNjJlOTlkYjA5N2MxNTE3NTIwOTcwMWNkY2JjNjM1NTU2YmE1ZTUiLCJzY2hlbWEiOiJzaW50ZXIuY2Fwc3VsZS5zZW5kZXIudjEifX0",
+  "signatureInputSha256": "940f80f1bc90294ad170e626551abff5aa0fb0cd0fa0257f34331954fef79689",
+  "signature": "t7I97cB807B5OG3sXaiMNSU6CYxYI81FqSPzpPZF75L5FBOB-jt44NM1haJLodbvQfZfzJjxRTEfkYCrT-n0WQ"
+}

@@ -371,13 +371,15 @@ describe("additive schema migration", () => {
     l.setNote("claude", "old-0", "migration note");
     l.addTags("claude", "old-0", ["migration-tag"]);
     expect(l.get("claude", "old-0")).toMatchObject({ note: "migration note", tags: ["migration-tag"] });
+    const replayKey = `${"a".repeat(64)}:${Buffer.alloc(16).toString("base64url")}:${"b".repeat(64)}:${"c".repeat(64)}`;
+    expect(l.acceptCapsuleReplay(replayKey)).toBe(true);
 
     // version was recorded, not acted on
     const v = l.db.query("SELECT value FROM meta WHERE key = 'schema_version'").get() as {
       value: string;
     };
     expect(v.value).toBe(String(SCHEMA_VERSION));
-    expect(SCHEMA_VERSION).toBe(7);
+    expect(SCHEMA_VERSION).toBe(8);
 
     // reopening again is still non-destructive
     l.close();
@@ -388,6 +390,7 @@ describe("additive schema migration", () => {
     expect(l2.lineageCount()).toBe(2);
     expect(l2.getView("migration")?.name).toBe("migration");
     expect(l2.get("claude", "old-0")).toMatchObject({ note: "migration note", tags: ["migration-tag"] });
+    expect(l2.acceptCapsuleReplay(replayKey)).toBe(false);
     l2.close();
 
     await Bun.$`rm -rf ${dir}`.quiet();

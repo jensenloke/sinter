@@ -1,0 +1,8 @@
+.next/
+.vercel/
+.env
+.env.local
+.env.*.local
+*.tsbuildinfo
+.vercel
+.env*

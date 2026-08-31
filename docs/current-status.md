@@ -9,29 +9,282 @@ operations.
 
 ## Release state
 
-- Current CLI version: `0.4.1`.
-- npm package and `latest`: `@jensenloke/sinter@0.4.1`, publicly verified.
-- Published shasum: `4c944de67e826899e137c9a06aa571ea9e32d472`.
-- Release source commit: `4d51a11 release: prepare Cloud-free v0.4.1 (#28)`.
-- Annotated tag and public GitHub release: `v0.4.1`.
-- npm `0.4.1` is immutable and must never be republished. Any correction
-  requires a new version.
-- Release notes: [releases/v0.4.1.md](releases/v0.4.1.md).
+- Development CLI version on `feat/cloud-sync-v0.5-next`: `0.5.0-dev.0`.
+- Current published CLI and npm `latest`: `@jensenloke/sinter@0.4.1`.
+- Registry shasum `4c944de67e826899e137c9a06aa571ea9e32d472` matches the
+  published package; the public executable reports `0.4.1`.
+- Development notes: [releases/v0.5.0.md](releases/v0.5.0.md).
+- Published release notes: [releases/v0.4.1.md](releases/v0.4.1.md).
+- npm publication source: `4d51a11 release: prepare Cloud-free v0.4.1 (#28)`;
+  public `main` is `820d202` after its status update.
+- npm `0.4.1` is immutable. `0.5.0-dev.0` is a private implementation branch and
+  must not be tagged, deployed, or published until real encrypted sync, owner-only
+  authorization, local/adversarial tests, and physical two-device tests pass.
 
 ## Git state at handoff
 
-- PR #28 merged stable release metadata into `main` as `4d51a11`; macOS and
-  Ubuntu checks passed before merge.
-- Annotated tag `v0.4.1` points exactly to `4d51a11` and the matching public
-  GitHub release is published.
-- Earlier PR #26 merged the terminal-only candidate into its public base, and
-  PR #24 merged that base into `main`.
-- `main` contains explicit self-update, safe Claude shell-alias discovery,
-  exact TUI instance actions, readable Codex tool input, and direct transfer v1.
-- It contains no private Cloud ancestry, hosted application, Auth0 integration,
-  account/device/capsule commands, Supabase migrations, or Storage code.
-- Repository-bound direct-transfer v2 remains on
-  `feat/repository-binding-v2-public` for v0.5.0 testing.
+- The current working branch is `feat/cloud-sync-v0.5-next`, created from
+  integration checkpoint `ed8fc2f`. It tracks
+  `origin/feat/cloud-sync-v0.5-next`; the remote currently includes the owner-only
+  implementation and gate-off deployment handoff through `ce6be8a`.
+- The branch merged public `main` at `820d202`, preserving released terminal
+  features and connecting v0.5 to the open-source history without rewriting the
+  reviewed repository-binding commits.
+- Public PRs #24, #26, #27, #28, and #29 are merged. Public `main`, npm `latest`,
+  annotated tag, and GitHub release are synchronized at v0.4.1.
+- The v0.5 product scope is a public/open-source CLI and source tree with the
+  hosted service restricted to the owner's entitlement during testing. The
+  release requires encrypted push/list/inspect/pull/delete, durable replay,
+  atomic quotas, and repository-bound restore.
+- PR #25 remains open with its previous CI green, but GitHub mergeability must be
+  re-evaluated against the new public `main`. Preserve named-instance routing,
+  keep direct send modes concrete, and fix Devin UTF-8 byte-budget clipping/write
+  enforcement before considering it.
+- The sibling `sinter-public` checkout uses the same GitHub upstream and is clean
+  at public `main` `820d202`. Follow the public-clone parity protocol in
+  `AGENTS.md`; never copy private files into it blindly.
+- Published npm `0.4.1` is terminal-only and contains no Cloud commands. v0.5 is
+  the first planned public Cloud client, while the hosted service remains
+  owner-only during testing and the CLI remains useful without an account.
+- Cloud design history is documented in
+  [sinter-cloud-inventory.md](sinter-cloud-inventory.md).
+- Repository-bound direct transfer v2 binds an explicitly selected target
+  checkout to sanitized repository identity rather than a source absolute path.
+  Its design, mismatch policy, tests, and continuation guidance are in
+  [repository-binding-design.md](repository-binding-design.md).
+- The Cloud branch is ahead of `origin/docs/sinter-cloud-inventory` with
+  reviewed, unpushed commits. Phase 1 device identity and the metadata-only
+  control plane are deployed; the C2 local-only envelope remains disconnected
+  from transport.
+
+## Verified v0.4.1 candidate and physical test — keep unpublished
+
+- Candidate implementation commit: `84ca372 feat: add synthetic capsule
+  diagnostics`. The branch remains local and unpushed.
+- `4204cdf` is complete and reviewed locally: `devices register` now waits for
+  signed approval, auto-saves the approved device ID, supports bounded timeout/
+  Ctrl+C, and retains `--no-wait` for scripts. It is **not** in published npm
+  `0.4.0`.
+- The synthetic local-file capsule diagnostic is reviewed, corrected, fully
+  verified, and included in the unpublished candidate. `devices capsule-test
+  create` encrypts one fixed synthetic fixture for the active exact-suite device
+  registry, self-opens it, proves same-process replay rejection, and exclusively
+  creates a `0600` file without following or overwriting an existing path.
+  `devices capsule-test open` safely reads a bounded regular file, requires the
+  local recipient and signed sender to remain active, verifies the exact fixture,
+  and proves replay rejection. Neither operation scans native stores, opens the
+  ledger, bootstraps profile config, uploads data, or emits keys/ciphertext/
+  decrypted fixture content.
+- Focused verification passed 66 tests and 473 assertions. The full repository
+  passed 832 tests and 9,680 assertions, both TypeScript checks, CLI and Cloud
+  production builds, npm package inspection, isolated Bun/npm installs, built
+  device-help smoke testing, and `git diff --check`.
+- The identical packaged `0.4.1` candidate was installed into temporary prefixes
+  on the MacBook and Mac Mini. MacBook create and Mac Mini open reported the same
+  capsule ID and file SHA-256, two distinct registered device fingerprints, two
+  recipients, successful exact-fixture decryption, same-process replay rejection,
+  and exit code zero. The transferred capsule remained `0600`; no real session
+  content or Cloud Storage path was involved.
+- At parent-branch candidate commit `84ca372`, `packages/cli/package.json`, the
+  built CLI, and the physically tested candidate tarball reported `0.4.1`. The
+  current child branch now reports `0.5.0-dev.0`; this does not supersede or
+  republish the candidate. npm `0.4.0` remains immutable and `0.4.1` is not
+  published. Do not push, tag, release, or publish either line without explicit
+  maintainer approval.
+
+## Verified repository-bound direct transfer v2 — development only
+
+- The `0.5.0-dev.0` development CLI retains the version 1 locator, request
+  encryption, and authenticated receipt while moving session content into a
+  strict encrypted `sinter.session-transfer.v2` envelope with
+  `sinter.repository-binding.v1`.
+- The development package is `private: true`, uses the non-default `next`
+  publish tag, and has a `prepublishOnly` guard requiring explicit approval,
+  clean `main`, exact stable tag, package/runtime parity, and npm absence. Stable
+  release preparation must deliberately remove `private`, review scoped-package
+  public access, and change or remove the `next` tag.
+- Send derives sanitized hosted Git identities, commit, branch hint, and
+  monorepo-relative `cwd` from the actual source checkout. It strips source
+  absolute paths and raw Git metadata from the transferred SIF. Multiple source
+  identities require `--repo-remote <name>`.
+- Receive rejects legacy v1 session payloads and requires
+  `--cwd <repository-root>`. It compares exact sanitized remotes, checks commit
+  availability without network access, rejects unbound/non-Git targets, blocks
+  traversal and symlink escape, reports dirty state without modifying it, and
+  repeats semantic checks immediately before the adapter write.
+- Repository mismatch and missing-commit exceptions require separate
+  `--allow-repo-mismatch` and `--allow-missing-commit` options; `--yes` cannot
+  bypass them. Overrides remain visible in native and cached lineage provenance.
+- A real-Git encrypted loopback test proves the same repository at different
+  device paths rewrites every session `cwd` to the validated target-local
+  subdirectory before the exact `harness@instance` writer runs. Distinct
+  repositories with the same basename fail by remote identity, and all refusal
+  paths prove zero adapter writes.
+- A fully synthetic physical MacBook/Mac Mini matrix used hash-matched
+  `0.5.0-dev.0` tarballs, temporary Claude stores/ledgers, and temporary Git
+  checkouts only. Exact/dirty compact import passed; ambiguous source remotes
+  required explicit selection; missing-commit and mismatch cases refused before
+  import, then passed only with their dedicated slim/full overrides; lineage
+  retained both override modes; and a published `0.4.0` sender was rejected as
+  legacy v1. The final reviewed tarball SHA-256 was
+  `e07174dd90fedab060958fb8bfe988f1777ec25d02534ad91ea5ce9531787e4f`
+  on both devices and passed a second exact/dirty compact transfer with the
+  versioned `wrote: true` result. Four intended sessions were imported in total;
+  the dirty target marker/hash/status remained unchanged.
+- The full repository passed 851 tests and 9,898 assertions, both TypeScript
+  checks, CLI and Cloud production builds, isolated Bun/npm package rehearsal,
+  built help, and `git diff --check`. Independent adversarial review found no
+  remaining critical, high, or medium blockers.
+- That repository-binding checkpoint did not add Cloud upload or Storage. The
+  child v0.5 sync implementation below reuses its fail-closed restore boundary.
+
+## Encrypted Cloud sync MVP — implemented locally, undeployed
+
+- `sinter cloud push|list|inspect|pull|delete` is implemented for an owner-only
+  alpha. Push reads the source store without modifying it, applies compact/slim/
+  full transfer and repository sanitization, encrypts locally to active exact
+  registered devices, and uploads only the signed canonical capsule ciphertext.
+- Session capsules preserve the reviewed outer HPKE/AES-GCM/ECDSA envelope while
+  adding a distinct real `sinter.capsule.session-transfer.v1` payload containing
+  strict `sinter.session-transfer.v2`. Synthetic diagnostics remain backward
+  compatible and cannot be confused with real payloads.
+- Every capsule API request requires paired Auth0 tokens plus an ECDSA device
+  proof over exact method, path, body hash, timestamp, and a durable one-use
+  nonce. The Cloud service verifies the active account device and never receives
+  a private key or plaintext.
+- The new private Storage and metadata migration uses service-role-only atomic
+  reserve/finalize/delete/expiry RPCs, active owner entitlement, exact size and
+  server-computed SHA-256 verification, 16/64 MiB caps, storage/session quotas,
+  cross-account RLS, retryable two-stage cleanup, and permanent deletion even if
+  uploads are later disabled or the account is suspended.
+- List returns content-free routing metadata. Inspect and pull download with
+  bounded streaming, reject redirects and hash/size mismatch, verify the current
+  signed sender/recipient set, and decrypt locally. Inspect does not expose the
+  transcript or replay key. Pull repeats repository checks before an exact
+  instance write and records durable local replay; dry-run consumes no replay.
+- Admin upload entitlement can be enabled only while the exact global server
+  gate is on and after super-admin reauthorization, typed confirmation, and an
+  audit reason. Defaults remain off; no email/account heuristic enables anyone.
+- A secret-protected daily cleanup route processes retryable reservations and
+  expired request nonces even while uploads are disabled.
+- Local verification passes 934 tests and 10,457 assertions, 320 pgTAP database
+  assertions from a clean migration reset, both TypeScript checks, CLI and Cloud
+  production builds, Cloud-enabled package rehearsal, frozen lockfile, and
+  `git diff --check`. Two independent post-fix reviews found no remaining
+  critical, high, or medium blocker for owner-only alpha.
+- The `0.5.0-dev.0` tarball contains 24 files limited to the CLI bundle, README,
+  license, and package metadata; it excludes the hosted app, SQL migrations, and
+  server secrets. The physically tested package SHA-256 is
+  `c3c9c4b41756f9beaa6ba1813cb7e8322f7e9674e576daf088921fc78dd9b91d`.
+- Migration `20260826050000` is applied to hosted development and the Cloud app,
+  capsule APIs, admin gate, and cleanup cron are deployed to Vercel production.
+  The first deploy failed before promotion because Vercel could not resolve a
+  workspace-only proof dependency; `33a9b8c` restored a pinned standalone server
+  contract and the retry succeeded. Hosted migration parity, private 64 MiB
+  bucket, one account/two devices, zero capsules/recipients/nonces, and zero
+  enabled upload entitlements were verified without exposing identifiers.
+- Gate-off production verification passed before enablement: list returned a
+  sanitized unavailable response, deletion still required auth/device proof, and
+  cron rejected missing authorization. The global gate was then enabled and the
+  audited entitlement RPC enabled exactly the sole active unmetered super-admin;
+  no other account is enabled and public signup remains closed.
+- A hash-matched physical MacBook/Mac Mini test used only temporary Git, Claude,
+  config, ledger, and synthetic session fixtures. Push retained a 9,004-byte
+  capsule for both devices; list/inspect leaked no content/path; Mac Mini dry-run
+  wrote nothing/consumed no replay; real pull imported one exact-instance session
+  at the target-local monorepo path; replay made no second write; and the dirty
+  target marker/hash/status remained unchanged.
+- Permanent deletion removed the retained Storage object and quota. The failed
+  pre-fix reservation then passed the two-stage expiry/finalization cleanup path.
+  Hosted state ended with zero reserved/retained capsules, zero Storage objects,
+  zero usage counters, one enabled owner, and zero other enabled accounts. No
+  personal or pre-existing session was read or uploaded.
+
+## Cloud development foundation
+
+- The responsive Next.js development portal is live at
+  `https://sinter-cloud.vercel.app` on a Vercel Hobby project. Its authenticated
+  dashboard exposes real overview, account, security, and device states while
+  unavailable product surfaces remain clearly disabled.
+- One free Supabase development project runs in Singapore. It uses the
+  publishable-key model, and legacy JWT API keys are disabled.
+- Auth0 owns web and CLI authentication. Cloud is existing-members-only during
+  private alpha: database signup is disabled; a Sinter-client-scoped Action
+  denies users without JSON `sinter_cloud_access: true`; then a second scoped
+  Action adds `role=authenticated` to ID tokens. The one owner is allowlisted.
+  The web app uses authorization code and the CLI uses device authorization,
+  both with rotating refresh tokens and RS256.
+- Hosted Supabase trusts the canonical Auth0 tenant through a manually created
+  Third-Party Auth connection. Supabase CLI 2.115.0 ignores
+  `[auth.third_party.auth0]` during `config push`, so the local block documents
+  local development but does not create the hosted connection.
+- The provider-neutral `profiles`, `account_identities`, and `devices` model is
+  applied to hosted development. `claim_account()` now returns an existing
+  identity or links one verified provider to an existing active profile; it has
+  no profile-creation path, members cannot rewrite linking emails, and denied
+  claims leave all control/device counts unchanged. Hosted profiles,
+  identities, and devices remain exactly 1/1/2.
+- `/api/health` reports configuration state without exposing credentials.
+- A free daily Vercel cron invokes secret-protected retryable capsule-reservation
+  cleanup and expired request-nonce removal. It processes only encrypted-object
+  metadata/usage, never transcript plaintext, and also supplies database activity
+  without being an uptime guarantee.
+- Realtime, Edge Runtime, Analytics, billing, and cloud agent execution remain
+  absent. Owner-only encrypted capsule Storage is now enabled and physically
+  verified; current retained/reserved Storage and usage are zero.
+- The `0.4.0` development CLI adds Auth0 device-code `sinter login`, verified
+  `whoami`, rotating refresh, and revoking `logout`. macOS stores the credential
+  in Keychain; other platforms currently use an owner-only file. A real Google
+  login and refresh completed successfully. These account commands do not scan
+  sessions, create profile configuration, or enable uploads.
+- `sinter update` now checks or installs an exact published npm version through
+  an evidence-detected Bun/npm global layout, never downgrades without `--force`,
+  and has check-only/JSON modes. Both local global 0.4.0 installs contain it; a
+  live check correctly refused npm's older 0.3.1. Multi-instance TUI actions
+  show each user's dynamic `harness@instance` names. Opt-in `sinter config
+  discover-shell` safely previews simple Claude aliases and emits mergeable
+  TOML; it never runs during normal startup and never overwrites existing
+  config. The locally reported instance was healthy; only its label was
+  ambiguous.
+- Phase 1 device identity is deployed: paired Auth0 token verification,
+  separate P-256 encryption/signing keys, Keychain or owner-only private-key
+  custody, first-device bootstrap, signed approval for subsequent devices,
+  immutable fingerprints, distinct encryption/signing points across CLI/API/DB,
+  list/rename/revoke/pending/approve commands, service-only registration RPCs,
+  RLS, and portal inventory. MacBook and Mac Mini are both active; the Mac Mini
+  was admitted by the MacBook's signed approval and no enrollment is pending.
+  Revocation is irreversible;
+  after all devices are lost or revoked there is intentionally no recovery.
+- C2 began as a hardened synthetic-only capsule: RFC 9180 HPKE wraps a random
+  content key; AES-256-GCM separately encrypts a fixed padded manifest and
+  payload; an expected device sender signs the header, part metadata, and exact
+  recipient set. Exact P-256/AES-256 and neighboring CFRG vectors pass, and the
+  synthetic capsule passed across the MacBook and Mac Mini. The local v0.5 work
+  extends that unchanged outer envelope with a separately typed real-session
+  payload, durable replay, signed Cloud requests, private Storage, and atomic
+  lifecycle controls; hosted real data remains disabled pending deployment and
+  physical owner-only testing.
+- The metadata-only control plane is deployed: default disabled/zero development
+  entitlements, own quota/usage RLS, unmetered owner semantics with retained
+  safety caps, service-only first-admin/role/entitlement RPCs, immutable
+  content-free audit events, and a cryptographically protected `/admin` portal.
+  The sole owner role remains present and the owner-only upload change is audited.
+  The v0.5 admin path permits enablement only while the exact global gate is on
+  and after reauthorization, confirmation, and audit reason; role management
+  stays service-only and no session content enters the portal.
+- The Cloud UI uses an original five-cell sintered-mineral mark with transparent
+  512, 192, and 32 px assets. The raster concept should be traced and optically
+  refined before final trademark use.
+- Earlier foundation verification: 832 tests, 9,680 assertions, 217 database
+  policy assertions, schema lint, both TypeScript checks, both production builds,
+  npm package inspection, isolated Bun/npm installs, authoritative RFC HPKE
+  interoperability, and independent adversarial device/capsule/admin reviews.
+  Hosted migrations/deployments, unauthenticated rejection, credential refresh,
+  first-device bootstrap, list, empty enrollment, one-time owner bootstrap,
+  own-entitlement RLS, and authenticated admin-route checks completed
+  successfully with real uploads disabled at that checkpoint.
+- Linked-provider state and `.env` files are ignored. The database password is
+  held in the maintainer machine's credential store, not in the repository.
 
 Before continuing, run:
 
@@ -46,31 +299,6 @@ npm view @jensenloke/sinter version dist-tags --json
 
 Do not infer that npm publication means GitHub was updated; these are separate
 release operations.
-
-## v0.4.1 terminal-only release
-
-- `sinter update --check` compares strict semantic versions without installing;
-  explicit update resolves Bun/npm ownership, uses exact argv without a shell,
-  installs an exact version, and verifies the resolved executable afterward.
-- `sinter config discover-shell` is explicit and opt-in. It executes a validated
-  zsh/bash login shell only to list aliases, suppresses raw output, accepts only
-  conservative `CLAUDE_CONFIG_DIR=<path> claude` shapes, and never overwrites
-  existing config.
-- TUI resume and port actions use exact harness instances.
-- Codex custom tool input remains readable across supported transfers.
-- Direct-transfer protocol and receiver behavior remain compatible with v0.4.0;
-  repository-bound v2 is deferred to v0.5.0.
-- Cloud-free source and built-package gates reject known private-alpha modules,
-  commands, API paths, identity markers, and hosted URLs before packing or
-  publication.
-- Publication additionally requires explicit approval, clean tagged stable
-  `main`, package/runtime version parity, and proof that npm v0.4.1 is absent.
-- The stable release passed 695 tests and 9,047 assertions, TypeScript,
-  production build, built-help Cloud exclusion, frozen lockfile, Cloud-free
-  source/dist checks, package inspection, isolated Bun/npm installs, and
-  `git diff --check`. The 23-file stable tarball contains only `dist`, package
-  metadata, README, and license; shasum
-  `4c944de67e826899e137c9a06aa571ea9e32d472`.
 
 ## Completed in v0.3.1
 
@@ -160,10 +388,10 @@ session into an exact target instance:
 
 ```sh
 # LAN: advertise a private address automatically when one is available
-sinter receive --to claude@addvita --profile all
+sinter receive --to claude@addvita --cwd <target-repository-root> --profile all
 
 # Tailscale: advertise the device's tailnet IP explicitly
-sinter receive --to claude@addvita --advertise <tailscale-ip> --profile all
+sinter receive --to claude@addvita --cwd <target-repository-root> --advertise <tailscale-ip> --profile all
 
 # On the sending device
 sinter send <id> --to 'sinter://transfer/v1?...' --profile all
@@ -182,10 +410,13 @@ Protocol properties:
   import complete;
 - LAN and Tailscale supported by address from day one; no SSH dependency.
 
-Network payloads remove raw adapter records, provider-private `preserve` state,
-native store paths, and additional workspace directories. Historical tools are
-inert on import. The feature moves conversation context only: it does not copy
-repository files, dirty changes, environment values, or credentials.
+The `0.5.0-dev.0` development payload additionally removes source absolute `cwd` and
+raw Git URLs, carries only a sanitized encrypted binding, requires an explicit
+target repository root, and rejects legacy unbound payloads. Network payloads
+remove raw adapter records, provider-private `preserve` state, native store paths,
+and additional workspace directories. Historical tools are inert on import. The
+feature moves conversation context only: it does not copy repository files,
+dirty changes, environment values, or credentials.
 
 Primary implementation locations:
 
@@ -207,46 +438,67 @@ The `v0.3.1` release passed:
 - same-harness/native-ID collision coverage;
 - encrypted loopback send/receive with import-before-receipt coverage.
 
-Run the complete gate with:
+Run the current v0.5 development gate with:
 
 ```sh
-bun run typecheck
+bun install --frozen-lockfile
 bun test
+bun run typecheck
+bun run typecheck:cloud
 bun run build:cli
+bun run build:cloud
 bun run verify:package
+bunx supabase start
+bunx supabase test db
+bunx supabase stop
 ```
 
-For a published-version check:
+For the published terminal release check:
 
 ```sh
 npm view @jensenloke/sinter version dist-tags --json
-bunx @jensenloke/sinter@0.3.1 --version
+bunx @jensenloke/sinter@0.4.1 --version
 ```
 
 ## Known boundaries
 
-- There is no automatic peer discovery; the receiver locator must be copied to
-  the sender.
+- There is no automatic peer discovery; direct-transfer locators must be copied
+  to the sender. Owner-only Cloud sync is the deployed asynchronous path.
 - Direct transfer requires network reachability and may be blocked by host or
-  network firewalls. Tailscale is transport reachability, not a separate Sinter
-  protocol.
-- This package contains no offline inbox, Cloud relay, account/device identity,
-  revocation service, capsule sync, Storage, or cross-device search.
-- Workspace files and Git dirty state are not transferred.
-- Automatic profile bootstrap currently recognizes Claude Code's standard
-  `.claude` / `.claude-*` directory convention. Other custom stores still use
-  explicit TOML configuration.
+  network firewalls. The `0.5.0-dev.0` receiver accepts only repository-bound v2
+  session payloads; both devices must run the same development build.
+- Hosted private Storage and owner-only uploads are enabled. Current retained/
+  reserved content and usage are zero after the physical test; public signup and
+  all non-owner entitlements remain disabled.
+- Cloud sync has no browser decryption, team sharing, public signup, recovery
+  escrow, or cross-account collaboration. Loss/revocation of every device key is
+  intentionally unrecoverable.
+- A process crash after local replay claim but before writer completion can leave
+  that capsule blocked on the device; target writer atomicity remains adapter-
+  specific. A failed writer that returns normally through the CLI releases its
+  claim for retry.
+- Finalize streams and hashes the full encrypted object through the Node runtime;
+  this is correct for trust but should be monitored for memory/egress during alpha.
+- Workspace files, dirty changes, environment values, and credentials are never
+  transferred.
+- Automatic profile bootstrap recognizes Claude Code's standard `.claude` /
+  `.claude-*` convention. Custom alias-backed stores use explicit opt-in
+  `sinter config discover-shell`; existing config is never overwritten.
 - The ledger migration is transactional and rollback-safe but does not create a
   separate user-visible backup file. Backup/repair UX remains roadmap work.
-- Sinter Cloud remains on a separate private development line for maintainer
-  testing. Public terminal releases must remain useful without an account and
-  pass the Cloud-free source/dist gate.
+- Sinter Cloud will expose a public/open-source client while the hosted alpha is
+  owner-only. The terminal CLI remains fully useful without an account.
 
 ## Recommended next actions
 
-1. Do not republish immutable npm `0.4.1`; any correction requires a new
-   version and the full release gate.
-2. Continue terminal improvements publicly while keeping the package fully
-   useful without an account.
-3. Keep Sinter Cloud private for maintainer testing and hold repository-bound
-   direct-transfer v2 for the v0.5.0 test/review cycle.
+1. Review checkpoints `ff4b8a7`, `33a9b8c`, and `8e8731f` together with the
+   physical artifact and hosted zero-state evidence.
+2. Keep public signup closed and exactly one owner entitlement enabled; do not
+   broaden access during release preparation.
+3. Obtain human cryptographic/privacy review of the physical evidence before
+   freezing the real-session payload contract.
+4. For stable v0.5, remove `private`, review scoped-package access/dist-tag, use
+   clean `main`, create the exact tag, rerun every gate, and pass
+   `prepublishOnly` with explicit approval. Never republish immutable v0.4.1.
+5. Re-evaluate PR #25 separately against current public `main`; do not mix it into
+   the Cloud release without resolving its named-instance and UTF-8 findings.

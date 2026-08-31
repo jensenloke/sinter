@@ -1,0 +1,26 @@
+{
+  "name": "@sinter/cloud",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "NEXT_TELEMETRY_DISABLED=1 next dev",
+    "build": "NEXT_TELEMETRY_DISABLED=1 next build",
+    "start": "NEXT_TELEMETRY_DISABLED=1 next start",
+    "test": "bun test test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@auth0/nextjs-auth0": "^4.27.0",
+    "@supabase/supabase-js": "^2.112.4",
+    "jose": "^6.2.10",
+    "next": "^16.3.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "typescript": "^5.9.3"
+  }
+}

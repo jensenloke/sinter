@@ -1,7 +1,14 @@
 export type CompletionShell = "zsh" | "bash" | "fish";
 
 const COMMANDS = [
+  ["help", "show command or topic help"],
+  ["version", "print the CLI version"],
   ["scan", "refresh the local ledger"],
+  ["login", "sign in to Sinter Cloud"],
+  ["whoami", "show the current Cloud identity"],
+  ["logout", "remove the current Cloud login"],
+  ["devices", "manage Cloud device identities"],
+  ["cloud", "sync encrypted session capsules"],
   ["config", "inspect and validate profile configuration"],
   ["ls", "list sessions"],
   ["recent", "list recent resumable sessions"],
@@ -75,6 +82,10 @@ ${commands}
   case $words[2] in
     scan) _arguments $global_args '--harness=[comma-separated harnesses]:harnesses' '--json' ;;
     config) _arguments $global_args '1:action:(show path validate example discover-shell)' '--shell=[absolute zsh/bash executable]:shell:_files' '--write[create config only if missing]' '--yes[confirm non-interactive config creation]' '--json[emit versioned JSON]' ;;
+    login) _arguments $global_args '--no-open' '--timeout=[callback lifetime]:duration' '--json' ;;
+    whoami|logout) _arguments $global_args '--json' ;;
+    devices) _arguments $global_args '1:action:(register list rename revoke pending approve capsule-test)' '2:operation, device, or request id:(create open)' '3:device name' '--name=[device name]:name' '--output=[new synthetic capsule file]:file:_files' '--input=[synthetic capsule file]:file:_files' '--no-wait[return approval-required without polling]' '--timeout=[approval wait, 5s to 15m]:duration' '--yes[confirm permanent revocation]' '--json' ;;
+    cloud) _arguments $global_args '1:action:(push list ls inspect pull delete rm)' '2:session prefix or capsule id' '--mode=[transfer mode]:mode:($modes)' '--repo-remote=[source Git remote name]:remote' '--to=[recipient device or target harness instance]:target' '--cwd=[target repository root]:directory:_directories' '--preview[prepare without uploading]' '--allow-repo-mismatch[explicit repository mismatch override]' '--allow-missing-commit[explicit missing-commit override]' '--dry-run[validate target write without consuming replay]' '--yes[confirm pull or deletion]' '--json[emit versioned JSON]' ;;
     ls) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
     recent) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' ;;
     watch) _arguments $global_args '1:view:(recent projects)' '--interval=[refresh interval]:duration' '--count=[snapshot count]:count' '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-clear' ;;
@@ -97,8 +108,8 @@ ${commands}
     export) _arguments $global_args '1:session id' '(-o --output)'{-o,--output}'=[output file]:file:_files' '--slim' ;;
     import) _arguments $global_args '1:SIF file:_files' '--to=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--dry-run' '--live-tools' ;;
     port) _arguments $global_args '1:session id' '--to=[target harness]:harness:($harnesses)' '--mode=[transfer mode]:mode:($modes)' '--cwd=[target directory]:directory:_directories' '--preview' '--json' '--dry-run' '--live-tools' ;;
-    send) _arguments $global_args '1:session id' '--to=[one-use transfer locator]:locator' '--mode=[transfer mode]:mode:($modes)' '--preview' '--json' ;;
-    receive) _arguments $global_args '--to=[target harness instance]:instance' '--bind=[listen address]:address' '--advertise=[LAN or Tailscale address]:address' '--port=[listen port]:port' '--ttl=[locator lifetime]:duration' '--cwd=[target directory]:directory:_directories' '--yes' '--json' ;;
+    send) _arguments $global_args '1:session id' '--to=[one-use transfer locator]:locator' '--mode=[transfer mode]:mode:($modes)' '--repo-remote=[source Git remote name]:remote' '--preview' '--json' ;;
+    receive) _arguments $global_args '--to=[target harness instance]:instance' '--bind=[listen address]:address' '--advertise=[LAN or Tailscale address]:address' '--port=[listen port]:port' '--ttl=[locator lifetime]:duration' '--cwd=[target repository root]:directory:_directories' '--allow-repo-mismatch[explicit context-only mismatch override]' '--allow-missing-commit[explicit missing-commit override]' '--yes[accept after repository checks]' '--json' ;;
     resume) _arguments $global_args '1:session id' '--in=[target harness]:harness:($harnesses)' '--cwd=[target directory]:directory:_directories' '--exec' '--dry-run' '--live-tools' ;;
     setup) _arguments $global_args '--yes' '--no-menu' ;;
     update) _arguments $global_args '--check[check without installing]' '--package-manager=[global installer]:package manager:(bun npm)' '--force[allow installing an older published version]' '--json[emit versioned JSON]' ;;
@@ -135,7 +146,7 @@ function bash(): string {
     --to|--in) COMPREPLY=( $(compgen -W '${HARNESSES.join(" ")}' -- "$current") ); return ;;
     --mode) COMPREPLY=( $(compgen -W '${MODES.join(" ")}' -- "$current") ); return ;;
     --package-manager) COMPREPLY=( $(compgen -W 'bun npm' -- "$current") ); return ;;
-    --cwd|--config|--ledger|--shell|-o|--output) COMPREPLY=( $(compgen -f -- "$current") ); return ;;
+    --cwd|--config|--ledger|--shell|--input|-o|--output) COMPREPLY=( $(compgen -f -- "$current") ); return ;;
   esac
   if [[ $command == completion ]]; then
     COMPREPLY=( $(compgen -W 'zsh bash fish' -- "$current") )
@@ -145,8 +156,24 @@ function bash(): string {
     COMPREPLY=( $(compgen -W 'show path validate example discover-shell --shell --write --yes --json' -- "$current") )
     return
   fi
+  if [[ $command == devices ]]; then
+    COMPREPLY=( $(compgen -W 'register list rename revoke pending approve capsule-test create open --name --output --input --no-wait --timeout --yes --json' -- "$current") )
+    return
+  fi
+  if [[ $command == cloud ]]; then
+    COMPREPLY=( $(compgen -W 'push list ls inspect pull delete rm --mode --repo-remote --to --cwd --preview --allow-repo-mismatch --allow-missing-commit --dry-run --yes --json full slim compact all' -- "$current") )
+    return
+  fi
   if [[ $command == update ]]; then
     COMPREPLY=( $(compgen -W '--check --package-manager --force --json bun npm' -- "$current") )
+    return
+  fi
+  if [[ $command == send ]]; then
+    COMPREPLY=( $(compgen -W '--to --mode --repo-remote --preview --json' -- "$current") )
+    return
+  fi
+  if [[ $command == receive ]]; then
+    COMPREPLY=( $(compgen -W '--to --cwd --bind --advertise --port --ttl --allow-repo-mismatch --allow-missing-commit --yes --json' -- "$current") )
     return
   fi
   COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --all-harnesses --cwd --all-cwd --since --all-time --older-than --interval --count --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open --yes --ghosts --no-ghosts --subagents --no-subagents --force --all --clear --no-clear' -- "$current") )
@@ -163,11 +190,15 @@ function fish(): string {
     `complete -c sinter -n '__fish_seen_subcommand_from port import receive' -l to -xa '${HARNESSES.join(" ")}' -d 'Target harness or instance'`,
     "complete -c sinter -n '__fish_seen_subcommand_from send' -l to -r -d 'One-use transfer locator'",
     `complete -c sinter -n '__fish_seen_subcommand_from send' -l mode -xa '${MODES.join(" ")}' -d 'Transfer mode'`,
+    "complete -c sinter -n '__fish_seen_subcommand_from send' -l repo-remote -r -d 'Source Git remote name'",
     "complete -c sinter -n '__fish_seen_subcommand_from receive' -l bind -r -d 'Listen address'",
     "complete -c sinter -n '__fish_seen_subcommand_from receive' -l advertise -r -d 'LAN or Tailscale address'",
     "complete -c sinter -n '__fish_seen_subcommand_from receive' -l port -r -d 'Listen port'",
     "complete -c sinter -n '__fish_seen_subcommand_from receive' -l ttl -r -d 'Locator lifetime'",
-    "complete -c sinter -n '__fish_seen_subcommand_from receive' -l yes -d 'Accept without prompting'",
+    "complete -c sinter -n '__fish_seen_subcommand_from receive' -l cwd -r -d 'Target repository root'",
+    "complete -c sinter -n '__fish_seen_subcommand_from receive' -l allow-repo-mismatch -d 'Explicit context-only mismatch override'",
+    "complete -c sinter -n '__fish_seen_subcommand_from receive' -l allow-missing-commit -d 'Explicit missing-commit override'",
+    "complete -c sinter -n '__fish_seen_subcommand_from receive' -l yes -d 'Accept after repository checks'",
     `complete -c sinter -n '__fish_seen_subcommand_from resume' -l in -xa '${HARNESSES.join(" ")}' -d 'Target harness'`,
     `complete -c sinter -n '__fish_seen_subcommand_from port menu' -l mode -xa '${MODES.join(" ")}' -d 'Transfer mode'`,
     "complete -c sinter -n '__fish_seen_subcommand_from config' -a 'show path validate example discover-shell' -d 'Action'",
@@ -175,6 +206,26 @@ function fish(): string {
     "complete -c sinter -n '__fish_seen_subcommand_from config' -l write -d 'Create config only if missing'",
     "complete -c sinter -n '__fish_seen_subcommand_from config' -l yes -d 'Confirm non-interactive config creation'",
     "complete -c sinter -n '__fish_seen_subcommand_from config' -l json -d 'Emit versioned JSON'",
+    "complete -c sinter -n '__fish_seen_subcommand_from devices' -a 'register list rename revoke pending approve capsule-test' -d 'Action'",
+    "complete -c sinter -n '__fish_seen_subcommand_from devices' -a 'create open' -d 'Capsule diagnostic operation'",
+    "complete -c sinter -n '__fish_seen_subcommand_from devices' -l output -r -d 'New synthetic capsule file'",
+    "complete -c sinter -n '__fish_seen_subcommand_from devices' -l input -r -d 'Synthetic capsule file'",
+    "complete -c sinter -n '__fish_seen_subcommand_from devices' -l name -r -d 'Device name'",
+    "complete -c sinter -n '__fish_seen_subcommand_from devices' -l no-wait -d 'Return approval-required without polling'",
+    "complete -c sinter -n '__fish_seen_subcommand_from devices' -l timeout -r -d 'Approval wait, 5s to 15m'",
+    "complete -c sinter -n '__fish_seen_subcommand_from devices' -l yes -d 'Confirm permanent revocation'",
+    "complete -c sinter -n '__fish_seen_subcommand_from devices' -l json -d 'Emit versioned JSON'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -a 'push list ls inspect pull delete rm' -d 'Cloud capsule action'",
+    `complete -c sinter -n '__fish_seen_subcommand_from cloud' -l mode -xa '${MODES.join(" ")}' -d 'Transfer mode'`,
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l repo-remote -r -d 'Source Git remote name'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l to -r -d 'Recipient device or target harness instance'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l cwd -r -d 'Target repository root'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l preview -d 'Prepare without uploading'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l allow-repo-mismatch -d 'Explicit repository mismatch override'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l allow-missing-commit -d 'Explicit missing-commit override'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l dry-run -d 'Validate without consuming replay'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l yes -d 'Confirm pull or deletion'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from completion' -a 'zsh bash fish' -d 'Shell'",
     "complete -c sinter -n '__fish_seen_subcommand_from update' -l check -d 'Check without installing'",
     "complete -c sinter -n '__fish_seen_subcommand_from update' -l package-manager -xa 'bun npm' -d 'Global installer'",
