@@ -174,9 +174,17 @@ operations.
   license, and package metadata; it excludes the hosted app, SQL migrations, and
   server secrets. Its current rehearsal shasum is
   `b40e19a0dc97313934dc6e03822ffae560cc647b`.
-- Nothing in this section has been applied to hosted Supabase or deployed to
-  Vercel. `SINTER_REAL_UPLOADS_ENABLED` and the owner upload entitlement remain
-  off, and no real session content has been uploaded.
+- Migration `20260826050000` is applied to hosted development and the Cloud app,
+  capsule APIs, admin gate, and cleanup cron are deployed to Vercel production.
+  The first deploy failed before promotion because Vercel could not resolve a
+  workspace-only proof dependency; `33a9b8c` restored a pinned standalone server
+  contract and the retry succeeded. Hosted migration parity, private 64 MiB
+  bucket, one account/two devices, zero capsules/recipients/nonces, and zero
+  enabled upload entitlements were verified without exposing identifiers.
+- Production health reports signups closed and real uploads false. Gate-off list
+  returns a sanitized unavailable response, deletion still requires auth/device
+  proof, and cron rejects missing authorization. No real session content has
+  been uploaded.
 
 ## Cloud development foundation
 
@@ -467,13 +475,13 @@ bunx @jensenloke/sinter@0.4.1 --version
 
 ## Recommended next actions
 
-1. Review and checkpoint the local v0.5 MVP. Keep it private, untagged, and
-   undeployed while the hosted change plan is reviewed.
-2. After explicit hosted-database/deployment approval, apply the capsule migration
-   and deploy with `SINTER_REAL_UPLOADS_ENABLED` still false. Verify health,
-   unauthenticated refusal, signed-device refusal, cleanup cron, and admin UI.
-3. Enable the exact global gate and only the owner account entitlement. Install
-   one hash-matched private tarball on the MacBook and Mac Mini, then test real
+1. Review local checkpoints `ff4b8a7` and `33a9b8c`; keep the branch private,
+   untagged, and unpublished through owner-only physical testing.
+2. The hosted capsule migration and gate-off Vercel deployment are complete and
+   verified; do not reapply or enable them implicitly.
+3. After separate explicit approval, enable the exact global gate and only the
+   owner account entitlement. Install one hash-matched private tarball on the
+   MacBook and Mac Mini, then test real
    push/list/inspect/pull/delete, quota accounting, durable replay, repository
    mismatch/missing-commit refusal, dirty-worktree preservation, and cleanup.
 4. Obtain human cryptographic/privacy review of that physical evidence before

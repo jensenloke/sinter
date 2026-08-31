@@ -22,11 +22,12 @@ TypeScript checks, CLI and Cloud builds, and Cloud-enabled package rehearsal.
 Independent post-fix reviews report no remaining critical, high, or medium
 blocker for owner-only alpha.
 
-This implementation is not deployed. Hosted real uploads, the global feature
-gate, and the owner upload entitlement remain off. The next gates are explicit
-hosted migration/deployment approval, gate-off verification, hash-matched
-MacBook/Mac Mini real-session tests, and human cryptographic/privacy review before
-stable v0.5 release.
+The capsule migration and gate-off Cloud deployment are complete. Hosted health,
+closed signup, private bucket limits, zero capsule state, disabled owner
+entitlement, unauthenticated deletion refusal, and cleanup authorization refusal
+were verified. Real uploads and the owner entitlement remain off. The next gates
+are separate enablement approval, hash-matched MacBook/Mac Mini real-session
+tests, and human cryptographic/privacy review before stable v0.5 release.
 
 ## Recommended first stack
 

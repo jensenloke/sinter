@@ -209,9 +209,9 @@ Every capsule API request also carries an ECDSA device proof over its exact
 method, path, body hash, timestamp, and nonce. The server enforces account/device
 ownership, active owner entitlement, atomic storage/session quotas, private
 Storage, retryable cleanup, and permanent deletion. Public signup remains closed;
-real uploads and the owner entitlement remain disabled until the reviewed
-migration and deployment are explicitly approved. The CLI remains fully useful
-without an account.
+the migration and gate-off deployment are complete, but real uploads and the
+owner entitlement remain disabled pending separate enablement and physical-test
+approval. The CLI remains fully useful without an account.
 
 ## Direct device transfer
 
