@@ -63,9 +63,8 @@ approval from an existing active device. Cloud push applies repository binding
 and metadata stripping before local encryption; only ciphertext and bounded
 routing metadata reach private Storage. Signed device requests, durable replay,
 atomic quotas, retryable cleanup, and permanent deletion are enforced. The
-migration and gate-off deployment are complete; real uploads and owner
-entitlement remain disabled pending separate enablement and physical-test
-approval.
+migration, owner-only entitlement, and hash-matched physical sync matrix are
+complete. Public signup and non-owner entitlements remain disabled.
 
 Approved members with two active registered devices can explicitly test the
 local synthetic capsule protocol without reading or uploading any session:

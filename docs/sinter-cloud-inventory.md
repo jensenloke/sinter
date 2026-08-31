@@ -17,17 +17,19 @@ quota reservations/finalization, retryable expiry/deletion, durable local import
 replay, and repository-bound exact-instance restore. Public signup remains closed.
 
 A clean local Supabase reset applies all migrations and passes 320 pgTAP
-assertions. The repository passes 933 tests and 10,452 assertions, both
+assertions. The repository passes 934 tests and 10,457 assertions, both
 TypeScript checks, CLI and Cloud builds, and Cloud-enabled package rehearsal.
 Independent post-fix reviews report no remaining critical, high, or medium
 blocker for owner-only alpha.
 
-The capsule migration and gate-off Cloud deployment are complete. Hosted health,
-closed signup, private bucket limits, zero capsule state, disabled owner
-entitlement, unauthenticated deletion refusal, and cleanup authorization refusal
-were verified. Real uploads and the owner entitlement remain off. The next gates
-are separate enablement approval, hash-matched MacBook/Mac Mini real-session
-tests, and human cryptographic/privacy review before stable v0.5 release.
+The capsule migration and Cloud deployment are complete. Gate-off health,
+closed signup, private bucket limits, zero capsule state, unauthenticated
+refusal, and cleanup authorization refusal were verified before enablement. The
+global gate and exactly one owner entitlement were then enabled and a hash-
+matched MacBook/Mac Mini synthetic-session sync matrix passed. Permanent
+deletion and failed-reservation expiry returned Storage and usage to zero.
+Public signup and all non-owner entitlements remain disabled; human
+cryptographic/privacy review is the next gate before stable v0.5 release.
 
 ## Recommended first stack
 
@@ -345,8 +347,9 @@ availability guarantee.
   without exposing native IDs as cloud metadata.
 - [x] Add signed device requests, durable replay, atomic quotas, retryable
   cleanup, repository-bound restore, and owner-gated upload enablement locally.
-- [ ] Apply the reviewed migration/deployment with uploads off, then complete one
-  hash-matched MacBook/Mac Mini real-session test after redaction review.
+- [x] Apply the migration/deployment gate-off, enable only the owner after
+  verification, and complete one hash-matched MacBook/Mac Mini synthetic-session
+  sync test with redaction, replay, repository, deletion, and quota evidence.
 
 ### C4 — inbox and relay
 
@@ -382,23 +385,22 @@ time-bounded support access instead of an administrative master key.
 
 ## Recommended immediate checkpoint
 
-Review the owner-only v0.5 implementation before enabling uploads:
+Review the completed owner-only v0.5 evidence before stable release:
 
-1. inspect the local migration, pgTAP evidence, request-proof contract, capsule
-   payload split, quota/deletion ordering, repository restore, and redaction;
-2. apply the hosted migration and deploy with the global upload gate off;
-3. verify health, unauthorized/signed-device refusal, cleanup cron, admin gate,
-   and unchanged account/device inventory;
-4. enable only the owner entitlement and exact global gate;
-5. install one hash-matched private package on both registered devices and run
-   push/list/inspect/pull/delete plus quota/replay/repository refusal tests;
-6. obtain human cryptographic/privacy review before freezing or publicly
-   releasing the real-session payload contract.
+1. inspect the migration, pgTAP evidence, request-proof contract, capsule payload
+   split, quota/deletion ordering, repository restore, and redaction;
+2. review the gate-off and owner-only hosted enablement sequence;
+3. review the hash-matched MacBook/Mac Mini push/list/inspect/dry-run/pull/replay/
+   delete/expiry evidence and final zero Storage/usage state;
+4. obtain human cryptographic/privacy review before freezing the real-session
+   payload contract;
+5. prepare a public-source release branch with no secrets, rerun CI including
+   database policy tests, and follow the tagged-clean-main npm release guard.
 
 C1 proves authentication, local key custody, cryptographic approval, hosted
 schema, and account isolation. C2 preserves the checked synthetic envelope. The
-local v0.5 implementation now connects a distinct real payload to owner-gated
-Storage, but hosted real data remains disabled until the steps above pass.
+v0.5 implementation now connects a distinct real payload to owner-gated Storage
+and has passed one synthetic-session physical matrix.
 
 ## Official references
 

@@ -23,8 +23,10 @@ operations.
 
 ## Git state at handoff
 
-- The current working branch is the local, unpushed
-  `feat/cloud-sync-v0.5-next`, created from integration checkpoint `ed8fc2f`.
+- The current working branch is `feat/cloud-sync-v0.5-next`, created from
+  integration checkpoint `ed8fc2f`. It tracks
+  `origin/feat/cloud-sync-v0.5-next`; the remote currently includes the owner-only
+  implementation and gate-off deployment handoff through `ce6be8a`.
 - The branch merged public `main` at `820d202`, preserving released terminal
   features and connecting v0.5 to the open-source history without rewriting the
   reviewed repository-binding commits.
@@ -165,15 +167,15 @@ operations.
   audit reason. Defaults remain off; no email/account heuristic enables anyone.
 - A secret-protected daily cleanup route processes retryable reservations and
   expired request nonces even while uploads are disabled.
-- Local verification passes 933 tests and 10,452 assertions, 320 pgTAP database
+- Local verification passes 934 tests and 10,457 assertions, 320 pgTAP database
   assertions from a clean migration reset, both TypeScript checks, CLI and Cloud
   production builds, Cloud-enabled package rehearsal, frozen lockfile, and
   `git diff --check`. Two independent post-fix reviews found no remaining
   critical, high, or medium blocker for owner-only alpha.
 - The `0.5.0-dev.0` tarball contains 24 files limited to the CLI bundle, README,
   license, and package metadata; it excludes the hosted app, SQL migrations, and
-  server secrets. Its current rehearsal shasum is
-  `b40e19a0dc97313934dc6e03822ffae560cc647b`.
+  server secrets. The physically tested package SHA-256 is
+  `c3c9c4b41756f9beaa6ba1813cb7e8322f7e9674e576daf088921fc78dd9b91d`.
 - Migration `20260826050000` is applied to hosted development and the Cloud app,
   capsule APIs, admin gate, and cleanup cron are deployed to Vercel production.
   The first deploy failed before promotion because Vercel could not resolve a
@@ -181,10 +183,22 @@ operations.
   contract and the retry succeeded. Hosted migration parity, private 64 MiB
   bucket, one account/two devices, zero capsules/recipients/nonces, and zero
   enabled upload entitlements were verified without exposing identifiers.
-- Production health reports signups closed and real uploads false. Gate-off list
-  returns a sanitized unavailable response, deletion still requires auth/device
-  proof, and cron rejects missing authorization. No real session content has
-  been uploaded.
+- Gate-off production verification passed before enablement: list returned a
+  sanitized unavailable response, deletion still required auth/device proof, and
+  cron rejected missing authorization. The global gate was then enabled and the
+  audited entitlement RPC enabled exactly the sole active unmetered super-admin;
+  no other account is enabled and public signup remains closed.
+- A hash-matched physical MacBook/Mac Mini test used only temporary Git, Claude,
+  config, ledger, and synthetic session fixtures. Push retained a 9,004-byte
+  capsule for both devices; list/inspect leaked no content/path; Mac Mini dry-run
+  wrote nothing/consumed no replay; real pull imported one exact-instance session
+  at the target-local monorepo path; replay made no second write; and the dirty
+  target marker/hash/status remained unchanged.
+- Permanent deletion removed the retained Storage object and quota. The failed
+  pre-fix reservation then passed the two-stage expiry/finalization cleanup path.
+  Hosted state ended with zero reserved/retained capsules, zero Storage objects,
+  zero usage counters, one enabled owner, and zero other enabled accounts. No
+  personal or pre-existing session was read or uploaded.
 
 ## Cloud development foundation
 
@@ -211,12 +225,13 @@ operations.
   claims leave all control/device counts unchanged. Hosted profiles,
   identities, and devices remain exactly 1/1/2.
 - `/api/health` reports configuration state without exposing credentials.
-- A free Vercel cron invokes a secret-protected, content-free Supabase database
-  RPC once daily to reduce free-project idle-pausing risk. It neither reads nor
-  writes user/session rows and is not an uptime guarantee.
-- Real session/capsule uploads, Storage, Realtime, Edge Runtime, Analytics,
-  billing, and cloud agent execution remain disabled or absent. No real session
-  content has been uploaded.
+- A free daily Vercel cron invokes secret-protected retryable capsule-reservation
+  cleanup and expired request-nonce removal. It processes only encrypted-object
+  metadata/usage, never transcript plaintext, and also supplies database activity
+  without being an uptime guarantee.
+- Realtime, Edge Runtime, Analytics, billing, and cloud agent execution remain
+  absent. Owner-only encrypted capsule Storage is now enabled and physically
+  verified; current retained/reserved Storage and usage are zero.
 - The `0.4.0` development CLI adds Auth0 device-code `sinter login`, verified
   `whoami`, rotating refresh, and revoking `logout`. macOS stores the credential
   in Keychain; other platforms currently use an owner-only file. A real Google
@@ -253,10 +268,10 @@ operations.
   entitlements, own quota/usage RLS, unmetered owner semantics with retained
   safety caps, service-only first-admin/role/entitlement RPCs, immutable
   content-free audit events, and a cryptographically protected `/admin` portal.
-  The one owner role and audit event are present. Hosted upload enablement remains
-  false. The local v0.5 admin path permits a change only while the exact global
-  gate is enabled and after reauthorization, confirmation, and audit reason;
-  role management stays service-only and no session content enters the portal.
+  The sole owner role remains present and the owner-only upload change is audited.
+  The v0.5 admin path permits enablement only while the exact global gate is on
+  and after reauthorization, confirmation, and audit reason; role management
+  stays service-only and no session content enters the portal.
 - The Cloud UI uses an original five-cell sintered-mineral mark with transparent
   512, 192, and 32 px assets. The raster concept should be traced and optically
   refined before final trademark use.
@@ -267,7 +282,7 @@ operations.
   Hosted migrations/deployments, unauthenticated rejection, credential refresh,
   first-device bootstrap, list, empty enrollment, one-time owner bootstrap,
   own-entitlement RLS, and authenticated admin-route checks completed
-  successfully with real uploads still disabled.
+  successfully with real uploads disabled at that checkpoint.
 - Linked-provider state and `.env` files are ignored. The database password is
   held in the maintainer machine's credential store, not in the repository.
 
@@ -448,12 +463,13 @@ bunx @jensenloke/sinter@0.4.1 --version
 ## Known boundaries
 
 - There is no automatic peer discovery; direct-transfer locators must be copied
-  to the sender. Cloud sync is the asynchronous path but remains undeployed.
+  to the sender. Owner-only Cloud sync is the deployed asynchronous path.
 - Direct transfer requires network reachability and may be blocked by host or
   network firewalls. The `0.5.0-dev.0` receiver accepts only repository-bound v2
   session payloads; both devices must run the same development build.
-- Hosted private Storage and real uploads remain off until explicit migration and
-  deployment approval. No real session content has been uploaded.
+- Hosted private Storage and owner-only uploads are enabled. Current retained/
+  reserved content and usage are zero after the physical test; public signup and
+  all non-owner entitlements remain disabled.
 - Cloud sync has no browser decryption, team sharing, public signup, recovery
   escrow, or cross-account collaboration. Loss/revocation of every device key is
   intentionally unrecoverable.
@@ -475,19 +491,14 @@ bunx @jensenloke/sinter@0.4.1 --version
 
 ## Recommended next actions
 
-1. Review local checkpoints `ff4b8a7` and `33a9b8c`; keep the branch private,
-   untagged, and unpublished through owner-only physical testing.
-2. The hosted capsule migration and gate-off Vercel deployment are complete and
-   verified; do not reapply or enable them implicitly.
-3. After separate explicit approval, enable the exact global gate and only the
-   owner account entitlement. Install one hash-matched private tarball on the
-   MacBook and Mac Mini, then test real
-   push/list/inspect/pull/delete, quota accounting, durable replay, repository
-   mismatch/missing-commit refusal, dirty-worktree preservation, and cleanup.
-4. Obtain human cryptographic/privacy review of that physical evidence before
-   promoting the payload contract or opening the v0.5 source branch publicly.
-5. For stable v0.5, remove `private`, review scoped-package access/dist-tag, use
+1. Review checkpoints `ff4b8a7`, `33a9b8c`, and `8e8731f` together with the
+   physical artifact and hosted zero-state evidence.
+2. Keep public signup closed and exactly one owner entitlement enabled; do not
+   broaden access during release preparation.
+3. Obtain human cryptographic/privacy review of the physical evidence before
+   freezing the real-session payload contract.
+4. For stable v0.5, remove `private`, review scoped-package access/dist-tag, use
    clean `main`, create the exact tag, rerun every gate, and pass
    `prepublishOnly` with explicit approval. Never republish immutable v0.4.1.
-6. Re-evaluate PR #25 separately against current public `main`; do not mix it into
+5. Re-evaluate PR #25 separately against current public `main`; do not mix it into
    the Cloud release without resolving its named-instance and UTF-8 findings.
