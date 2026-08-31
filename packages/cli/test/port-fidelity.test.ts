@@ -1,15 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { OpencodeAdapter } from "@sinter/adapter-opencode";
+import { ClaudeAdapter } from "@sinter/adapter-claude";
 import { CodexAdapter } from "@sinter/adapter-codex";
+import { OpencodeAdapter } from "@sinter/adapter-opencode";
 import { provenanceOf, validateSession, type SifSession } from "@sinter/core";
 import { Ledger } from "@sinter/ledger";
 import { StaticAdapterRegistry } from "../src/adapters";
 import type { Ctx } from "../src/commands";
 import { palette } from "../src/format";
 import { run } from "../src/main";
+import { compactSession } from "../src/transfer";
 
 const OPEN_CODE_DB = join(import.meta.dir, "../../../fixtures/opencode/mini.db");
 const SOURCE_ID = "synthetic-1401";
@@ -83,5 +85,41 @@ describe("OpenCode → Codex port fidelity (issue #1)", () => {
     });
     expect(carried.entries).toEqual(original.entries);
     ledger.close();
+  });
+});
+
+describe("Codex → Claude compact port fidelity", () => {
+  test("empty encrypted Codex compactions become non-empty Claude summaries", async () => {
+    const root = mkdtempSync(join(tmpdir(), "sinter-compact-fidelity-"));
+    tempDirs.push(root);
+    const sourcePath = join(root, "rollout-2026-08-31T00-00-00-019f8adc-bad0-75d1-9cab-c5e1f306f0d8.jsonl");
+    const records = [
+      { timestamp: "2026-08-31T00:00:00.000Z", type: "session_meta", payload: { id: "codex-compact", session_id: "codex-compact", cwd: "/tmp/source", model_provider: "openai" } },
+      {
+        timestamp: "2026-08-31T00:00:01.000Z",
+        type: "compacted",
+        payload: {
+          message: "",
+          replacement_history: [
+            { type: "message", role: "user", content: [{ type: "input_text", text: "Continue the workflow editor" }], internal_chat_message_metadata_passthrough: { content_item_kinds: ["user.text"] } },
+            { type: "compaction", encrypted_content: "encrypted-blob-value" },
+          ],
+        },
+      },
+      { timestamp: "2026-08-31T00:00:02.000Z", type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "Current state" }] } },
+    ];
+    writeFileSync(sourcePath, records.map((record) => JSON.stringify(record)).join("\n"));
+
+    const source = await new CodexAdapter({ home: root }).readFile(sourcePath);
+    const compacted = compactSession(source).session;
+    const target = new ClaudeAdapter({ root: join(root, "claude") });
+    const written = await target.write(compacted, { cwd: "/tmp/target", mode: "compact" });
+    const native = readFileSync(written.nativePath!, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    const users = native.filter((record) => record.type === "user");
+    expect(users).toHaveLength(1);
+    expect(users[0]!.isCompactSummary).toBe(true);
+    expect(users[0]!.message.content).toContain("Continue the workflow editor");
+    expect(users[0]!.message.content.trim()).not.toBe("");
+    expect(JSON.stringify(users[0])).not.toContain("encrypted-blob-value");
   });
 });

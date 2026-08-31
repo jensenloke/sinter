@@ -631,6 +631,21 @@ describe("transfer modes", () => {
     expect((note as { text?: string }).text).toContain("superseded");
   });
 
+  test("compact strips provider-private compaction state and keeps a valid summary", () => {
+    const source = bigSession();
+    source.entries.push({
+      kind: "compaction",
+      id: "compact-1",
+      parentId: "terr",
+      summary: "",
+      replacedHistory: [{ type: "compaction", encrypted_content: "secret" }],
+    });
+    const { session } = compactSession(source);
+    const compaction = session.entries.find((entry) => entry.kind === "compaction");
+    expect(compaction?.summary).toContain("not available");
+    expect(compaction?.replacedHistory).toBeUndefined();
+  });
+
   test("compact keeps the entry tree valid", () => {
     const { session } = compactSession(bigSession());
     expect(() => validateSession(session)).not.toThrow();
