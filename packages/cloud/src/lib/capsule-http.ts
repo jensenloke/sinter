@@ -486,13 +486,10 @@ function publicCapsule(row: CapsuleRow, accountId: string) {
     recipientCount: row.recipient_count,
     status: row.status,
     reservedAt: row.reserved_at,
-    reservationRefreshedAt: row.reservation_refreshed_at,
     reservationExpiresAt: row.reservation_expires_at,
     finalizedAt: row.finalized_at,
     deletionRequestedAt: row.deletion_requested_at,
     storageDeletedAt: row.storage_deleted_at,
-    expiryRequestedAt: row.expiry_requested_at,
-    storageCleanupCompletedAt: row.storage_cleanup_completed_at,
     expiredAt: row.expired_at,
   };
 }

@@ -659,6 +659,9 @@ describe("capsule route operations", () => {
     expect(payload.upload.method).toBe("PUT");
     expect(payload.capsule.object_path).toBeUndefined();
     expect(payload.capsule.account_id).toBeUndefined();
+    expect(payload.capsule.reservationRefreshedAt).toBeUndefined();
+    expect(payload.capsule.expiryRequestedAt).toBeUndefined();
+    expect(payload.capsule.storageCleanupCompletedAt).toBeUndefined();
     expect(JSON.stringify(payload)).not.toMatch(/title|repository|native_id|transcript|plaintext/i);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
