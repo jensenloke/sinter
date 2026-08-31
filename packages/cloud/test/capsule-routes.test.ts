@@ -5,7 +5,7 @@ import type { PublicP256Jwk } from "../src/lib/device-crypto";
 import {
   capsuleRequestBodySha256,
   capsuleRequestProofBytes,
-} from "@sinter/core";
+} from "../src/lib/capsule-request-proof";
 import type {
   CapsuleDataSource,
   CapsuleReservationInput,
@@ -319,6 +319,22 @@ describe("capsule route authorization and parsing", () => {
 });
 
 describe("capsule request proof", () => {
+  test("matches the public CLI canonical signing vector", () => {
+    const bodyHash = "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93";
+    const nonce = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    expect(capsuleRequestBodySha256(Buffer.from('{"ok":true}', "utf8"))).toBe(bodyHash);
+    expect(capsuleRequestProofBytes({
+      deviceId: "11111111-1111-4111-8111-111111111111",
+      method: "POST",
+      pathname: "/api/cli/capsules",
+      bodySha256: bodyHash,
+      timestamp: "2026-08-31T00:00:00.000Z",
+      nonce,
+    }).toString("utf8")).toBe(
+      `{"bodySha256":"${bodyHash}","deviceId":"11111111-1111-4111-8111-111111111111","method":"POST","nonce":"${nonce}","pathname":"/api/cli/capsules","schema":"sinter.cloud.capsule-request-proof.v1","timestamp":"2026-08-31T00:00:00.000Z"}`,
+    );
+  });
+
   test("verifies a valid signed request and claims its nonce before listing", async () => {
     const calls: string[] = [];
     const data = source({
