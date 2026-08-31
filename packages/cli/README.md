@@ -12,9 +12,8 @@ sinter scan
 sinter
 ```
 
-npm `latest` is `0.4.1`. This `0.5.0-dev.0` package is private development
-metadata; repository-bound v2 testing uses a locally packed tarball installed
-identically on both devices, not the public install commands above.
+npm `latest` remains `0.4.1` until this verified `0.5.0` Cloud release is tagged
+and published from clean `main`.
 
 Sinter reads local harness stores and keeps its index on your machine. Historical
 tool calls are inert during cross-harness ports unless explicitly enabled for a

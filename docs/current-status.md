@@ -9,58 +9,47 @@ operations.
 
 ## Release state
 
-- Development CLI version on `feat/cloud-sync-v0.5-next`: `0.5.0-dev.0`.
-- Current published CLI and npm `latest`: `@jensenloke/sinter@0.4.1`.
-- Registry shasum `4c944de67e826899e137c9a06aa571ea9e32d472` matches the
-  published package; the public executable reports `0.4.1`.
-- Development notes: [releases/v0.5.0.md](releases/v0.5.0.md).
-- Published release notes: [releases/v0.4.1.md](releases/v0.4.1.md).
-- npm publication source: `4d51a11 release: prepare Cloud-free v0.4.1 (#28)`;
-  public `main` is `820d202` after its status update.
-- npm `0.4.1` is immutable. `0.5.0-dev.0` is a private implementation branch and
-  must not be tagged, deployed, or published until real encrypted sync, owner-only
-  authorization, local/adversarial tests, and physical two-device tests pass.
+- Stable Cloud release preparation on `release/v0.5.0`: `0.5.0`.
+- Public `main` includes the reviewed Cloud feature at
+  `f78ff84 feat: add owner-only encrypted Cloud sync (#30)`.
+- Current published CLI and npm `latest`: `@jensenloke/sinter@0.4.1` until final
+  v0.5 publication succeeds.
+- npm `0.5.0` and GitHub tag/release `v0.5.0` must be absent before publication.
+- Stable 24-file tarball rehearsal shasum:
+  `d03df55cf03a103e724a34bdd26d88037ce703a1`.
+- Release notes: [releases/v0.5.0.md](releases/v0.5.0.md).
+- npm `0.4.1` is immutable and must never be republished.
 
 ## Git state at handoff
 
-- The current working branch is `feat/cloud-sync-v0.5-next`, created from
-  integration checkpoint `ed8fc2f`. It tracks
-  `origin/feat/cloud-sync-v0.5-next`; the remote currently includes the owner-only
-  implementation and gate-off deployment handoff through `ce6be8a`.
-- The branch merged public `main` at `820d202`, preserving released terminal
-  features and connecting v0.5 to the open-source history without rewriting the
-  reviewed repository-binding commits.
-- Public PRs #24, #26, #27, #28, and #29 are merged. Public `main`, npm `latest`,
-  annotated tag, and GitHub release are synchronized at v0.4.1.
-- The v0.5 product scope is a public/open-source CLI and source tree with the
-  hosted service restricted to the owner's entitlement during testing. The
-  release requires encrypted push/list/inspect/pull/delete, durable replay,
-  atomic quotas, and repository-bound restore.
+- The current working branch is `release/v0.5.0`, created from clean public
+  `main` at `f78ff84`.
+- PR #30 merged the owner-only Cloud feature after macOS, Ubuntu, and isolated
+  database-policy CI passed. The feature branch retains checkpoints `ff4b8a7`,
+  `33a9b8c`, `8e8731f`, and the physical evidence handoff `5dc7860`.
+- Public `main` now contains encrypted push/list/inspect/pull/delete, signed
+  device requests, durable replay, atomic quotas/cleanup/deletion, and
+  repository-bound restore.
+- The CLI/source are public; the hosted service remains restricted to exactly
+  the owner's entitlement during testing and public signup remains closed.
 - PR #25 remains open with its previous CI green, but GitHub mergeability must be
   re-evaluated against the new public `main`. Preserve named-instance routing,
   keep direct send modes concrete, and fix Devin UTF-8 byte-budget clipping/write
   enforcement before considering it.
-- The sibling `sinter-public` checkout uses the same GitHub upstream and is clean
-  at public `main` `820d202`. Follow the public-clone parity protocol in
-  `AGENTS.md`; never copy private files into it blindly.
-- Published npm `0.4.1` is terminal-only and contains no Cloud commands. v0.5 is
-  the first planned public Cloud client, while the hosted service remains
-  owner-only during testing and the CLI remains useful without an account.
-- Cloud design history is documented in
-  [sinter-cloud-inventory.md](sinter-cloud-inventory.md).
-- Repository-bound direct transfer v2 binds an explicitly selected target
-  checkout to sanitized repository identity rather than a source absolute path.
-  Its design, mismatch policy, tests, and continuation guidance are in
+- The `sinter-public` checkout is the active stable-release worktree; the sibling
+  `sinter` checkout remains on the synchronized feature branch. Both use the same
+  GitHub upstream.
+- Published npm `0.4.1` is terminal-only. v0.5 is the first public Cloud client,
+  while the CLI remains fully useful without an account.
+- Cloud history and current evidence are documented in
+  [sinter-cloud-inventory.md](sinter-cloud-inventory.md). Repository-bound direct
+  transfer v2 design and mismatch policy are in
   [repository-binding-design.md](repository-binding-design.md).
-- The Cloud branch is ahead of `origin/docs/sinter-cloud-inventory` with
-  reviewed, unpushed commits. Phase 1 device identity and the metadata-only
-  control plane are deployed; the C2 local-only envelope remains disconnected
-  from transport.
 
-## Verified v0.4.1 candidate and physical test — keep unpublished
+## Historical synthetic capsule diagnostic checkpoint
 
-- Candidate implementation commit: `84ca372 feat: add synthetic capsule
-  diagnostics`. The branch remains local and unpushed.
+- Checkpoint implementation commit: `84ca372 feat: add synthetic capsule
+  diagnostics`; it preceded the terminal-only public v0.4.1 split.
 - `4204cdf` is complete and reviewed locally: `devices register` now waits for
   signed approval, auto-saves the approved device ID, supports bounded timeout/
   Ctrl+C, and retains `--no-wait` for scripts. It is **not** in published npm
@@ -491,14 +480,12 @@ bunx @jensenloke/sinter@0.4.1 --version
 
 ## Recommended next actions
 
-1. Review checkpoints `ff4b8a7`, `33a9b8c`, and `8e8731f` together with the
-   physical artifact and hosted zero-state evidence.
+1. Review the stable v0.5 metadata diff and exact tarball inventory; PR #30 and
+   its macOS/Ubuntu/database policy checks are complete.
 2. Keep public signup closed and exactly one owner entitlement enabled; do not
-   broaden access during release preparation.
-3. Obtain human cryptographic/privacy review of the physical evidence before
-   freezing the real-session payload contract.
-4. For stable v0.5, remove `private`, review scoped-package access/dist-tag, use
-   clean `main`, create the exact tag, rerun every gate, and pass
-   `prepublishOnly` with explicit approval. Never republish immutable v0.4.1.
-5. Re-evaluate PR #25 separately against current public `main`; do not mix it into
+   broaden hosted access during or after client publication.
+3. Merge `release/v0.5.0`, create the exact tag from clean `main`, rerun the
+   publication guard, and publish once only after explicit final approval. Never
+   republish immutable v0.4.1.
+4. Re-evaluate PR #25 separately against current public `main`; do not mix it into
    the Cloud release without resolving its named-instance and UTF-8 findings.
