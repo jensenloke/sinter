@@ -12,6 +12,10 @@ sinter scan
 sinter
 ```
 
+npm `latest` remains `0.4.0`. This `0.5.0-dev.0` package is private development
+metadata; repository-bound v2 testing uses a locally packed tarball installed
+identically on both devices, not the public install commands above.
+
 Sinter reads local harness stores and keeps its index on your machine. It does
 not require an account or upload transcripts. Historical tool calls are inert
 during cross-harness ports unless explicitly enabled for a compatible target.
@@ -40,7 +44,8 @@ config without ever overwriting an existing one.
 Run `sinter update` to install the exact latest published build into the global
 bun or npm installation that owns the current executable. If that ownership is
 ambiguous, pass `--package-manager bun` or `--package-manager npm`; use
-`--check` for a side-effect-free registry check.
+`--check` for a side-effect-free registry check. A newer development build
+reports `newer-local` and does not downgrade to npm `latest` without `--force`.
 
 Sinter Cloud is currently a private alpha for existing members; the CLI remains
 fully usable without it. Approved members can register devices without uploading

@@ -6,6 +6,7 @@ import { CliError, EXIT } from "./args";
 export const REPOSITORY_BINDING_SCHEMA = "sinter.repository-binding.v1" as const;
 export const REPOSITORY_BINDING_PREVIEW_SCHEMA = "sinter.repository-binding-preview.v1" as const;
 export const SESSION_TRANSFER_SCHEMA = "sinter.session-transfer.v2" as const;
+const SESSION_TRANSFER_MAX_SUBSESSION_DEPTH = 16;
 
 export interface RepositoryRemote {
   host: string;
@@ -27,6 +28,7 @@ export interface RepositoryBindingPreview {
   sourceCommit: string;
   sourceBranch?: string;
   targetRepository: string;
+  targetRemote: string;
   targetRoot: string;
   targetCwd: string;
   targetHead: string;
@@ -98,19 +100,26 @@ function exactKeys(value: Record<string, unknown>, keys: readonly string[], labe
 }
 
 function safeString(value: unknown, label: string, maximum = 2048): string {
-  if (typeof value !== "string" || value.length < 1 || value.length > maximum || value !== value.normalize("NFC") || /[\u0000-\u001f\u007f]/.test(value)) {
+  if (typeof value !== "string" || value.length < 1 || value.length > maximum || value !== value.trim()
+    || value !== value.normalize("NFC") || /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/.test(value)) {
     fail(`${label} is invalid`);
   }
   return value;
 }
 
 function normalizedRemotePath(value: string): string {
-  if (value.includes("\\")) fail("Git remote is not a supported hosted Git remote");
-  let path = value.split(/[?#]/, 1)[0]!.replace(/^\/+/, "").replace(/\/+$/, "");
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(value.split(/[?#]/, 1)[0]!);
+  } catch {
+    fail("Git remote repository path is invalid");
+  }
+  if (decoded.includes("\\") || decoded.includes("?") || decoded.includes("#")) fail("Git remote is not a supported hosted Git remote");
+  let path = decoded.replace(/^\/+/, "").replace(/\/+$/, "");
   if (path.endsWith(".git")) path = path.slice(0, -4);
   path = path.replace(/\/+$/, "");
-  if (!path || path.split("/").some((part) => !part || part === "." || part === "..")) fail("Git remote has no valid repository path");
-  if (path !== path.normalize("NFC") || /[\u0000-\u001f\u007f]/.test(path)) fail("Git remote repository path is invalid");
+  safeString(path, "Git remote repository path", 8192);
+  if (path.split("/").some((part) => !part || part === "." || part === "..")) fail("Git remote has no valid repository path");
   return path;
 }
 
@@ -128,19 +137,24 @@ function sanitizeRepositoryRemote(value: string): { identity: RepositoryRemote; 
     }
     if (url.protocol !== "https:" && url.protocol !== "ssh:") fail("Git remote is not a supported hosted Git remote");
     protocol = url.protocol === "https:" ? "https" : "ssh";
-    host = url.hostname.toLowerCase().replace(/\.$/, "");
+    host = url.hostname.toLowerCase().replace(/\.+$/, "");
     if (!host) fail("Git remote has no valid hostname");
+    if (url.port && (!/^\d+$/.test(url.port) || Number(url.port) < 1 || Number(url.port) > 65_535)) fail("Git remote port is invalid");
     const defaultPort = (url.protocol === "https:" && url.port === "443") || (url.protocol === "ssh:" && url.port === "22");
     if (url.port && !defaultPort) host = `${host}:${url.port}`;
     path = normalizedRemotePath(url.pathname);
   } else {
-    const match = /^(?:[^@\s/:]+@)?(\[[^\]]+\]|[^:\s/]+):(.+)$/.exec(input);
+    const match = /^(?:[^@\s/:\\]+@)?(\[[^\]]+\]|[^:\s/\\]+):(.+)$/.exec(input);
     if (!match || /^[A-Za-z]$/.test(match[1]!)) fail("Git remote is not a supported hosted Git remote");
     protocol = "ssh";
-    host = match[1]!.toLowerCase().replace(/\.$/, "");
+    host = match[1]!.toLowerCase().replace(/\.+$/, "");
     path = normalizedRemotePath(match[2]!);
   }
-  if (!/^[a-z0-9._:[\]-]+(?::\d+)?$/i.test(host)) fail("Git remote has no valid hostname");
+  const bracketedHost = /^\[[0-9a-f:.]+\](?::\d+)?$/i.test(host);
+  if (host.startsWith("[") ? !bracketedHost : !/^[a-z0-9._-]+(?::\d+)?$/i.test(host)) fail("Git remote has no valid hostname");
+  const hostname = bracketedHost ? host.slice(1, host.indexOf("]")) : host.replace(/:\d+$/, "");
+  if (hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "0.0.0.0" || hostname.startsWith("127.")
+    || hostname === "::" || hostname === "::1") fail("Git remote loopback hosts cannot identify a cross-device repository");
   return { identity: { host, path }, url: `${protocol}://${host}/${path}` };
 }
 
@@ -153,7 +167,8 @@ function remoteKey(remote: RepositoryRemote): string {
 }
 
 function compareRemotes(left: RepositoryRemote, right: RepositoryRemote): number {
-  return left.host.localeCompare(right.host) || left.path.localeCompare(right.path);
+  const host = left.host < right.host ? -1 : left.host > right.host ? 1 : 0;
+  return host || (left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
 }
 
 function parseRemote(value: unknown, label: string): RepositoryRemote {
@@ -212,6 +227,7 @@ async function defaultRunGit(cwd: string, args: string[]): Promise<CommandResult
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
+      signal: AbortSignal.timeout(10_000),
       env: { ...Bun.env, GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0" },
     });
     const [code, stdout, stderr] = await Promise.all([
@@ -245,7 +261,8 @@ function displayRemote(remote: RepositoryRemote): string {
 }
 
 export function sanitizeSessionForNetwork(session: SifSession): SifSession {
-  const sanitize = (value: SifSession): SifSession => {
+  const sanitize = (value: SifSession, depth = 0): SifSession => {
+    if (depth > SESSION_TRANSFER_MAX_SUBSESSION_DEPTH) fail("Session transfer subsessions are nested too deeply");
     const { preserve: _preserve, additionalDirs: _additionalDirs, git: _git, ...rest } = value;
     return {
       ...rest,
@@ -256,7 +273,7 @@ export function sanitizeSessionForNetwork(session: SifSession): SifSession {
         nativeId: value.origin.nativeId,
       },
       entries: value.entries.map(({ raw: _raw, ...entry }) => entry),
-      ...(value.subsessions ? { subsessions: value.subsessions.map(sanitize) } : {}),
+      ...(value.subsessions ? { subsessions: value.subsessions.map((child) => sanitize(child, depth + 1)) } : {}),
     };
   };
   const safe = sanitize(session);
@@ -265,12 +282,13 @@ export function sanitizeSessionForNetwork(session: SifSession): SifSession {
 }
 
 function assertNetworkSafeSession(session: SifSession): void {
-  const inspect = (value: SifSession): void => {
+  const inspect = (value: SifSession, depth = 0): void => {
+    if (depth > SESSION_TRANSFER_MAX_SUBSESSION_DEPTH) fail("Session transfer subsessions are nested too deeply");
     if (value.cwd !== "" || value.git !== undefined || value.preserve !== undefined || value.additionalDirs !== undefined
       || value.origin.nativePath !== undefined || value.origin.host !== undefined || value.entries.some((entry) => entry.raw !== undefined)) {
       fail("Session transfer payload contains unsupported source-local fields");
     }
-    value.subsessions?.forEach(inspect);
+    value.subsessions?.forEach((child) => inspect(child, depth + 1));
   };
   inspect(session);
 }
@@ -289,6 +307,7 @@ export function parseSessionTransferPayload(value: string): SessionTransferPaylo
   } catch {
     fail("Received session transfer payload is invalid JSON");
   }
+  if (JSON.stringify(parsed) !== value) fail("Received session transfer payload is not canonical JSON");
   const payload = record(parsed, "Session transfer payload");
   if (payload.schema !== SESSION_TRANSFER_SCHEMA) fail("Received unsupported session transfer payload; both devices must use Sinter direct transfer v2");
   exactKeys(payload, ["schema", "repository", "session"], "Session transfer payload");
@@ -353,9 +372,12 @@ export function createRepositoryBindingService(dependencies: RepositoryBindingDe
     const byName = new Map<string, RepositoryRemote[]>();
     const urls = new Map<string, string>();
     for (const name of names) {
-      const result = await runGit(root, ["remote", "get-url", "--all", name]);
-      if (result.code !== 0) fail("Could not inspect Git remotes");
+      const result = await runGit(root, ["remote", "get-url", "--all", "--", name]);
       const named = new Map<string, RepositoryRemote>();
+      if (result.code !== 0) {
+        byName.set(name, []);
+        continue;
+      }
       for (const value of lines(result.stdout)) {
         try {
           const sanitized = sanitizeRepositoryRemote(value);
@@ -494,12 +516,15 @@ export function createRepositoryBindingService(dependencies: RepositoryBindingDe
       const suffixes: string[] = [];
       if (match === "mismatch") suffixes.push("repo-mismatch-allowed");
       if (!commitAvailable) suffixes.push("missing-commit-allowed");
+      const targetRemote = available.urls.get(remoteKey(selectedTarget));
+      if (!targetRemote) fail("The selected target remote could not be sanitized");
       const preview: RepositoryBindingPreview = {
         schema: REPOSITORY_BINDING_PREVIEW_SCHEMA,
         sourceRepository: displayRemote(binding.selectedRemote),
         sourceCommit: binding.commit,
         ...(binding.branch ? { sourceBranch: binding.branch } : {}),
         targetRepository: displayRemote(selectedTarget),
+        targetRemote,
         targetRoot: root,
         targetCwd,
         targetHead,
@@ -519,7 +544,7 @@ export function createRepositoryBindingService(dependencies: RepositoryBindingDe
         git: {
           sha: binding.commit,
           ...(binding.branch ? { branch: binding.branch } : {}),
-          remote: available.urls.get(remoteKey(selectedTarget))!,
+          remote: targetRemote,
         },
         provenanceModeSuffix: suffixes.length ? `+${suffixes.join("+")}` : "",
       };

@@ -82,6 +82,20 @@ describe("repository remote normalization", () => {
     expect(JSON.stringify(values.map(normalizeRepositoryRemote))).not.toContain("hidden");
   });
 
+  test("keeps a deterministic identity across transport, case, suffix, and credential variants", () => {
+    const expected = { host: "git.example.test", path: "Org/Repo" };
+    const variants: string[] = [];
+    for (const host of ["git.example.test", "GIT.EXAMPLE.TEST."])
+      for (const suffix of ["", ".git", ".git/"]) {
+        variants.push(`https://token:secret@${host}:443/Org/Repo${suffix}?key=hidden#fragment`);
+        variants.push(`ssh://git@${host}:22/Org/Repo${suffix}`);
+        variants.push(`git@${host}:Org/Repo${suffix}?key=hidden#fragment`);
+      }
+    for (const variant of variants) expect(normalizeRepositoryRemote(variant)).toEqual(expected);
+    const serialized = JSON.stringify(variants.map(normalizeRepositoryRemote));
+    for (const forbidden of ["token", "secret", "hidden", "fragment", ".git"]) expect(serialized).not.toContain(forbidden);
+  });
+
   test("preserves path case and non-default ports while rejecting local or malformed remotes", () => {
     expect(normalizeRepositoryRemote("ssh://git@Git.Example.test:2222/Org/Repo.git")).toEqual({
       host: "git.example.test:2222",
@@ -90,9 +104,30 @@ describe("repository remote normalization", () => {
     const ipv6 = { host: "[2001:db8::1]", path: "Org/Repo" };
     expect(normalizeRepositoryRemote("ssh://git@[2001:db8::1]/Org/Repo.git")).toEqual(ipv6);
     expect(normalizeRepositoryRemote("git@[2001:db8::1]:Org/Repo.git")).toEqual(ipv6);
+    expect(normalizeRepositoryRemote("ssh://git@[2001:db8::1]:2222/Org/Repo.git")).toEqual({
+      host: "[2001:db8::1]:2222",
+      path: "Org/Repo",
+    });
     expect(() => normalizeRepositoryRemote("/Users/source/private/repo")).toThrow("supported hosted Git remote");
     expect(() => normalizeRepositoryRemote("C:/Users/source/private/repo")).toThrow("supported hosted Git remote");
     expect(() => normalizeRepositoryRemote("C:\\Users\\source\\private\\repo")).toThrow("supported hosted Git remote");
+    expect(normalizeRepositoryRemote("https://github.com/%45xample/%50roject.git")).toEqual({ host: "github.com", path: "Example/Project" });
+    expect(normalizeRepositoryRemote("https://github.com/org/caf%C3%A9.git")).toEqual(
+      normalizeRepositoryRemote("git@github.com:org/café.git"),
+    );
+    expect(normalizeRepositoryRemote("https://github.com.../Example/Project.git")).toEqual({ host: "github.com", path: "Example/Project" });
+    for (const invalid of [
+      "https://github.com/org%2F..%2Frepo.git",
+      "git@github.com:org%2F..%2Frepo.git",
+      "https://github.com:0/Example/Project.git",
+      "ssh://github.com:99999/Example/Project.git",
+      "git@@github.com:Example/Project.git",
+      "git@[2001:db8::1:Example/Project.git",
+      "git@host\\alias:Example/Project.git",
+      "ssh://git@localhost/Example/Project.git",
+      "ssh://git@127.0.0.1/Example/Project.git",
+      "ssh://git@[::1]/Example/Project.git",
+    ]) expect(() => normalizeRepositoryRemote(invalid)).toThrow();
     expect(() => normalizeRepositoryRemote("https://github.com")).toThrow("repository path");
   });
 });
@@ -113,6 +148,13 @@ describe("repository binding schema", () => {
     expect(() => parseRepositoryBinding({ ...value, extra: true })).toThrow("unsupported fields");
     expect(() => parseRepositoryBinding({ ...value, selectedRemote: { host: "github.com", path: "other/repo" } }))
       .toThrow("selected remote");
+    for (const branch of ["   ", "feature/\u0080hidden", "feature/\u2028hidden", "feature/\u202Ehidden", " feature/safe"])
+      expect(() => parseRepositoryBinding({ ...value, branch })).toThrow("branch");
+    expect(() => parseRepositoryBinding({
+      ...value,
+      remotes: [{ host: "github.com", path: "z/repo" }, { host: "github.com", path: "A/repo" }],
+      selectedRemote: { host: "github.com", path: "z/repo" },
+    })).toThrow("canonically sorted");
   });
 
   test("uses a versioned encrypted payload envelope and rejects legacy or extra fields", () => {
@@ -136,6 +178,24 @@ describe("repository binding schema", () => {
     expect(serialized).not.toContain("private");
     expect(() => parseSessionTransferPayload(JSON.stringify(session("legacy")))).toThrow("unsupported session transfer payload");
     expect(() => parseSessionTransferPayload(JSON.stringify({ ...JSON.parse(serialized), extra: true }))).toThrow("unsupported fields");
+    expect(() => parseSessionTransferPayload(JSON.stringify(JSON.parse(serialized), null, 2))).toThrow("canonical JSON");
+    expect(() => parseSessionTransferPayload(serialized.replace(
+      `{"schema":"${SESSION_TRANSFER_SCHEMA}"`,
+      `{"schema":"wrong","schema":"${SESSION_TRANSFER_SCHEMA}"`,
+    ))).toThrow("canonical JSON");
+
+    const deeplyNested = structuredClone(safeSession);
+    let current = deeplyNested;
+    for (let depth = 0; depth < 18; depth++) {
+      const child = { ...structuredClone(safeSession), id: `nested-${depth}`, subsessions: undefined };
+      current.subsessions = [child];
+      current = child;
+    }
+    expect(() => parseSessionTransferPayload(JSON.stringify({
+      schema: SESSION_TRANSFER_SCHEMA,
+      repository: binding,
+      session: deeplyNested,
+    }))).toThrow("nested too deeply");
   });
 });
 
@@ -193,6 +253,7 @@ describe("repository target resolution", () => {
     expect(resolution.preview).toMatchObject({
       schema: REPOSITORY_BINDING_PREVIEW_SCHEMA,
       match: "exact",
+      targetRemote: "ssh://github.com/Example/Project",
       commitAvailable: true,
       targetWorktreeDirty: true,
       relativeCwd: "packages/frontend",
@@ -211,6 +272,13 @@ describe("repository target resolution", () => {
     expect(rewritten.git?.remote).toBe("ssh://github.com/Example/Project");
     expect(rewritten.git?.remote).not.toContain("secret");
     expect(JSON.stringify(rewritten)).not.toContain(sourceRoot);
+
+    const targetSubdirectory = join(targetRoot, "packages", "frontend");
+    rmSync(targetSubdirectory, { recursive: true, force: true });
+    writeFileSync(targetSubdirectory, "not a directory\n");
+    await expect(service.resolve(binding, targetRoot, {})).rejects.toThrow("not a directory");
+    rmSync(targetSubdirectory);
+    await expect(service.resolve(binding, targetRoot, {})).rejects.toThrow("subdirectory is missing");
   });
 
   test("requires dedicated overrides for repository mismatch and missing commits", async () => {

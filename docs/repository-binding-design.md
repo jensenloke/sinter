@@ -45,8 +45,8 @@ The `0.4.1` synthetic diagnostic in
 fixed SIF fixture with `cwd: ""` and no `git` object. It remains independent of
 repository binding.
 
-The `0.5.0` development CLI keeps the version 1 locator and encrypted transport
-framing but replaces the inner session payload with
+The `0.5.0-dev.0` development CLI keeps the version 1 locator and encrypted
+transport framing but replaces the inner session payload with
 `sinter.session-transfer.v2`. The sender derives and strictly parses a sanitized
 binding from the actual source checkout, removes source absolute `cwd` and raw
 Git metadata from every transferred SIF session, and requires
@@ -247,12 +247,17 @@ The focused and full verification gates cover:
 - exact `(harness, instance, native-id)` target identity is preserved;
 - current `0.4.1` synthetic diagnostics remain independent of repository logic.
 
-The complete gate passed 847 tests and 9,822 assertions, both TypeScript checks,
+The complete gate passed 851 tests and 9,898 assertions, both TypeScript checks,
 CLI and Cloud production builds, isolated Bun/npm package rehearsal, built help,
 and `git diff --check`. The focused suite includes real temporary Git repositories
 and encrypted loopback transport. Independent adversarial review found no
-remaining critical, high, or medium blockers after Windows-path, sanitized
-transport-form, preview semantics, and recheck hardening.
+remaining critical, high, or medium blockers after Windows-path, percent/
+Unicode normalization, sanitized transport-form, preview semantics, and recheck
+hardening. A hash-matched private development tarball also passed a physical
+MacBook/Mac Mini matrix covering exact/dirty compact transfer, missing-commit
+slim override, mismatch full override, ambiguous source selection, provenance,
+and legacy-v1 refusal without reading a real session or modifying repository
+files.
 
 ## Release sequencing
 
@@ -307,8 +312,8 @@ Implemented surfaces are:
   regression tests.
 
 Core SIF, capsule cryptography, adapter writers, ledger schema, Cloud APIs, and
-Storage remain unchanged. The next gate is an identical-build physical direct
-transfer between two explicit checkouts, followed by human privacy/security
-review. Do not enable real-session Cloud uploads as part of repository binding.
+Storage remain unchanged. The identical-build physical direct-transfer matrix
+has passed; human privacy/security review is the next gate. Do not enable
+real-session Cloud uploads as part of repository binding.
 Keep source harness stores read-only, preserve exact named-instance identity, and
 do not merge this work into the `0.4.1` candidate.

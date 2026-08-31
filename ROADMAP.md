@@ -152,16 +152,16 @@ The first local-first slice is implemented: `sinter receive` creates a short-
 lived, one-use encrypted locator and `sinter send` connects directly over LAN
 or Tailscale. An authenticated success receipt is returned only after the
 receiver validates, approves, and imports the context into an exact named
-harness instance. The `0.5.0` development path additionally binds a sanitized
-source repository identity to an explicitly selected target checkout, rejects
-legacy unbound payloads, and rewrites the imported session to a target-local
-monorepo directory without mutating Git or workspace files. It requires no
-account, SSH daemon, relay, or discovery service. Context transfer intentionally
-excludes workspace files and secrets.
+harness instance. The `0.5.0-dev.0` development path additionally binds a
+sanitized source repository identity to an explicitly selected target checkout,
+rejects legacy unbound payloads, and rewrites the imported session to a
+target-local monorepo directory without mutating Git or workspace files. It
+requires no account, SSH daemon, relay, or discovery service. Context transfer
+intentionally excludes workspace files and secrets.
 
-Next steps are a physical repository-bound transfer test, human privacy/security
-review, optional discovery, durable inbox semantics, revocation, and a relay for
-devices that cannot connect directly.
+The physical synthetic repository-bound transfer matrix passed. Next steps are
+human privacy/security review, optional discovery, durable inbox semantics,
+revocation, and a relay for devices that cannot connect directly.
 
 Introduce accounts only when they solve a concrete transport problem:
 

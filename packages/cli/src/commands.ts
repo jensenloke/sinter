@@ -73,6 +73,11 @@ import {
 } from "./repository-binding";
 import type { UpdateDependencies } from "./update";
 
+export const SEND_PREVIEW_SCHEMA = "sinter.send.preview.v1" as const;
+export const SEND_RESULT_SCHEMA = "sinter.send.result.v1" as const;
+export const RECEIVE_LISTENER_SCHEMA = "sinter.receive.listener.v1" as const;
+export const RECEIVE_RESULT_SCHEMA = "sinter.receive.result.v1" as const;
+
 export interface Ctx {
   registry: AdapterRegistry;
   /** Lazy: doctor/import must work without touching the ledger file. */
@@ -1427,6 +1432,8 @@ async function writeInto(
   args: ParsedArgs,
   mode?: string,
   cwdOverride?: string,
+  onWritten?: (ref: NativeRef) => void,
+  quiet = false,
 ): Promise<number> {
   const { adapter } = binding;
   const target = instanceLabel(binding.harness, binding.instanceId);
@@ -1443,6 +1450,7 @@ async function writeInto(
     dryRun,
   });
   const instanceRef: NativeRef = { ...ref, instanceId: binding.instanceId };
+  onWritten?.(instanceRef);
 
   ctx.err(
     `${dryRun ? "would write" : "wrote"} ${target}:${instanceRef.nativeId}` +
@@ -1481,8 +1489,10 @@ async function writeInto(
     }
   }
 
-  ctx.out(`${target}:${instanceRef.nativeId}`);
-  printResume(ctx, binding, instanceRef);
+  if (!quiet) {
+    ctx.out(`${target}:${instanceRef.nativeId}`);
+    printResume(ctx, binding, instanceRef);
+  }
   return EXIT.OK;
 }
 
@@ -1624,6 +1634,7 @@ function sameRepositoryBindingPreview(left: RepositoryBindingPreview, right: Rep
     && left.sourceCommit === right.sourceCommit
     && left.sourceBranch === right.sourceBranch
     && left.targetRepository === right.targetRepository
+    && left.targetRemote === right.targetRemote
     && left.targetRoot === right.targetRoot
     && left.targetCwd === right.targetCwd
     && left.targetHead === right.targetHead
@@ -1643,6 +1654,7 @@ function printRepositoryBindingPreview(ctx: Ctx, preview: RepositoryBindingPrevi
     ["source commit", preview.sourceCommit],
     ["source branch", preview.sourceBranch ?? "-"],
     ["target repository", preview.targetRepository],
+    ["target remote", preview.targetRemote],
     ["target root", preview.targetRoot],
     ["relative directory", preview.relativeCwd || "."],
     ["target directory", preview.targetCwd],
@@ -1673,7 +1685,7 @@ export async function cmdSend(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv, { strings: ["to", "mode", "repo-remote"], booleans: ["preview", "json"] });
   const prefix = args._[0];
   const locator = flagString(args, "to");
-  if (!prefix || !locator) throw new CliError("usage: sinter send <id-prefix> --to <sinter://transfer/...> [--mode compact|slim|full] [--repo-remote <name>]");
+  if (!prefix || !locator) throw new CliError("usage: sinter send <id-prefix> --to <sinter://transfer/...> [--mode compact|slim|full] [--repo-remote <name>] [--preview] [--json]");
   const row = resolveRow(ctx, prefix);
   const source = await readSessionForPort(ctx, row);
   const mode = (flagString(args, "mode") ?? "compact") as TransferMode;
@@ -1686,6 +1698,7 @@ export async function cmdSend(argv: string[], ctx: Ctx): Promise<number> {
   const bytes = new TextEncoder().encode(serializeSessionTransferPayload(session, repository));
   if (flagBool(args, "preview")) {
     const preview = {
+      schema: SEND_PREVIEW_SCHEMA,
       source: { harness: row.harness, instanceId: row.instanceId ?? DEFAULT_INSTANCE_ID, nativeId: row.nativeId },
       repository: {
         selectedRemote: `${repository.selectedRemote.host}/${repository.selectedRemote.path}`,
@@ -1711,7 +1724,7 @@ export async function cmdSend(argv: string[], ctx: Ctx): Promise<number> {
       sourceInstance: row.instanceId ?? DEFAULT_INSTANCE_ID,
     },
   });
-  if (flagBool(args, "json")) ctx.out(JSON.stringify({ ok: true, transferId: receipt.transferId, bytes: bytes.byteLength }));
+  if (flagBool(args, "json")) ctx.out(JSON.stringify({ schema: SEND_RESULT_SCHEMA, ok: true, transferId: receipt.transferId, bytes: bytes.byteLength }));
   else ctx.out(`sent ${fmtBytes(bytes.byteLength)} · accepted as ${receipt.transferId}`);
   return EXIT.OK;
 }
@@ -1723,7 +1736,7 @@ export async function cmdReceive(argv: string[], ctx: Ctx): Promise<number> {
     booleans: ["yes", "json", "allow-repo-mismatch", "allow-missing-commit"],
   });
   const to = flagString(args, "to");
-  if (!to) throw new CliError("usage: sinter receive --to <harness@instance> --cwd <repository-root> [--advertise <LAN-or-Tailscale-IP>] [--yes]");
+  if (!to) throw new CliError("usage: sinter receive --to <harness@instance> --cwd <repository-root> [--bind 0.0.0.0] [--advertise <LAN-or-Tailscale-IP>] [--port n] [--ttl 5m] [--allow-repo-mismatch] [--allow-missing-commit] [--yes] [--json]");
   const cwd = flagString(args, "cwd");
   if (!cwd) throw new CliError("sinter receive v2 requires --cwd <repository-root>");
   const targetRoot = cwd === "." ? process.cwd() : cwd;
@@ -1736,6 +1749,7 @@ export async function cmdReceive(argv: string[], ctx: Ctx): Promise<number> {
   if (!Number.isInteger(port) || port < 0 || port > 65_535) throw new CliError(`bad --port: ${portValue}`);
   const target = instanceLabel(targetBinding.harness, targetBinding.instanceId);
   let preview: RepositoryBindingPreview | undefined;
+  let importedRef: NativeRef | undefined;
   let receiverFailure: CliError | undefined;
   const receiver = startTransferReceiver({
     bindHost,
@@ -1777,6 +1791,8 @@ export async function cmdReceive(argv: string[], ctx: Ctx): Promise<number> {
           args,
           `network-${mode}${finalResolution.provenanceModeSuffix}`,
           finalResolution.targetCwd,
+          (ref) => { importedRef = ref; },
+          flagBool(args, "json"),
         );
       } catch (error) {
         if (error instanceof CliError) receiverFailure = error;
@@ -1784,7 +1800,11 @@ export async function cmdReceive(argv: string[], ctx: Ctx): Promise<number> {
       }
     },
   });
-  ctx.out(receiver.locator);
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify({ schema: RECEIVE_LISTENER_SCHEMA, listening: true, locator: receiver.locator, target }));
+  } else {
+    ctx.out(receiver.locator);
+  }
   ctx.err(`listening on ${bindHost}:${receiver.port} for one encrypted transfer → ${target}`);
   try {
     let received: ReceivedTransfer;
@@ -1795,9 +1815,25 @@ export async function cmdReceive(argv: string[], ctx: Ctx): Promise<number> {
       if (receiverFailure) throw receiverFailure;
       throw error;
     }
-    if (flagBool(args, "json"))
-      ctx.out(JSON.stringify({ ok: true, transferId: received.transferId, bytes: received.bytes.byteLength, target, repository: preview }));
-    else ctx.err(`received and imported ${fmtBytes(received.bytes.byteLength)} · ${received.transferId}`);
+    if (flagBool(args, "json")) {
+      if (!importedRef || !preview) throw new CliError("receive completed without imported session metadata");
+      ctx.out(JSON.stringify({
+        schema: RECEIVE_RESULT_SCHEMA,
+        ok: true,
+        imported: true,
+        wrote: true,
+        transferId: received.transferId,
+        bytes: received.bytes.byteLength,
+        target: {
+          harness: targetBinding.harness,
+          instanceId: targetBinding.instanceId,
+          nativeId: importedRef.nativeId,
+        },
+        preview,
+      }));
+    } else {
+      ctx.err(`received and imported ${fmtBytes(received.bytes.byteLength)} · ${received.transferId}`);
+    }
     // `received` resolves when the authenticated Response is created. Give Bun
     // one event-loop turn to flush that receipt before closing the one-shot server.
     await (ctx.sleep ?? Bun.sleep)(50);

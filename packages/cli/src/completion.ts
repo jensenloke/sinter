@@ -1,6 +1,8 @@
 export type CompletionShell = "zsh" | "bash" | "fish";
 
 const COMMANDS = [
+  ["help", "show command or topic help"],
+  ["version", "print the CLI version"],
   ["scan", "refresh the local ledger"],
   ["login", "sign in to Sinter Cloud"],
   ["whoami", "show the current Cloud identity"],
@@ -160,7 +162,15 @@ function bash(): string {
     COMPREPLY=( $(compgen -W '--check --package-manager --force --json bun npm' -- "$current") )
     return
   fi
-  COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --all-harnesses --cwd --all-cwd --since --all-time --older-than --interval --count --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open --yes --repo-remote --allow-repo-mismatch --allow-missing-commit --ghosts --no-ghosts --subagents --no-subagents --force --all --clear --no-clear' -- "$current") )
+  if [[ $command == send ]]; then
+    COMPREPLY=( $(compgen -W '--to --mode --repo-remote --preview --json' -- "$current") )
+    return
+  fi
+  if [[ $command == receive ]]; then
+    COMPREPLY=( $(compgen -W '--to --cwd --bind --advertise --port --ttl --allow-repo-mismatch --allow-missing-commit --yes --json' -- "$current") )
+    return
+  fi
+  COMPREPLY=( $(compgen -W '${GLOBAL_FLAGS.join(" ")} --harness --all-harnesses --cwd --all-cwd --since --all-time --older-than --interval --count --limit --json --ndjson --tail --id --to --in --mode --preview --report --output --dry-run --live-tools --exec --no-open --yes --ghosts --no-ghosts --subagents --no-subagents --force --all --clear --no-clear' -- "$current") )
 }
 complete -F _sinter_completion sinter
 `;

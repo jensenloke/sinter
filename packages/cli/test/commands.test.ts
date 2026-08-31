@@ -131,6 +131,8 @@ describe("CLI conventions", () => {
     expect(h.out()).toContain("--allow-repo-mismatch");
     expect(h.out()).toContain("--allow-missing-commit");
     expect(h.out()).toContain("rejects legacy v1 session payloads");
+    expect(h.out()).toContain("versioned listener record");
+    expect(h.out()).toContain("versioned completion record");
     h.stdout.length = 0;
     expect(await run(["send", "--help"], h.ctx)).toBe(0);
     expect(h.out()).toContain("--repo-remote <name>");
@@ -287,7 +289,7 @@ describe("named harness instances", () => {
       branch: "feature/repository-binding",
       relativeCwd: "",
     });
-    expect(preview).toMatchObject({ transportEncryption: "on-send", sends: false });
+    expect(preview).toMatchObject({ schema: "sinter.send.preview.v1", transportEncryption: "on-send", sends: false });
     expect(preview.payloadBytes).toBeGreaterThan(0);
     expect(output[0]).not.toContain(sourcePath);
     expect(output[0]).not.toContain("token");
@@ -315,6 +317,7 @@ describe("named harness instances", () => {
       sourceCommit: commit,
       sourceBranch: "feature/repository-binding",
       targetRepository: "github.com/example/project",
+      targetRemote: "https://github.com/example/project",
       targetRoot,
       targetCwd,
       targetHead: commit,
@@ -380,14 +383,23 @@ describe("named harness instances", () => {
     };
 
     const receiving = run([
-      "receive", "--to", "codex@work", "--cwd", targetRoot, "--bind", "127.0.0.1", "--advertise", "127.0.0.1", "--ttl", "30s", "--yes",
+      "receive", "--to", "codex@work", "--cwd", targetRoot, "--bind", "127.0.0.1", "--advertise", "127.0.0.1", "--ttl", "30s", "--yes", "--json",
     ], receiverCtx);
     await Bun.sleep(0);
-    const locator = receiverOut.find((line) => line.startsWith("sinter://"));
-    expect(locator).toBeDefined();
-    const sendCode = await run(["send", "claude@personal:source", "--to", locator!], senderCtx);
+    const listener = JSON.parse(receiverOut[0]!);
+    expect(listener).toMatchObject({ schema: "sinter.receive.listener.v1", listening: true, target: "codex@work" });
+    const sendCode = await run(["send", "claude@personal:source", "--to", listener.locator, "--json"], senderCtx);
     expect({ sendCode, senderError: h.stderr.join("\n"), receiverOutput: receiverOut }).toMatchObject({ sendCode: 0 });
     expect(await receiving).toBe(0);
+    expect(receiverOut).toHaveLength(2);
+    expect(JSON.parse(receiverOut[1]!)).toMatchObject({
+      schema: "sinter.receive.result.v1",
+      ok: true,
+      imported: true,
+      wrote: true,
+      target: { harness: "codex", instanceId: "work", nativeId: "new-codex-1" },
+      preview: { schema: REPOSITORY_BINDING_PREVIEW_SCHEMA, writes: false },
+    });
     expect(target.written).toHaveLength(1);
     expect(target.written[0]!.opts).toMatchObject({ instanceId: "work", cwd: targetCwd, mode: "network-compact" });
     expect(target.written[0]!.session).toMatchObject({
@@ -405,7 +417,8 @@ describe("named harness instances", () => {
     expect(receiverErr.join("\n")).toContain("target worktree");
     expect(receiverErr.join("\n")).not.toContain(sourcePath);
     expect(receiverErr.join("\n")).not.toContain("token@");
-    expect(senderOut.join("\n")).toContain("accepted as");
+    expect(senderOut).toHaveLength(1);
+    expect(JSON.parse(senderOut[0]!)).toMatchObject({ schema: "sinter.send.result.v1", ok: true });
     senderLedger.close();
     receiverLedger.close();
   });
@@ -469,6 +482,7 @@ describe("named harness instances", () => {
       sourceCommit: repository.commit,
       sourceBranch: repository.branch,
       targetRepository: "github.com/example/project",
+      targetRemote: "https://github.com/example/project",
       targetRoot,
       targetCwd: targetRoot,
       targetHead: repository.commit,
@@ -550,6 +564,7 @@ describe("named harness instances", () => {
       sourceCommit: repository.commit,
       sourceBranch: repository.branch,
       targetRepository: "github.com/example/other",
+      targetRemote: "https://github.com/example/other",
       targetRoot,
       targetCwd: targetRoot,
       targetHead: "c".repeat(40),
@@ -614,9 +629,10 @@ describe("named harness instances", () => {
             sourceCommit: repository.commit,
             sourceBranch: repository.branch,
             targetRepository: "github.com/example/project",
+            targetRemote: `${checks === 1 ? "ssh" : "https"}://github.com/example/project`,
             targetRoot,
             targetCwd: targetRoot,
-            targetHead: (checks === 1 ? "c" : "d").repeat(40),
+            targetHead: "c".repeat(40),
             relativeCwd: "",
             match: "exact" as const,
             commitAvailable: true,
@@ -1653,7 +1669,7 @@ describe("dispatch", () => {
     expect(h.out()).toContain("usage: sinter [command]");
     h.stdout.length = 0;
     expect(await run(["--version"], h.ctx)).toBe(0);
-    expect(h.out()).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(h.out()).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
   });
 
   test("per-command --help", async () => {

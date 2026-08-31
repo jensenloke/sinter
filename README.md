@@ -23,7 +23,10 @@ sinter --help
 
 Interactive runs check npm at most once per day and offer to install a newer release. Use `--no-update-check` or set `SINTER_NO_UPDATE_CHECK=1` to disable this; scripts, CI, and non-interactive output never prompt.
 
-See the [v0.3.1 release notes](docs/releases/v0.3.1.md) for the latest changes.
+npm `latest` remains `0.4.0`. Repository-bound direct transfer v2 is available
+only from the private `0.5.0-dev.0` source/tarball on its development branch;
+normal npm/Bun installation does not install it yet. See the
+[v0.4.0 release notes](docs/releases/v0.4.0.md) for the latest published changes.
 
 ## Quick start
 
@@ -65,8 +68,10 @@ sinter gui
 Commands with `--json` or `--ndjson` keep stdout machine-readable and return
 errors on stderr using the versioned `sinter.error.v1` envelope. Transcript
 streams use `sinter.transcript.ndjson.v1`: session metadata first, then ordered
-entries, followed by linked nested sessions. Structural comparisons use
-`sinter.compare.v1` and never include transcript content.
+entries, followed by linked nested sessions. Direct receive emits a versioned
+listener record followed by a versioned completion record; preview tables remain
+on stderr. Structural comparisons use `sinter.compare.v1` and never include
+transcript content.
 
 Inspect the support Sinter can actually use on this machine without reading
 transcripts or opening the ledger:
@@ -178,7 +183,7 @@ and errors use stderr, and failures return a non-zero exit code.
 
 ## Optional Cloud account
 
-The `0.4.1` CLI can authenticate and manage private-alpha device identity
+Published `0.4.0` can authenticate and manage private-alpha device identity
 without changing local-first behavior:
 
 ```sh
@@ -193,11 +198,13 @@ Login opens `sinter-cloud.vercel.app`, waits on a random short-lived
 `127.0.0.1` callback, validates the returned identity, and stores the session
 in macOS Keychain. On platforms without a native credential-store
 implementation, Sinter uses an owner-only file. Subsequent-device registration
-waits for signed approval from an active device and saves the approved device
-ID; `--no-wait` returns the pending request immediately for scripts.
+requires signed approval from an active device. The unpublished `0.4.1` candidate
+and `0.5.0-dev.0` source build wait for approval and save the device ID
+automatically; `--no-wait` retains script behavior.
 
-Approved members with two active devices can exercise only the fixed synthetic
-capsule fixture, with no session read or automatic transfer:
+The following fixed synthetic capsule diagnostic exists only in the unpublished
+`0.4.1` candidate and `0.5.0-dev.0` source build; it does not read a session or
+transfer automatically:
 
 ```sh
 sinter devices capsule-test create --output ./sinter-capsule-test.json
@@ -211,8 +218,9 @@ Storage, inbox, relay, and real-session uploads remain disabled.
 
 ## Direct device transfer
 
-On the receiving device, explicitly select the root of the target Git checkout
-and create a one-use encrypted locator:
+In the `0.5.0-dev.0` source build, install the identical tarball on both devices.
+On the receiver, explicitly select the root of the target Git checkout and create
+a one-use encrypted locator:
 
 ```sh
 # LAN address is selected automatically when available
