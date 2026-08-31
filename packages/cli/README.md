@@ -12,8 +12,7 @@ sinter scan
 sinter
 ```
 
-npm `latest` remains `0.4.1` until this verified `0.5.0` Cloud release is tagged
-and published from clean `main`.
+npm `latest` is the verified public `0.5.0` Cloud client release.
 
 Sinter reads local harness stores and keeps its index on your machine. Historical
 tool calls are inert during cross-harness ports unless explicitly enabled for a
