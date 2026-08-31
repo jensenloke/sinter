@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
-      "path": "/api/cron/keepalive",
+      "path": "/api/cron/capsules",
       "schedule": "17 3 * * *"
     }
   ]

@@ -387,13 +387,15 @@ select is(
   array[
     'account_entitlements:account_entitlements_select_own:SELECT',
     'account_usage:account_usage_select_own:SELECT',
+    'capsule_recipients:capsule_recipients_select_own:SELECT',
+    'capsules:capsules_select_own:SELECT',
     'device_enrollment_requests:device_enrollment_requests_select_own:SELECT',
     'devices:devices_select_own:SELECT',
     'devices:devices_update_safe_own:UPDATE',
     'profiles:profiles_select_own:SELECT',
     'profiles:profiles_update_own:UPDATE'
   ]::text[],
-  'The RLS policy inventory is unchanged'
+  'The RLS policy inventory includes provider-neutral capsule ownership'
 );
 select is(
   (select count(*)::integer
@@ -402,8 +404,8 @@ select is(
      and (
        coalesce(policy.qual, '') || coalesce(policy.with_check, '')
      ) like '%current_account_id()%'),
-  7,
-  'Every existing account RLS policy still resolves provider-neutral account identity'
+  9,
+  'Every account RLS policy resolves provider-neutral account identity'
 );
 select ok(
   not has_table_privilege('authenticated', 'public.account_identities', 'select'),

@@ -9,10 +9,11 @@ operations.
 
 ## Release state
 
-- Development CLI version on `int/v0.5-cloud-v0.4.1`: `0.5.0-dev.0`.
+- Development CLI version on `feat/cloud-sync-v0.5-next`: `0.5.0-dev.0`.
 - Current published CLI and npm `latest`: `@jensenloke/sinter@0.4.1`.
 - Registry shasum `4c944de67e826899e137c9a06aa571ea9e32d472` matches the
   published package; the public executable reports `0.4.1`.
+- Development notes: [releases/v0.5.0.md](releases/v0.5.0.md).
 - Published release notes: [releases/v0.4.1.md](releases/v0.4.1.md).
 - npm publication source: `4d51a11 release: prepare Cloud-free v0.4.1 (#28)`;
   public `main` is `820d202` after its status update.
@@ -23,7 +24,7 @@ operations.
 ## Git state at handoff
 
 - The current working branch is the local, unpushed
-  `int/v0.5-cloud-v0.4.1`, created from private checkpoint `6eedca6`.
+  `feat/cloud-sync-v0.5-next`, created from integration checkpoint `ed8fc2f`.
 - The branch merged public `main` at `820d202`, preserving released terminal
   features and connecting v0.5 to the open-source history without rewriting the
   reviewed repository-binding commits.
@@ -132,9 +133,50 @@ operations.
   checks, CLI and Cloud production builds, isolated Bun/npm package rehearsal,
   built help, and `git diff --check`. Independent adversarial review found no
   remaining critical, high, or medium blockers.
-- This branch does not add Cloud upload, Storage, workspace transfer, Git fetch/
-  checkout/reset/patch behavior, or any repository dependency to the `0.4.1`
-  synthetic capsule diagnostic.
+- That repository-binding checkpoint did not add Cloud upload or Storage. The
+  child v0.5 sync implementation below reuses its fail-closed restore boundary.
+
+## Encrypted Cloud sync MVP — implemented locally, undeployed
+
+- `sinter cloud push|list|inspect|pull|delete` is implemented for an owner-only
+  alpha. Push reads the source store without modifying it, applies compact/slim/
+  full transfer and repository sanitization, encrypts locally to active exact
+  registered devices, and uploads only the signed canonical capsule ciphertext.
+- Session capsules preserve the reviewed outer HPKE/AES-GCM/ECDSA envelope while
+  adding a distinct real `sinter.capsule.session-transfer.v1` payload containing
+  strict `sinter.session-transfer.v2`. Synthetic diagnostics remain backward
+  compatible and cannot be confused with real payloads.
+- Every capsule API request requires paired Auth0 tokens plus an ECDSA device
+  proof over exact method, path, body hash, timestamp, and a durable one-use
+  nonce. The Cloud service verifies the active account device and never receives
+  a private key or plaintext.
+- The new private Storage and metadata migration uses service-role-only atomic
+  reserve/finalize/delete/expiry RPCs, active owner entitlement, exact size and
+  server-computed SHA-256 verification, 16/64 MiB caps, storage/session quotas,
+  cross-account RLS, retryable two-stage cleanup, and permanent deletion even if
+  uploads are later disabled or the account is suspended.
+- List returns content-free routing metadata. Inspect and pull download with
+  bounded streaming, reject redirects and hash/size mismatch, verify the current
+  signed sender/recipient set, and decrypt locally. Inspect does not expose the
+  transcript or replay key. Pull repeats repository checks before an exact
+  instance write and records durable local replay; dry-run consumes no replay.
+- Admin upload entitlement can be enabled only while the exact global server
+  gate is on and after super-admin reauthorization, typed confirmation, and an
+  audit reason. Defaults remain off; no email/account heuristic enables anyone.
+- A secret-protected daily cleanup route processes retryable reservations and
+  expired request nonces even while uploads are disabled.
+- Local verification passes 933 tests and 10,452 assertions, 320 pgTAP database
+  assertions from a clean migration reset, both TypeScript checks, CLI and Cloud
+  production builds, Cloud-enabled package rehearsal, frozen lockfile, and
+  `git diff --check`. Two independent post-fix reviews found no remaining
+  critical, high, or medium blocker for owner-only alpha.
+- The `0.5.0-dev.0` tarball contains 24 files limited to the CLI bundle, README,
+  license, and package metadata; it excludes the hosted app, SQL migrations, and
+  server secrets. Its current rehearsal shasum is
+  `b40e19a0dc97313934dc6e03822ffae560cc647b`.
+- Nothing in this section has been applied to hosted Supabase or deployed to
+  Vercel. `SINTER_REAL_UPLOADS_ENABLED` and the owner upload entitlement remain
+  off, and no real session content has been uploaded.
 
 ## Cloud development foundation
 
@@ -190,29 +232,29 @@ operations.
   was admitted by the MacBook's signed approval and no enrollment is pending.
   Revocation is irreversible;
   after all devices are lost or revoked there is intentionally no recovery.
-- C2 has a hardened local-only synthetic capsule draft in `@sinter/core`: RFC
-  9180 HPKE wraps a random content key; AES-256-GCM separately encrypts a fixed
-  padded manifest and synthetic SIF payload; an expected Phase 1 sender signs
-  the header, part metadata, and exact recipient set. Replay keys are opener-
-  scoped and include both ciphertext hashes. Exact P-256/AES-256 and neighboring
-  authoritative CFRG vectors pass. Two independent Claude Opus reviews closed
-  all original blockers, and the guarded synthetic capsule passed across the
-  MacBook and Mac Mini with replay rejection. Durable replay and human
-  cryptographic review still block Storage/real data. No CLI/TUI/Storage/network
-  or real-session path uses the capsule format.
+- C2 began as a hardened synthetic-only capsule: RFC 9180 HPKE wraps a random
+  content key; AES-256-GCM separately encrypts a fixed padded manifest and
+  payload; an expected device sender signs the header, part metadata, and exact
+  recipient set. Exact P-256/AES-256 and neighboring CFRG vectors pass, and the
+  synthetic capsule passed across the MacBook and Mac Mini. The local v0.5 work
+  extends that unchanged outer envelope with a separately typed real-session
+  payload, durable replay, signed Cloud requests, private Storage, and atomic
+  lifecycle controls; hosted real data remains disabled pending deployment and
+  physical owner-only testing.
 - The metadata-only control plane is deployed: default disabled/zero development
   entitlements, own quota/usage RLS, unmetered owner semantics with retained
   safety caps, service-only first-admin/role/entitlement RPCs, immutable
   content-free audit events, and a cryptographically protected `/admin` portal.
-  The one owner role and audit event are present. Upload enablement is hard-
-  locked false; role management stays service-only and no account/session
-  content enters the admin surface.
+  The one owner role and audit event are present. Hosted upload enablement remains
+  false. The local v0.5 admin path permits a change only while the exact global
+  gate is enabled and after reauthorization, confirmation, and audit reason;
+  role management stays service-only and no session content enters the portal.
 - The Cloud UI uses an original five-cell sintered-mineral mark with transparent
   512, 192, and 32 px assets. The raster concept should be traced and optically
   refined before final trademark use.
-- Development verification: 832 tests, 9,680 assertions, 217 database policy
-  assertions, schema lint, both TypeScript checks, both production builds, npm
-  package inspection, isolated Bun/npm installs, authoritative RFC HPKE
+- Earlier foundation verification: 832 tests, 9,680 assertions, 217 database
+  policy assertions, schema lint, both TypeScript checks, both production builds,
+  npm package inspection, isolated Bun/npm installs, authoritative RFC HPKE
   interoperability, and independent adversarial device/capsule/admin reviews.
   Hosted migrations/deployments, unauthenticated rejection, credential refresh,
   first-device bootstrap, list, empty enrollment, one-time owner bootstrap,
@@ -373,60 +415,71 @@ The `v0.3.1` release passed:
 - same-harness/native-ID collision coverage;
 - encrypted loopback send/receive with import-before-receipt coverage.
 
-Run the complete gate with:
+Run the current v0.5 development gate with:
 
 ```sh
-bun run typecheck
+bun install --frozen-lockfile
 bun test
+bun run typecheck
+bun run typecheck:cloud
 bun run build:cli
+bun run build:cloud
 bun run verify:package
+bunx supabase start
+bunx supabase test db
+bunx supabase stop
 ```
 
-For a published-version check:
+For the published terminal release check:
 
 ```sh
 npm view @jensenloke/sinter version dist-tags --json
-bunx @jensenloke/sinter@0.3.1 --version
+bunx @jensenloke/sinter@0.4.1 --version
 ```
 
 ## Known boundaries
 
-- There is no automatic peer discovery; the receiver locator must be copied to
-  the sender.
+- There is no automatic peer discovery; direct-transfer locators must be copied
+  to the sender. Cloud sync is the asynchronous path but remains undeployed.
 - Direct transfer requires network reachability and may be blocked by host or
-  network firewalls. Tailscale is transport reachability, not a separate Sinter
-  protocol. The `0.5.0-dev.0` development receiver accepts only repository-bound v2
+  network firewalls. The `0.5.0-dev.0` receiver accepts only repository-bound v2
   session payloads; both devices must run the same development build.
-- There is no offline inbox, cloud relay, encrypted capsule storage, browser
-  device, or cross-device search yet. Two CLI devices are enrolled and passed the
-  guarded synthetic capsule create/open test, but replay remains process-local.
-  Account identity exists, and no session content is stored remotely.
-- Workspace files and Git dirty state are not transferred.
+- Hosted private Storage and real uploads remain off until explicit migration and
+  deployment approval. No real session content has been uploaded.
+- Cloud sync has no browser decryption, team sharing, public signup, recovery
+  escrow, or cross-account collaboration. Loss/revocation of every device key is
+  intentionally unrecoverable.
+- A process crash after local replay claim but before writer completion can leave
+  that capsule blocked on the device; target writer atomicity remains adapter-
+  specific. A failed writer that returns normally through the CLI releases its
+  claim for retry.
+- Finalize streams and hashes the full encrypted object through the Node runtime;
+  this is correct for trust but should be monitored for memory/egress during alpha.
+- Workspace files, dirty changes, environment values, and credentials are never
+  transferred.
 - Automatic profile bootstrap recognizes Claude Code's standard `.claude` /
   `.claude-*` convention. Custom alias-backed stores use explicit opt-in
   `sinter config discover-shell`; existing config is never overwritten.
 - The ledger migration is transactional and rollback-safe but does not create a
   separate user-visible backup file. Backup/repair UX remains roadmap work.
-- Sinter Cloud is an existing-members-only private alpha, not a public release.
-  The open-source CLI remains fully useful without an account.
+- Sinter Cloud will expose a public/open-source client while the hosted alpha is
+  owner-only. The terminal CLI remains fully useful without an account.
 
 ## Recommended next actions
 
-1. Morning review: inspect the hardening diff after `a26fd54`, the adversarial
-   corpus, physical matrix, JSON contracts, and publication guard; then decide
-   whether to create a second local checkpoint commit.
-2. Obtain human privacy/security review of repository binding before merging it;
-   the automated adversarial reviews and physical tests do not replace this gate.
-3. Separately decide whether to publish the already-verified `0.4.1` candidate;
-   pushing, tagging, releasing, and npm publication require explicit approval.
-4. Keep `0.5.0-dev.0` private and tagged `next`. Any eventual stable release must
-   deliberately remove `private`, review scoped-package public access, remove or
-   change the `next` tag, use clean `main`, create the exact stable tag, rerun the
-   full gate, and pass `prepublishOnly` with explicit approval.
-5. Obtain human cryptographic review before freezing C2 or adding Storage, then
-   design durable replay, quota reservations, private encrypted **synthetic**
-   push/list/inspect/pull/delete, and permanent deletion. Keep real-session Cloud
-   upload and viewing blocked until those gates pass.
-6. Merge PR #24, then rebase/fix PR #25's UTF-8 byte-budget and named-instance
-   integration before merging it. Create the eventual `v0.4.0` GitHub tag and
-   release without republishing npm.
+1. Review and checkpoint the local v0.5 MVP. Keep it private, untagged, and
+   undeployed while the hosted change plan is reviewed.
+2. After explicit hosted-database/deployment approval, apply the capsule migration
+   and deploy with `SINTER_REAL_UPLOADS_ENABLED` still false. Verify health,
+   unauthenticated refusal, signed-device refusal, cleanup cron, and admin UI.
+3. Enable the exact global gate and only the owner account entitlement. Install
+   one hash-matched private tarball on the MacBook and Mac Mini, then test real
+   push/list/inspect/pull/delete, quota accounting, durable replay, repository
+   mismatch/missing-commit refusal, dirty-worktree preservation, and cleanup.
+4. Obtain human cryptographic/privacy review of that physical evidence before
+   promoting the payload contract or opening the v0.5 source branch publicly.
+5. For stable v0.5, remove `private`, review scoped-package access/dist-tag, use
+   clean `main`, create the exact tag, rerun every gate, and pass
+   `prepublishOnly` with explicit approval. Never republish immutable v0.4.1.
+6. Re-evaluate PR #25 separately against current public `main`; do not mix it into
+   the Cloud release without resolving its named-instance and UTF-8 findings.

@@ -145,11 +145,11 @@ select is(
    from information_schema.tables
    where table_schema = 'public'
      and table_name in (
-       'capsules', 'storage_buckets', 'billing_providers', 'billing_transactions',
-       'payments', 'payment_methods', 'transcripts'
+       'billing_providers', 'billing_transactions', 'payments', 'payment_methods',
+       'transcripts'
      )),
   0,
-  'The control plane creates no capsule, Storage, payment, or transcript tables'
+  'The control plane creates no payment or transcript tables'
 );
 
 -- Existing profiles are backfilled with disabled, zero development state.

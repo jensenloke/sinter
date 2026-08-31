@@ -13,6 +13,6 @@ export function GET() {
       process.env.AUTH0_SECRET && process.env.AUTH0_AUDIENCE && process.env.AUTH0_CLI_CLIENT_ID,
     ),
     publicCloudSignupsEnabled: false,
-    realUploadsEnabled: false,
+    realUploadsEnabled: process.env.SINTER_REAL_UPLOADS_ENABLED === "true",
   });
 }

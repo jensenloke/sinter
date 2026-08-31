@@ -8,6 +8,7 @@ const COMMANDS = [
   ["whoami", "show the current Cloud identity"],
   ["logout", "remove the current Cloud login"],
   ["devices", "manage Cloud device identities"],
+  ["cloud", "sync encrypted session capsules"],
   ["config", "inspect and validate profile configuration"],
   ["ls", "list sessions"],
   ["recent", "list recent resumable sessions"],
@@ -84,6 +85,7 @@ ${commands}
     login) _arguments $global_args '--no-open' '--timeout=[callback lifetime]:duration' '--json' ;;
     whoami|logout) _arguments $global_args '--json' ;;
     devices) _arguments $global_args '1:action:(register list rename revoke pending approve capsule-test)' '2:operation, device, or request id:(create open)' '3:device name' '--name=[device name]:name' '--output=[new synthetic capsule file]:file:_files' '--input=[synthetic capsule file]:file:_files' '--no-wait[return approval-required without polling]' '--timeout=[approval wait, 5s to 15m]:duration' '--yes[confirm permanent revocation]' '--json' ;;
+    cloud) _arguments $global_args '1:action:(push list ls inspect pull delete rm)' '2:session prefix or capsule id' '--mode=[transfer mode]:mode:($modes)' '--repo-remote=[source Git remote name]:remote' '--to=[recipient device or target harness instance]:target' '--cwd=[target repository root]:directory:_directories' '--preview[prepare without uploading]' '--allow-repo-mismatch[explicit repository mismatch override]' '--allow-missing-commit[explicit missing-commit override]' '--dry-run[validate target write without consuming replay]' '--yes[confirm pull or deletion]' '--json[emit versioned JSON]' ;;
     ls) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-ghost' '--no-sub' ;;
     recent) _arguments $global_args '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' ;;
     watch) _arguments $global_args '1:view:(recent projects)' '--interval=[refresh interval]:duration' '--count=[snapshot count]:count' '--harness=[filter by harness]:harnesses' '--cwd=[filter by directory]:directory:_directories' '--since=[time window]:duration' '--limit=[maximum rows]:count' '--json' '--no-clear' ;;
@@ -158,6 +160,10 @@ function bash(): string {
     COMPREPLY=( $(compgen -W 'register list rename revoke pending approve capsule-test create open --name --output --input --no-wait --timeout --yes --json' -- "$current") )
     return
   fi
+  if [[ $command == cloud ]]; then
+    COMPREPLY=( $(compgen -W 'push list ls inspect pull delete rm --mode --repo-remote --to --cwd --preview --allow-repo-mismatch --allow-missing-commit --dry-run --yes --json full slim compact all' -- "$current") )
+    return
+  fi
   if [[ $command == update ]]; then
     COMPREPLY=( $(compgen -W '--check --package-manager --force --json bun npm' -- "$current") )
     return
@@ -209,6 +215,17 @@ function fish(): string {
     "complete -c sinter -n '__fish_seen_subcommand_from devices' -l timeout -r -d 'Approval wait, 5s to 15m'",
     "complete -c sinter -n '__fish_seen_subcommand_from devices' -l yes -d 'Confirm permanent revocation'",
     "complete -c sinter -n '__fish_seen_subcommand_from devices' -l json -d 'Emit versioned JSON'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -a 'push list ls inspect pull delete rm' -d 'Cloud capsule action'",
+    `complete -c sinter -n '__fish_seen_subcommand_from cloud' -l mode -xa '${MODES.join(" ")}' -d 'Transfer mode'`,
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l repo-remote -r -d 'Source Git remote name'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l to -r -d 'Recipient device or target harness instance'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l cwd -r -d 'Target repository root'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l preview -d 'Prepare without uploading'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l allow-repo-mismatch -d 'Explicit repository mismatch override'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l allow-missing-commit -d 'Explicit missing-commit override'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l dry-run -d 'Validate without consuming replay'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l yes -d 'Confirm pull or deletion'",
+    "complete -c sinter -n '__fish_seen_subcommand_from cloud' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from completion' -a 'zsh bash fish' -d 'Shell'",
     "complete -c sinter -n '__fish_seen_subcommand_from update' -l check -d 'Check without installing'",
     "complete -c sinter -n '__fish_seen_subcommand_from update' -l package-manager -xa 'bun npm' -d 'Global installer'",

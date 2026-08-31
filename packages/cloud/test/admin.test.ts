@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { generateKeyPairSync } from "node:crypto";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { SignJWT, jwtVerify } from "jose";
+import { UploadEntitlementControl } from "../src/app/admin/upload-entitlement-control";
 import type {
   AdminDataSource,
   AdminEntitlementUpdate,
@@ -260,7 +263,7 @@ describe("super-admin authorization and metadata listing", () => {
 describe("super-admin entitlement updates", () => {
   test("requires exact confirmation, a bounded reason, and conservative limits", () => {
     expect(CLOUD_SAFETY_CAPS).toEqual({ capsuleSizeBytes: 67108864, devices: 32 });
-    expect(admin.parseAdminEntitlementUpdate(updateForm())).toMatchObject({
+    expect(admin.parseAdminEntitlementUpdate(updateForm(), {})).toMatchObject({
       targetAccountId,
       uploadsEnabled: false,
       storageLimitBytes: 104857600,
@@ -277,21 +280,59 @@ describe("super-admin entitlement updates", () => {
       updateForm({ session_limit: "-1" }),
       updateForm({ capsule_size_limit_bytes: "67108865" }),
       updateForm({ device_limit: "33" }),
-    ]) expect(() => admin.parseAdminEntitlementUpdate(form)).toThrow(new admin.AdminPortalError("invalid-update"));
+    ]) expect(() => admin.parseAdminEntitlementUpdate(form, {})).toThrow(new admin.AdminPortalError("invalid-update"));
 
     const invalidUnmetered = updateForm();
     invalidUnmetered.set("unmetered", "true");
-    expect(() => admin.parseAdminEntitlementUpdate(invalidUnmetered))
+    expect(() => admin.parseAdminEntitlementUpdate(invalidUnmetered, {}))
       .toThrow(new admin.AdminPortalError("invalid-update"));
 
     const unmetered = updateForm({ storage_limit_bytes: "", session_limit: "" });
     unmetered.set("unmetered", "true");
-    expect(admin.parseAdminEntitlementUpdate(unmetered)).toMatchObject({
+    expect(admin.parseAdminEntitlementUpdate(unmetered, {})).toMatchObject({
       unmetered: true,
       storageLimitBytes: null,
       sessionLimit: null,
       capsuleSizeLimitBytes: CLOUD_DEVELOPMENT_LIMITS.capsuleSizeBytes,
     });
+  });
+
+  test("accepts the upload entitlement only behind the exact injected feature gate", () => {
+    const enabledForm = updateForm({ uploads_enabled: "true" });
+    expect(() => admin.parseAdminEntitlementUpdate(enabledForm, {}))
+      .toThrow(new admin.AdminPortalError("invalid-update"));
+    expect(() => admin.parseAdminEntitlementUpdate(enabledForm, {
+      SINTER_REAL_UPLOADS_ENABLED: "TRUE",
+    })).toThrow(new admin.AdminPortalError("invalid-update"));
+    expect(admin.parseAdminEntitlementUpdate(enabledForm, {
+      SINTER_REAL_UPLOADS_ENABLED: "true",
+    })).toMatchObject({ uploadsEnabled: true, targetAccountId });
+    expect(admin.parseAdminEntitlementUpdate(updateForm(), {
+      SINTER_REAL_UPLOADS_ENABLED: "true",
+    })).toMatchObject({ uploadsEnabled: false });
+  });
+
+  test("renders the current account entitlement but locks submissions off with the global gate", () => {
+    const locked = renderToStaticMarkup(createElement(UploadEntitlementControl, {
+      entitlementEnabled: true,
+      featureGateEnabled: false,
+    }));
+    expect(locked).toContain("Upload entitlement (enabled)");
+    expect(locked).toContain("type=\"checkbox\"");
+    expect(locked).toContain("checked=\"\"");
+    expect(locked).toContain("disabled=\"\"");
+    expect(locked).toContain("name=\"uploads_enabled\" value=\"false\"");
+    expect(locked).toContain("global upload feature gate is off");
+
+    const available = renderToStaticMarkup(createElement(UploadEntitlementControl, {
+      entitlementEnabled: true,
+      featureGateEnabled: true,
+    }));
+    expect(available).toContain("Upload entitlement (enabled)");
+    expect(available).toContain("type=\"checkbox\" checked=\"\"");
+    expect(available).not.toContain("disabled=\"\"");
+    expect(available).toContain("name=\"uploads_enabled\" value=\"true\"");
+    expect(available).toContain("global upload feature gate is enabled");
   });
 
   test("fully rechecks admin access but refuses uploads_enabled=true before the update RPC", async () => {
@@ -315,6 +356,7 @@ describe("super-admin entitlement updates", () => {
       updateForm({ uploads_enabled: "true" }),
       () => allowed,
       verifier,
+      {},
     )).rejects.toMatchObject({ code: "invalid-update" });
     expect(calls).toEqual(["identity", "role"]);
   });
@@ -346,6 +388,27 @@ describe("super-admin entitlement updates", () => {
       "identity",
       `role:${actorAccountId}`,
       `rpc:${actorAccountId}:${targetAccountId}:false`,
+    ]);
+  });
+
+  test("passes uploads_enabled=true to the account-scoped audit RPC only when gated", async () => {
+    const calls: string[] = [];
+    const allowed = source({
+      setEntitlement: async (accountId, update) => {
+        calls.push(`${accountId}:${update.targetAccountId}:${update.uploadsEnabled}:${update.reason}`);
+        return { data: entitlementResult(update), error: null };
+      },
+    });
+
+    await expect(admin.updateAdminEntitlement(
+      await signedIdentity(),
+      updateForm({ uploads_enabled: "true" }),
+      () => allowed,
+      verifier,
+      { SINTER_REAL_UPLOADS_ENABLED: "true" },
+    )).resolves.toMatchObject({ account_id: targetAccountId, uploads_enabled: true });
+    expect(calls).toEqual([
+      `${actorAccountId}:${targetAccountId}:true:Approved development quota adjustment`,
     ]);
   });
 

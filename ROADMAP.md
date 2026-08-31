@@ -181,18 +181,21 @@ transfers remain distinct.
 
 ## Phase 3: Sinter Cloud
 
-The implementation inventory, recommended Vercel/Supabase architecture,
-security gates, data model, deployment ladder, and monetization checkpoints are
-tracked in [docs/sinter-cloud-inventory.md](docs/sinter-cloud-inventory.md).
-The first hosted test should use the generated Vercel project URL and a single
-development Supabase project, with real transcript uploads disabled.
+The implementation inventory, Vercel/Supabase architecture, security gates,
+data model, deployment ladder, and monetization checkpoints are tracked in
+[docs/sinter-cloud-inventory.md](docs/sinter-cloud-inventory.md).
 
-Build the relay into a zero-knowledge personal session library:
+The local `0.5.0-dev.0` owner-only MVP now implements encrypted push/list/
+inspect/pull/delete across registered devices, private ciphertext Storage,
+signed device requests, durable replay, atomic quotas, retryable cleanup,
+permanent deletion, and repository-bound restore. The hosted migration and real
+upload gate remain off until explicit deployment approval and physical testing.
 
-- encrypted sync and backup across registered devices;
+Continue the zero-knowledge personal session library with:
+
+- physical owner-only sync verification across registered devices;
 - cross-device search, thread lineage, and version history;
-- a Sinter Inbox and “continue on another device” workflow;
-- explicit retention and permanent deletion controls;
+- a richer Sinter Inbox and “continue on another device” workflow;
 - recovery design that does not give the service transcript access.
 
 The open-source CLI remains fully useful without a cloud account. Personal

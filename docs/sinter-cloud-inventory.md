@@ -8,6 +8,26 @@ into an implementation sequence. The first goal is not cloud execution. It is
 a trustworthy, end-to-end encrypted way for one user to move and retain Sinter
 session capsules across devices.
 
+## v0.5 owner-only implementation update
+
+The local `0.5.0-dev.0` branch now implements the first full encrypted sync MVP:
+real-session capsule payloads, public-client push/list/inspect/pull/delete, signed
+device requests with durable nonce replay protection, private Storage, atomic
+quota reservations/finalization, retryable expiry/deletion, durable local import
+replay, and repository-bound exact-instance restore. Public signup remains closed.
+
+A clean local Supabase reset applies all migrations and passes 320 pgTAP
+assertions. The repository passes 933 tests and 10,452 assertions, both
+TypeScript checks, CLI and Cloud builds, and Cloud-enabled package rehearsal.
+Independent post-fix reviews report no remaining critical, high, or medium
+blocker for owner-only alpha.
+
+This implementation is not deployed. Hosted real uploads, the global feature
+gate, and the owner upload entitlement remain off. The next gates are explicit
+hosted migration/deployment approval, gate-off verification, hash-matched
+MacBook/Mac Mini real-session tests, and human cryptographic/privacy review before
+stable v0.5 release.
+
 ## Recommended first stack
 
 - **Web and control plane:** a small TypeScript web app on Vercel.
@@ -294,7 +314,8 @@ availability guarantee.
 - [x] Tampering, wrong sender/device, recipient membership changes, replay guard,
   oversize, truncation, swapped parts/envelopes, malformed data, and unsupported
   versions fail locally.
-- [ ] Permanent deletion removes metadata, wrapped keys, and Storage object.
+- [x] Implement local permanent deletion ordering for metadata and the private
+  Storage object; hosted deployment remains pending.
 
 ### Metadata control-plane foundation
 
@@ -317,11 +338,14 @@ availability guarantee.
   hosted APIs are active and two CLI devices are registered.
 - [x] Add explicit `sinter update` with check-only, exact-version Bun/npm install,
   no-downgrade default, JSON output, and no session scan/config side effects.
-- [ ] Add explicit `cloud push`, `cloud ls`, `cloud inspect`, and `cloud pull`;
-  do not overload local `scan` or silently sync.
-- [ ] Preserve qualified `(harness, instance, native-id)` provenance locally
+- [x] Add explicit `cloud push`, `cloud list`, `cloud inspect`, `cloud pull`, and
+  `cloud delete`; do not overload local `scan` or silently sync.
+- [x] Preserve qualified `(harness, instance, native-id)` provenance locally
   without exposing native IDs as cloud metadata.
-- [ ] Complete one two-device real-session test after redaction review.
+- [x] Add signed device requests, durable replay, atomic quotas, retryable
+  cleanup, repository-bound restore, and owner-gated upload enablement locally.
+- [ ] Apply the reviewed migration/deployment with uploads off, then complete one
+  hash-matched MacBook/Mac Mini real-session test after redaction review.
 
 ### C4 — inbox and relay
 
@@ -357,23 +381,23 @@ time-bounded support access instead of an administrative master key.
 
 ## Recommended immediate checkpoint
 
-Review C2 before enabling any upload path:
+Review the owner-only v0.5 implementation before enabling uploads:
 
-1. obtain a human external review of the canonical header/AAD, AES-GCM part
-   encryption, HPKE recipient wrapping, strict parser, limits, and replay split;
-2. keep deterministic test hooks and the synthetic-only schema out of all
-   production transport APIs;
-3. retain the successful packaged two-device synthetic result as evidence, not
-   as a substitute for durable replay or cryptographic review;
-4. extend the deployed entitlement/usage control plane with atomic upload quota
-   reservations while keeping uploads globally disabled;
-5. design private Storage begin/finalize/delete for synthetic ciphertext only;
-6. keep real-session integration blocked until durable deletion and replay gates
-   pass.
+1. inspect the local migration, pgTAP evidence, request-proof contract, capsule
+   payload split, quota/deletion ordering, repository restore, and redaction;
+2. apply the hosted migration and deploy with the global upload gate off;
+3. verify health, unauthorized/signed-device refusal, cleanup cron, admin gate,
+   and unchanged account/device inventory;
+4. enable only the owner entitlement and exact global gate;
+5. install one hash-matched private package on both registered devices and run
+   push/list/inspect/pull/delete plus quota/replay/repository refusal tests;
+6. obtain human cryptographic/privacy review before freezing or publicly
+   releasing the real-session payload contract.
 
 C1 proves authentication, local key custody, cryptographic approval, hosted
-schema, and account isolation. The local C2 draft proves envelope behavior
-without placing a real coding-agent transcript in Cloud.
+schema, and account isolation. C2 preserves the checked synthetic envelope. The
+local v0.5 implementation now connects a distinct real payload to owner-gated
+Storage, but hosted real data remains disabled until the steps above pass.
 
 ## Official references
 

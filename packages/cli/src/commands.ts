@@ -62,6 +62,13 @@ import {
 } from "./cloud-devices";
 import { createCapsuleTestService, type CapsuleTestResult, type CapsuleTestService } from "./capsule-test";
 import {
+  cloudCapsuleManifest,
+  createCloudCapsuleService,
+  type CloudCapsuleMetadata,
+  type CloudCapsuleService,
+  type OpenedCloudCapsule,
+} from "./cloud-capsules";
+import {
   bindSessionToRepository,
   createRepositoryBindingService,
   parseSessionTransferPayload,
@@ -77,6 +84,13 @@ export const SEND_PREVIEW_SCHEMA = "sinter.send.preview.v1" as const;
 export const SEND_RESULT_SCHEMA = "sinter.send.result.v1" as const;
 export const RECEIVE_LISTENER_SCHEMA = "sinter.receive.listener.v1" as const;
 export const RECEIVE_RESULT_SCHEMA = "sinter.receive.result.v1" as const;
+export const CLOUD_PUSH_PREVIEW_SCHEMA = "sinter.cloud.push-preview.v1" as const;
+export const CLOUD_PUSH_RESULT_SCHEMA = "sinter.cloud.push-result.v1" as const;
+export const CLOUD_LIST_RESULT_SCHEMA = "sinter.cloud.list-result.v1" as const;
+export const CLOUD_INSPECT_RESULT_SCHEMA = "sinter.cloud.inspect-result.v1" as const;
+export const CLOUD_PULL_PREVIEW_SCHEMA = "sinter.cloud.pull-preview.v1" as const;
+export const CLOUD_PULL_RESULT_SCHEMA = "sinter.cloud.pull-result.v1" as const;
+export const CLOUD_DELETE_RESULT_SCHEMA = "sinter.cloud.delete-result.v1" as const;
 
 export interface Ctx {
   registry: AdapterRegistry;
@@ -112,6 +126,8 @@ export interface Ctx {
   cloudDevices?: CloudDeviceService;
   /** Synthetic-only capsule diagnostic; production composes account API, key custody, and core. */
   capsuleTest?: CapsuleTestService;
+  /** Encrypted Cloud capsule operations are injectable so tests use only synthetic fixtures. */
+  cloudCapsules?: CloudCapsuleService;
   repositoryBinding?: RepositoryBindingService;
   /** Registry, process, and installation-layout seams for the explicit update command. */
   update?: UpdateDependencies;
@@ -1843,6 +1859,301 @@ export async function cmdReceive(argv: string[], ctx: Ctx): Promise<number> {
   return EXIT.OK;
 }
 
+function cloudCapsules(ctx: Ctx): CloudCapsuleService {
+  return ctx.cloudCapsules ?? createCloudCapsuleService();
+}
+
+function cloudMetadataJson(metadata: CloudCapsuleMetadata) {
+  return {
+    id: metadata.id,
+    serializedBytes: metadata.serializedBytes,
+    serializedSha256: metadata.serializedSha256,
+    outerSchema: metadata.outerSchema,
+    payloadSchema: metadata.payloadSchema,
+    transferSchema: metadata.transferSchema,
+    senderFingerprint: metadata.senderFingerprint,
+    recipientFingerprints: metadata.recipientFingerprints,
+    recipientCount: metadata.recipientCount,
+    status: metadata.status,
+    reservedAt: metadata.reservedAt,
+    reservationExpiresAt: metadata.reservationExpiresAt,
+    finalizedAt: metadata.finalizedAt,
+    deletionRequestedAt: metadata.deletionRequestedAt,
+    storageDeletedAt: metadata.storageDeletedAt,
+    expiredAt: metadata.expiredAt,
+  };
+}
+
+async function confirmCloudAction(ctx: Ctx, question: string, operation: "pull" | "delete"): Promise<boolean> {
+  if (ctx.confirm) return ctx.confirm(question);
+  if (!process.stdin.isTTY) throw new CliError(`cloud ${operation} needs an interactive terminal; use --yes after reviewing the request`, EXIT.ERROR, "cloud_capsule");
+  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await readline.question(`${question} `)).trim().toLowerCase();
+    return answer === "y" || answer === "yes";
+  } finally {
+    readline.close();
+  }
+}
+
+function renderCloudMetadata(metadata: CloudCapsuleMetadata, ctx: Ctx): void {
+  ctx.out(renderTable(
+    [{ header: "FIELD" }, { header: "VALUE", flex: true }],
+    [
+      ["capsule", metadata.id],
+      ["status", metadata.status],
+      ["bytes", fmtBytes(metadata.serializedBytes)],
+      ["sender", shortId(metadata.senderFingerprint, 16)],
+      ["recipients", String(metadata.recipientCount)],
+      ["finalized", metadata.finalizedAt ?? "-"],
+    ],
+    { width: ctx.width, pal: ctx.pal },
+  ));
+}
+
+const CLOUD_GLOBAL_FLAGS = new Set(["help", "no-color", "no-scan", "no-update-check", "version", "ledger", "profile", "config"]);
+const CLOUD_ACTION_FLAGS: Record<string, ReadonlySet<string>> = {
+  push: new Set(["mode", "repo-remote", "to", "preview", "json"]),
+  list: new Set(["json"]),
+  inspect: new Set(["json"]),
+  pull: new Set(["to", "cwd", "allow-repo-mismatch", "allow-missing-commit", "dry-run", "yes", "json"]),
+  delete: new Set(["yes", "json"]),
+};
+
+function validateCloudActionFlags(args: ParsedArgs, action: string): void {
+  const allowed = CLOUD_ACTION_FLAGS[action];
+  if (!allowed) return;
+  for (const flag of Object.keys(args.flags)) {
+    if (!allowed.has(flag) && !CLOUD_GLOBAL_FLAGS.has(flag)) throw new CliError(`flag --${flag} is not valid for cloud ${action}`);
+  }
+}
+
+function cloudInspectJson(opened: OpenedCloudCapsule) {
+  return {
+    schema: CLOUD_INSPECT_RESULT_SCHEMA,
+    ok: true,
+    capsule: cloudMetadataJson(opened.metadata),
+    manifest: {
+      schema: opened.manifest.schema,
+      ...(opened.manifest.harness ? { harness: opened.manifest.harness } : {}),
+    },
+    repository: { ...opened.transfer.repository.selectedRemote },
+    commit: opened.transfer.repository.commit,
+    relativeCwd: opened.transfer.repository.relativeCwd,
+    entryCount: opened.transfer.session.entries.length,
+    replayConsumed: false,
+  };
+}
+
+function cloudPullRepositoryPreviewJson(preview: RepositoryBindingPreview) {
+  return {
+    schema: preview.schema,
+    sourceRepository: preview.sourceRepository,
+    sourceCommit: preview.sourceCommit,
+    ...(preview.sourceBranch ? { sourceBranch: preview.sourceBranch } : {}),
+    targetRepository: preview.targetRepository,
+    relativeCwd: preview.relativeCwd,
+    match: preview.match,
+    commitAvailable: preview.commitAvailable,
+    targetWorktreeDirty: preview.targetWorktreeDirty,
+    overrides: { ...preview.overrides },
+    writes: false as const,
+  };
+}
+
+export async function cmdCloud(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["mode", "repo-remote", "to", "cwd"],
+    booleans: ["preview", "json", "allow-repo-mismatch", "allow-missing-commit", "dry-run", "yes"],
+  });
+  const requestedAction = args._[0] ?? "list";
+  const action = requestedAction === "ls" ? "list" : requestedAction === "rm" ? "delete" : requestedAction;
+  const positional = args._.slice(1);
+  const json = flagBool(args, "json");
+  validateCloudActionFlags(args, action);
+
+  if (action === "push") {
+    const prefix = positional[0];
+    if (!prefix || positional.length !== 1) throw new CliError("usage: sinter cloud push <id-prefix> [--mode compact|slim|full (default compact)] [--repo-remote <name>] [--to all|<device-id-or-fingerprint>] [--preview] [--json]");
+    const row = resolveRow(ctx, prefix);
+    const source = await readSessionForPort(ctx, row);
+    const mode = (flagString(args, "mode") ?? "compact") as TransferMode;
+    if (!TRANSFER_MODES.includes(mode)) throw new CliError(`unknown --mode: ${mode} (known: ${TRANSFER_MODES.join(", ")})`);
+    const repository = await repositoryBindings(ctx).source(source, { remoteName: flagString(args, "repo-remote") });
+    const transferred = applyTransfer(source, mode);
+    const session = networkSafeSession(transferred.session);
+    validateSession(session);
+    const transfer = parseSessionTransferPayload(serializeSessionTransferPayload(session, repository));
+    const result = await cloudCapsules(ctx).push({
+      transfer,
+      manifest: cloudCapsuleManifest(row.harness, session.title?.text),
+      to: flagString(args, "to"),
+      preview: flagBool(args, "preview"),
+    });
+    const schema = result.operation === "preview" ? CLOUD_PUSH_PREVIEW_SCHEMA : CLOUD_PUSH_RESULT_SCHEMA;
+    const output = {
+      schema,
+      ok: true,
+      preview: result.operation === "preview",
+      uploaded: result.uploaded,
+      source: { harness: row.harness, instanceId: row.instanceId ?? DEFAULT_INSTANCE_ID, nativeId: row.nativeId },
+      mode,
+      entries: session.entries.length,
+      capsule: cloudMetadataJson(result.metadata),
+      writes: result.operation === "preview" ? false : true,
+    };
+    if (json) ctx.out(JSON.stringify(output));
+    else if (result.operation === "preview") ctx.out(`would push encrypted capsule ${result.metadata.id} · ${result.recipientCount} recipient(s) · no upload`);
+    else ctx.out(`pushed encrypted capsule ${result.metadata.id} · ${fmtBytes(result.metadata.serializedBytes)} · ${result.recipientCount} recipient(s)`);
+    return EXIT.OK;
+  }
+
+  if (action === "list" || action === "ls") {
+    if (positional.length) throw new CliError("usage: sinter cloud list [--json]");
+    const capsules = await cloudCapsules(ctx).list();
+    if (json) {
+      ctx.out(JSON.stringify({ schema: CLOUD_LIST_RESULT_SCHEMA, ok: true, capsules: capsules.map(cloudMetadataJson) }));
+    } else if (!capsules.length) {
+      ctx.out("No retained Cloud capsules.");
+    } else {
+      ctx.out(renderTable(
+        [
+          { header: "CAPSULE", max: 24 },
+          { header: "SIZE", align: "right" },
+          { header: "RECIPIENTS", align: "right" },
+          { header: "FINALIZED", flex: true },
+        ],
+        capsules.map((capsule) => [capsule.id, fmtBytes(capsule.serializedBytes), String(capsule.recipientCount), capsule.finalizedAt ?? "-"]),
+        { width: ctx.width, pal: ctx.pal },
+      ));
+    }
+    return EXIT.OK;
+  }
+
+  if (action === "inspect") {
+    const id = positional[0];
+    if (!id || positional.length !== 1) throw new CliError("usage: sinter cloud inspect <capsule-id> [--json]");
+    const opened = await cloudCapsules(ctx).inspect(id);
+    if (json) {
+      ctx.out(JSON.stringify(cloudInspectJson(opened)));
+    } else {
+      renderCloudMetadata(opened.metadata, ctx);
+      ctx.out(`manifest harness: ${opened.manifest.harness ?? "-"}`);
+      ctx.out(`manifest title: ${opened.manifest.title ?? "-"}`);
+      ctx.out(`repository: ${opened.transfer.repository.selectedRemote.host}/${opened.transfer.repository.selectedRemote.path}`);
+      ctx.out(`commit: ${opened.transfer.repository.commit}`);
+      ctx.out(`entries: ${opened.transfer.session.entries.length}`);
+      ctx.out("replay: not consumed by inspection");
+    }
+    return EXIT.OK;
+  }
+
+  if (action === "pull") {
+    const id = positional[0];
+    if (!id || positional.length !== 1) throw new CliError("usage: sinter cloud pull <capsule-id> --to <harness@instance> --cwd <repository-root> [--allow-repo-mismatch] [--allow-missing-commit] [--dry-run] [--yes] [--json]");
+    const to = flagString(args, "to");
+    const cwd = flagString(args, "cwd");
+    if (!to) throw new CliError("sinter cloud pull needs --to <harness@instance>");
+    if (!cwd) throw new CliError("sinter cloud pull requires --cwd <repository-root>");
+    const targetRoot = cwd === "." ? process.cwd() : cwd;
+    const targetBinding = await resolveTargetBinding(ctx, to);
+    if (!targetBinding.adapter.write) throw new CliError(`${instanceLabel(targetBinding.harness, targetBinding.instanceId)} adapter cannot write sessions yet`);
+    const target = instanceLabel(targetBinding.harness, targetBinding.instanceId);
+    const opened = await cloudCapsules(ctx).inspect(id);
+    const resolveOptions = {
+      allowRepositoryMismatch: flagBool(args, "allow-repo-mismatch"),
+      allowMissingCommit: flagBool(args, "allow-missing-commit"),
+    };
+    const resolution = await repositoryBindings(ctx).resolve(opened.transfer.repository, targetRoot, resolveOptions);
+    const pullPreview = {
+      schema: CLOUD_PULL_PREVIEW_SCHEMA,
+      capsuleId: opened.metadata.id,
+      target: { harness: targetBinding.harness, instanceId: targetBinding.instanceId },
+      repository: cloudPullRepositoryPreviewJson(resolution.preview),
+      dryRun: flagBool(args, "dry-run"),
+      writes: false,
+    };
+    printRepositoryBindingPreview(ctx, resolution.preview, target);
+    if (!flagBool(args, "dry-run") && !flagBool(args, "yes") && json && !ctx.confirm) {
+      throw new CliError("cloud pull --json needs --yes after reviewing repository checks", EXIT.ERROR, "cloud_capsule");
+    }
+    if (!flagBool(args, "dry-run") && !flagBool(args, "yes")
+      && !(await confirmCloudAction(ctx, `Pull ${opened.metadata.id} into ${target}? [y/N]`, "pull"))) {
+      throw new CliError("cloud capsule pull declined; no session was written", EXIT.ERROR, "cloud_capsule");
+    }
+    const finalResolution = await repositoryBindings(ctx).resolve(opened.transfer.repository, targetRoot, resolveOptions);
+    if (!sameRepositoryBindingPreview(finalResolution.preview, resolution.preview)) {
+      throw new RepositoryBindingError("The target repository changed after preview; no session or workspace files were written");
+    }
+    const session = bindSessionToRepository(opened.transfer.session, finalResolution);
+    const dryRun = flagBool(args, "dry-run");
+    let importedRef: NativeRef | undefined;
+    let replayClaimed = false;
+    if (!dryRun) {
+      replayClaimed = ctx.ledger().acceptCapsuleReplay(opened.replayKey);
+      if (!replayClaimed) {
+        throw new CliError("Cloud capsule replay rejected; this capsule was already imported on this device", EXIT.ERROR, "capsule_replay");
+      }
+    }
+    try {
+      await writeInto(
+        ctx,
+        targetBinding,
+        session,
+        args,
+        `cloud${finalResolution.provenanceModeSuffix}`,
+        finalResolution.targetCwd,
+        (ref) => { importedRef = ref; },
+        json,
+      );
+    } catch (error) {
+      if (replayClaimed && !importedRef) {
+        try {
+          ctx.ledger().releaseCapsuleReplay(opened.replayKey);
+        } catch {}
+      }
+      throw error;
+    }
+    if (!importedRef) throw new CliError("Cloud pull completed without target session metadata", EXIT.ERROR, "cloud_capsule");
+    const output = {
+      schema: CLOUD_PULL_RESULT_SCHEMA,
+      ok: true,
+      capsuleId: opened.metadata.id,
+      imported: !dryRun,
+      wrote: !dryRun,
+      dryRun,
+      target: {
+        harness: targetBinding.harness,
+        instanceId: targetBinding.instanceId,
+        nativeId: importedRef.nativeId,
+      },
+      preview: pullPreview,
+      replayConsumed: !dryRun,
+    };
+    if (json) ctx.out(JSON.stringify(output));
+    else if (dryRun) ctx.out(`validated Cloud capsule ${opened.metadata.id} for ${target}; replay not consumed`);
+    else ctx.out(`pulled Cloud capsule ${opened.metadata.id} into ${target}:${importedRef.nativeId}`);
+    return EXIT.OK;
+  }
+
+  if (action === "delete" || action === "rm") {
+    const id = positional[0];
+    if (!id || positional.length !== 1) throw new CliError("usage: sinter cloud delete <capsule-id> [--yes] [--json]");
+    if (!flagBool(args, "yes") && json && !ctx.confirm) {
+      throw new CliError("cloud delete --json needs --yes after reviewing the capsule ID", EXIT.ERROR, "cloud_capsule");
+    }
+    if (!flagBool(args, "yes") && !(await confirmCloudAction(ctx, `Permanently delete Cloud capsule ${id}? [y/N]`, "delete"))) {
+      throw new CliError("cloud capsule deletion declined; nothing was deleted", EXIT.ERROR, "cloud_capsule");
+    }
+    const metadata = await cloudCapsules(ctx).delete(id);
+    if (json) ctx.out(JSON.stringify({ schema: CLOUD_DELETE_RESULT_SCHEMA, ok: true, deleted: true, capsule: cloudMetadataJson(metadata) }));
+    else ctx.out(`deleted Cloud capsule ${metadata.id}`);
+    return EXIT.OK;
+  }
+
+  throw new CliError("usage: sinter cloud <push|list|inspect|pull|delete> ...");
+}
+
 export async function cmdResume(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv, {
     strings: ["in", "cwd"],
@@ -2006,7 +2317,7 @@ export async function cmdSetup(argv: string[], ctx: Ctx): Promise<number> {
     if (store) detected.push(`${instanceLabel(load.harness, load.instanceId)}: ${(store.paths ?? []).join(", ")}`);
   }
 
-  ctx.out("Sinter indexes local coding-agent session stores. It does not upload transcripts.");
+  ctx.out("Sinter indexes local coding-agent session stores. It does not upload transcripts automatically.");
   if (ctx.profile) ctx.out(`profile: ${ctx.profile.name} (${ctx.profile.configPath})`);
   if (detected.length) {
     ctx.out("");
@@ -2047,8 +2358,9 @@ export async function cmdMenu(argv: string[], ctx: Ctx): Promise<number> {
 
 export async function cmdPrivacy(argv: string[], ctx: Ctx): Promise<number> {
   parseArgs(argv, {});
-  ctx.out("Sinter reads local coding-agent session stores on this machine. It does not upload transcripts.");
+  ctx.out("Sinter reads local coding-agent session stores on this machine. It does not upload transcripts automatically.");
   ctx.out("Ports create a new target-native session; the source session is never changed.");
+  ctx.out("Explicit `sinter cloud push` encrypts locally and uploads only the serialized capsule; Cloud list metadata contains no titles, prompts, repositories, or paths.");
   ctx.out("");
   ctx.out("Sinter data:");
   ctx.out(`  ledger: ${ctx.ledger().path}`);

@@ -9,16 +9,17 @@
  * MIGRATION POLICY — `SCHEMA_SQL` is additive for fresh and current databases.
  * Opening a v1 ledger under v2 gains the `lineage` table; v2 under v3 gains the
  * `session_aliases` table; v3 under v4 gains the `session_pins` table; v4 under
- * v5 gains `saved_views`; v5 under v6 gains `session_notes` and `session_tags`.
- * Versions that rewrite identity or data must use a separate, explicit,
- * transactional migration before this schema is applied. v7 does that in
- * `migrateLedgerV7`, preserving every legacy row under instance `default`.
+ * v5 gains `saved_views`; v5 under v6 gains `session_notes` and `session_tags`;
+ * v7 under v8 gains `capsule_replays`. Versions that rewrite identity or data
+ * must use a separate, explicit, transactional migration before this schema is
+ * applied. v7 does that in `migrateLedgerV7`, preserving every legacy row under
+ * instance `default`.
  *
  * `SCHEMA_VERSION` is a record of what was last applied (stored in `meta`), not
  * a trigger: nothing keys off its value, so bumping it cannot wipe anything.
  */
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -125,6 +126,11 @@ CREATE TABLE IF NOT EXISTS session_tags (
   native_id TEXT NOT NULL,
   tag       TEXT NOT NULL COLLATE NOCASE,
   PRIMARY KEY (harness, instance_id, native_id, tag)
+);
+
+CREATE TABLE IF NOT EXISTS capsule_replays (
+  replay_key  TEXT PRIMARY KEY,
+  accepted_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS session_tags_tag_idx ON session_tags(tag COLLATE NOCASE);

@@ -7,7 +7,7 @@ import {
 import { validateSession } from "./util";
 import type { HarnessId, SifSession } from "./sif";
 
-/** C2 is local-only and synthetic-only. Payload ciphertext length remains intentionally observable. */
+/** Capsule transport remains local-only. Payload ciphertext length remains intentionally observable. */
 export const CAPSULE_MAX_COMBINED_CIPHERTEXT_BYTES = 16 * 1024 * 1024;
 export const CAPSULE_MAX_RECIPIENTS = 32;
 export const CAPSULE_MANIFEST_PADDED_BYTES = 4 * 1024;
@@ -26,6 +26,7 @@ export const CAPSULE_SIGNATURE_INPUT_SCHEMA = "sinter.capsule.signature-input.v1
 export const CAPSULE_MANIFEST_SCHEMA = "sinter.capsule.manifest.v1" as const;
 export const CAPSULE_LINEAGE_SCHEMA = "sinter.capsule.lineage-hint.v1" as const;
 export const CAPSULE_PAYLOAD_SCHEMA = "sinter.capsule.synthetic-sif.v1" as const;
+export const CAPSULE_SESSION_PAYLOAD_SCHEMA = "sinter.capsule.session-transfer.v1" as const;
 export const CAPSULE_AAD_SCHEMA = "sinter.capsule.aad.v1" as const;
 export const CAPSULE_SUITE = "HPKE-v1-Base-DHKEM(P-256,HKDF-SHA256)-HKDF-SHA256-AES-256-GCM" as const;
 export const CAPSULE_RFC9180_SUITE_IDS = Object.freeze({ mode: 0, kem: 0x0010, kdf: 0x0001, aead: 0x0002 });
@@ -113,6 +114,20 @@ export interface SyntheticCapsulePayload {
   sif: SifSession;
 }
 
+export type CapsuleJsonValue = null | boolean | number | string | CapsuleJsonValue[] | CapsuleJsonObject;
+
+export interface CapsuleJsonObject {
+  [key: string]: CapsuleJsonValue;
+}
+
+export interface SessionCapsulePayload<TTransfer extends object = CapsuleJsonObject> {
+  schema: typeof CAPSULE_SESSION_PAYLOAD_SCHEMA;
+  synthetic: false;
+  transfer: TTransfer;
+}
+
+export type SessionCapsule = SyntheticCapsule;
+
 export interface CapsuleRecipientIdentity {
   encryptionPublicKey: JsonWebKey;
   signingPublicKey: JsonWebKey;
@@ -135,6 +150,13 @@ export interface CreateSyntheticCapsuleInput {
   recipients: readonly CapsuleRecipientIdentity[];
 }
 
+export interface CreateSessionCapsuleInput<TTransfer extends object = CapsuleJsonObject> {
+  manifest: CapsuleManifest;
+  payload: SessionCapsulePayload<TTransfer>;
+  sender: CapsuleSenderIdentity;
+  recipients: readonly CapsuleRecipientIdentity[];
+}
+
 export interface CapsuleDecryptionIdentity {
   fingerprint: string;
   encryptionPrivateKey: JsonWebKey;
@@ -151,9 +173,18 @@ export interface OpenSyntheticCapsuleOptions {
   replayGuard?: CapsuleReplayGuard;
 }
 
+export interface OpenSessionCapsuleOptions {
+  replayGuard?: CapsuleReplayGuard;
+}
+
 export interface OpenedSyntheticCapsule {
   manifest: CapsuleManifest;
   payload: SyntheticCapsulePayload;
+}
+
+export interface OpenedSessionCapsule {
+  manifest: CapsuleManifest;
+  payload: SessionCapsulePayload;
 }
 
 export class CapsuleValidationError extends Error {
@@ -642,12 +673,21 @@ function validateManifest(value: unknown): CapsuleManifest {
   return result;
 }
 
-function validatePayload(value: unknown): SyntheticCapsulePayload {
+function validateSyntheticPayload(value: unknown): SyntheticCapsulePayload {
   const payload = objectValue(value, "Capsule payload");
-  exactKeys(payload, ["schema", "synthetic", "sif"], "Capsule payload");
   if (payload.schema !== CAPSULE_PAYLOAD_SCHEMA || payload.synthetic !== true) invalid("Unsupported or nonsynthetic capsule payload");
+  exactKeys(payload, ["schema", "synthetic", "sif"], "Capsule payload");
   validateSif(payload.sif);
   return { schema: CAPSULE_PAYLOAD_SCHEMA, synthetic: true, sif: payload.sif };
+}
+
+function validateSessionPayload(value: unknown): SessionCapsulePayload {
+  const payload = objectValue(value, "Capsule payload");
+  if (payload.schema !== CAPSULE_SESSION_PAYLOAD_SCHEMA || payload.synthetic !== false) invalid("Unsupported or synthetic capsule payload");
+  exactKeys(payload, ["schema", "synthetic", "transfer"], "Capsule payload");
+  const transfer = objectValue(payload.transfer, "Session capsule transfer");
+  validateJsonValue(transfer, "Session capsule transfer");
+  return { schema: CAPSULE_SESSION_PAYLOAD_SCHEMA, synthetic: false, transfer: transfer as CapsuleJsonObject };
 }
 
 function secureRandomBytes(length: number): Uint8Array {
@@ -752,7 +792,10 @@ function paddedManifestPlaintext(manifest: CapsuleManifest): Uint8Array {
   return padded;
 }
 
-export async function createSyntheticCapsule(input: CreateSyntheticCapsuleInput): Promise<SyntheticCapsule> {
+async function createCapsule(
+  input: { manifest: CapsuleManifest; payload: unknown; sender: CapsuleSenderIdentity; recipients: readonly CapsuleRecipientIdentity[] },
+  validatePayload: (value: unknown) => SyntheticCapsulePayload | SessionCapsulePayload,
+): Promise<SyntheticCapsule> {
   const manifest = validateManifest(input.manifest);
   const payload = validatePayload(input.payload);
   const [senderIdentity, recipients] = await Promise.all([preparedSender(input.sender), preparedRecipients(input.recipients)]);
@@ -822,6 +865,14 @@ export async function createSyntheticCapsule(input: CreateSyntheticCapsuleInput)
   } finally {
     cek.fill(0);
   }
+}
+
+export async function createSyntheticCapsule(input: CreateSyntheticCapsuleInput): Promise<SyntheticCapsule> {
+  return createCapsule(input, validateSyntheticPayload);
+}
+
+export async function createSessionCapsule<TTransfer extends object>(input: CreateSessionCapsuleInput<TTransfer>): Promise<SessionCapsule> {
+  return createCapsule(input, validateSessionPayload);
 }
 
 function validatePart(value: unknown, expectedKind: "manifest" | "payload"): { part: CapsuleCiphertextPart; bytes: Uint8Array } {
@@ -1024,11 +1075,12 @@ export function capsuleReplayKey(
   return `${fingerprintValue(openerFingerprint)}:${capsule.header.capsuleId}:${capsule.manifest.ciphertextSha256}:${capsule.payload.ciphertextSha256}`;
 }
 
-export async function openSyntheticCapsule(
+async function openCapsule<TPayload extends SyntheticCapsulePayload | SessionCapsulePayload>(
   value: string | unknown,
   identity: CapsuleDecryptionIdentity,
-  options: OpenSyntheticCapsuleOptions = {},
-): Promise<OpenedSyntheticCapsule> {
+  options: OpenSyntheticCapsuleOptions | OpenSessionCapsuleOptions,
+  validatePayload: (value: unknown) => TPayload,
+): Promise<{ manifest: CapsuleManifest; payload: TPayload }> {
   const parsed = await parseCapsuleInput(value, false);
   await verifySender(parsed, identity);
   assertCanonicalRecipientOrder(parsed.capsule.recipients);
@@ -1085,4 +1137,20 @@ export async function openSyntheticCapsule(
   } finally {
     cek.fill(0);
   }
+}
+
+export async function openSyntheticCapsule(
+  value: string | unknown,
+  identity: CapsuleDecryptionIdentity,
+  options: OpenSyntheticCapsuleOptions = {},
+): Promise<OpenedSyntheticCapsule> {
+  return openCapsule(value, identity, options, validateSyntheticPayload);
+}
+
+export async function openSessionCapsule(
+  value: string | unknown,
+  identity: CapsuleDecryptionIdentity,
+  options: OpenSessionCapsuleOptions = {},
+): Promise<OpenedSessionCapsule> {
+  return openCapsule(value, identity, options, validateSessionPayload);
 }

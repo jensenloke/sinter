@@ -33,7 +33,7 @@ export interface AdminEntitlementUpdate {
   targetAccountId: string;
   planCode: string;
   status: string;
-  uploadsEnabled: false;
+  uploadsEnabled: boolean;
   unmetered: boolean;
   storageLimitBytes: number | null;
   sessionLimit: number | null;
@@ -364,7 +364,14 @@ function integerOrNull(value: string, maximum = Number.MAX_SAFE_INTEGER) {
   return parsed;
 }
 
-export function parseAdminEntitlementUpdate(formData: FormData): AdminEntitlementUpdate {
+export function realUploadsEnabled(environment: NodeJS.ProcessEnv = process.env) {
+  return environment.SINTER_REAL_UPLOADS_ENABLED === "true";
+}
+
+export function parseAdminEntitlementUpdate(
+  formData: FormData,
+  environment: NodeJS.ProcessEnv = process.env,
+): AdminEntitlementUpdate {
   const targetAccountId = one(formData, "target_account_id");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetAccountId)) {
     throw new AdminPortalError("invalid-update");
@@ -376,9 +383,14 @@ export function parseAdminEntitlementUpdate(formData: FormData): AdminEntitlemen
   if (reason.length < ADMIN_REASON_LIMITS.minimum || reason.length > ADMIN_REASON_LIMITS.maximum) {
     throw new AdminPortalError("invalid-update");
   }
-  if (one(formData, "uploads_enabled") !== "false") {
+  const uploadsValue = one(formData, "uploads_enabled");
+  if (
+    (uploadsValue !== "false" && uploadsValue !== "true")
+    || (uploadsValue === "true" && !realUploadsEnabled(environment))
+  ) {
     throw new AdminPortalError("invalid-update");
   }
+  const uploadsEnabled = uploadsValue === "true";
 
   const unmetered = optionalBoolean(formData, "unmetered");
   const storageLimitBytes = integerOrNull(one(formData, "storage_limit_bytes"));
@@ -401,7 +413,7 @@ export function parseAdminEntitlementUpdate(formData: FormData): AdminEntitlemen
     targetAccountId,
     planCode: boundedPlanCode(one(formData, "plan_code")),
     status: entitlementStatus(one(formData, "status")),
-    uploadsEnabled: false,
+    uploadsEnabled,
     unmetered,
     storageLimitBytes,
     sessionLimit,
@@ -416,9 +428,10 @@ export async function updateAdminEntitlement(
   formData: FormData,
   sourceFactory: AdminDataSourceFactory = createAdminDataSource,
   verifier: AdminTokenVerifier = remoteVerifier,
+  environment: NodeJS.ProcessEnv = process.env,
 ): Promise<AdminEntitlementMetadata> {
   const { accountId, source } = await authorizeSuperAdmin(idToken, sourceFactory, verifier);
-  const update = parseAdminEntitlementUpdate(formData);
+  const update = parseAdminEntitlementUpdate(formData, environment);
   const result = await source.setEntitlement(accountId, update);
   if (result.error || !result.data) throw new AdminPortalError("account-update");
   const changed = entitlementMetadata(result.data, "account-update");

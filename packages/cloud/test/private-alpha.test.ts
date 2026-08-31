@@ -55,10 +55,14 @@ describe("Cloud private-alpha public UX", () => {
     expect(html).not.toContain("error_description");
   });
 
-  test("reports signups and real uploads as unconditionally disabled without exposing configuration", async () => {
+  test("reports signups disabled and real uploads disabled by default without exposing configuration", async () => {
+    const previous = process.env.SINTER_REAL_UPLOADS_ENABLED;
+    delete process.env.SINTER_REAL_UPLOADS_ENABLED;
     const response = health();
     const body = await response.json() as Record<string, unknown>;
     const serialized = JSON.stringify(body);
+    if (previous === undefined) delete process.env.SINTER_REAL_UPLOADS_ENABLED;
+    else process.env.SINTER_REAL_UPLOADS_ENABLED = previous;
 
     expect(body.publicCloudSignupsEnabled).toBe(false);
     expect(body.realUploadsEnabled).toBe(false);
@@ -70,6 +74,19 @@ describe("Cloud private-alpha public UX", () => {
     ]) {
       if (value && value.length > 5) expect(serialized).not.toContain(value);
     }
+  });
+
+  test("reports real uploads enabled only for the exact server gate", async () => {
+    const previous = process.env.SINTER_REAL_UPLOADS_ENABLED;
+    process.env.SINTER_REAL_UPLOADS_ENABLED = "true";
+    const enabled = await health().json() as Record<string, unknown>;
+    process.env.SINTER_REAL_UPLOADS_ENABLED = "TRUE";
+    const wrongCase = await health().json() as Record<string, unknown>;
+    if (previous === undefined) delete process.env.SINTER_REAL_UPLOADS_ENABLED;
+    else process.env.SINTER_REAL_UPLOADS_ENABLED = previous;
+
+    expect(enabled.realUploadsEnabled).toBe(true);
+    expect(wrongCase.realUploadsEnabled).toBe(false);
   });
 });
 

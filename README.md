@@ -23,10 +23,11 @@ sinter --help
 
 Interactive runs check npm at most once per day and offer to install a newer release. Use `--no-update-check` or set `SINTER_NO_UPDATE_CHECK=1` to disable this; scripts, CI, and non-interactive output never prompt.
 
-npm `latest` remains `0.4.0`. Repository-bound direct transfer v2 is available
-only from the private `0.5.0-dev.0` source/tarball on its development branch;
-normal npm/Bun installation does not install it yet. See the
-[v0.4.0 release notes](docs/releases/v0.4.0.md) for the latest published changes.
+npm `latest` is the Cloud-free terminal release `0.4.1`. Repository-bound direct
+transfer v2 and owner-only encrypted Cloud sync are available only from the
+private `0.5.0-dev.0` source/tarball on its development branch; normal npm/Bun
+installation does not install them yet. See the
+[v0.4.1 release notes](docs/releases/v0.4.1.md) for the latest published changes.
 
 ## Quick start
 
@@ -181,40 +182,36 @@ Select exact stores with `claude@personal:<id>` and targets with
 instance. Requested results and machine data are written to stdout; notices
 and errors use stderr, and failures return a non-zero exit code.
 
-## Optional Cloud account
+## Owner-only Cloud development
 
-Published `0.4.0` can authenticate and manage private-alpha device identity
-without changing local-first behavior:
+Published `0.4.1` is terminal-only. The private `0.5.0-dev.0` build adds Cloud
+account, device, and encrypted session-capsule commands for owner-only testing:
 
 ```sh
 sinter login
-sinter whoami
 sinter devices register --name "My Mac"
-sinter devices list
-sinter logout
+sinter cloud push <id-prefix> --preview
+sinter cloud push <id-prefix>
+sinter cloud list
+sinter cloud inspect <capsule-id>
+sinter cloud pull <capsule-id> --to claude@work --cwd ~/Code/project
+sinter cloud delete <capsule-id>
 ```
 
-Login opens `sinter-cloud.vercel.app`, waits on a random short-lived
-`127.0.0.1` callback, validates the returned identity, and stores the session
-in macOS Keychain. On platforms without a native credential-store
-implementation, Sinter uses an owner-only file. Subsequent-device registration
-requires signed approval from an active device. The unpublished `0.4.1` candidate
-and `0.5.0-dev.0` source build wait for approval and save the device ID
-automatically; `--no-wait` retains script behavior.
+The CLI reads the source session without modifying it, applies transfer mode and
+repository sanitization, encrypts locally to active registered devices, and
+uploads only ciphertext through a signed Storage reservation. List returns
+content-free metadata. Inspect and pull download, hash-check, verify the signed
+sender, and decrypt locally. Pull repeats repository checks before writing a new
+session into the exact target instance and records durable local replay.
 
-The following fixed synthetic capsule diagnostic exists only in the unpublished
-`0.4.1` candidate and `0.5.0-dev.0` source build; it does not read a session or
-transfer automatically:
-
-```sh
-sinter devices capsule-test create --output ./sinter-capsule-test.json
-# Manually copy the file to the other registered device.
-sinter devices capsule-test open --input ./sinter-capsule-test.json
-```
-
-Account and capsule-diagnostic commands do not scan local stores, open the
-ledger, create profile configuration, or upload sessions. Cloud push/pull,
-Storage, inbox, relay, and real-session uploads remain disabled.
+Every capsule API request also carries an ECDSA device proof over its exact
+method, path, body hash, timestamp, and nonce. The server enforces account/device
+ownership, active owner entitlement, atomic storage/session quotas, private
+Storage, retryable cleanup, and permanent deletion. Public signup remains closed;
+real uploads and the owner entitlement remain disabled until the reviewed
+migration and deployment are explicitly approved. The CLI remains fully useful
+without an account.
 
 ## Direct device transfer
 

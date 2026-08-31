@@ -16,6 +16,7 @@ import {
   cmdCompletion,
   cmdCompare,
   cmdCapabilities,
+  cmdCloud,
   cmdConfig,
   cmdDoctor,
   cmdDevices,
@@ -68,6 +69,7 @@ const AUTO_SCAN_SKIP = new Set(["scan", "watch", "setup", "doctor", "capabilitie
 
 function skipsAutoScan(command: string, argv: string[]): boolean {
   if (AUTO_SCAN_SKIP.has(command)) return true;
+  if (command === "cloud") return (argv[0] ?? "list") !== "push";
   // Saved-view definitions are ledger metadata; only executing a view needs fresh sessions.
   return command === "view" && (argv[0] ?? "list") !== "run";
 }
@@ -106,6 +108,7 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   compare: cmdCompare,
   capabilities: cmdCapabilities,
   config: cmdConfig,
+  cloud: cmdCloud,
   devices: cmdDevices,
   login: cmdLogin,
   whoami: cmdWhoami,
@@ -214,6 +217,11 @@ cloud account (optional)
   devices list|pending [--json]          list devices or enrollment requests
   devices rename|revoke|approve ...      manage Cloud device identity
   devices capsule-test create|open ...   verify a synthetic-only local capsule file
+  cloud push <id-prefix> [--mode ...]    encrypt and retain a session capsule (default compact)
+  cloud list|inspect [...]               list metadata or decrypt one capsule locally
+  cloud pull <id> --to <harness@instance> --cwd <repository-root>
+                                         restore into one repository-bound target
+  cloud delete <id> [--yes]              permanently delete a retained capsule
 
 support and interfaces
   privacy                                explain local storage and support limits
@@ -319,6 +327,12 @@ const COMMAND_HELP: Record<string, string> = {
   whoami: "usage: sinter whoami [--json]\n\nRefreshes the Cloud session when needed and verifies the identity with Sinter Cloud. It never scans local sessions.",
   logout: "usage: sinter logout [--json]\n\nRevokes the current Cloud session when reachable, then removes the local credential even if the network is unavailable.",
   devices: "usage: sinter devices register [--name name] [--no-wait] [--timeout 5m] [--json]\n       sinter devices <list|rename|revoke|pending|approve> ...\n       sinter devices capsule-test create --output <new-file> [--json]\n       sinter devices capsule-test open --input <file> [--json]\n\nRegistration waits for an existing device to approve the enrollment, then saves the approved device ID automatically. --no-wait returns approval-required immediately for scripts. --timeout accepts 5s through 15m and never extends past the server expiry; without it, registration waits through the enrollment window. Progress is written to stderr, and --json writes one final versioned document to stdout. Ctrl+C stops waiting without removing the request or local keys.\n\nCapsule-test is an explicit account-only, synthetic-only local-file diagnostic. Create requires at least two current active initialized exact-suite registered devices, self-verifies decrypt and replay rejection, and writes a new owner-only file without overwriting. Open requires the local recipient and signed sender to remain active in the current registry and verifies the exact fixed fixture plus same-process replay rejection. It never scans sessions, reads the ledger or native stores, bootstraps config, includes transcript/workspace content, or transfers/uploads the file automatically. Copy the created file between approved devices yourself.\n\nPrivate P-256 keys remain in macOS Keychain (or a separate owner-only file on other platforms); only public JWKs are sent to Sinter Cloud. Safe output contains fingerprints, capsule/file metadata, and verification booleans—not keys, ciphertext, device names, emails, tokens, or decrypted fixture content. Device commands never scan local sessions or create profile configuration.",
+  cloud: "usage: sinter cloud <push|list|inspect|pull|delete> ...\n\nPush encrypts a repository-bound session-transfer v2 object to active registered devices before upload. List exposes only content-free server metadata. Inspect and pull download, hash-check, verify, and decrypt locally; inspect does not consume replay. Pull repeats repository checks before its exact-instance writer, and --yes never bypasses mismatch or missing-commit checks. Delete requires confirmation or --yes. Aliases: list=ls, delete=rm.",
+  "cloud:push": "usage: sinter cloud push <id-prefix> [--mode compact|slim|full] [--repo-remote <name>] [--to all|<device-id-or-fingerprint>] [--preview] [--json]\n\nReads the source store without modifying it, applies the existing repository-binding and metadata-stripping pipeline, encrypts to active exact-suite recipients, and uploads only after an exact reservation. --mode defaults to compact. --preview performs no capsule upload.",
+  "cloud:list": "usage: sinter cloud list [--json]\n\nLists sanitized retained-capsule metadata only. Alias: ls.",
+  "cloud:inspect": "usage: sinter cloud inspect <capsule-id> [--json]\n\nDownloads with an exact 24 MiB local budget, verifies metadata, sender signature, and local recipient, then decrypts locally without consuming replay.",
+  "cloud:pull": "usage: sinter cloud pull <capsule-id> --to <harness@instance> --cwd <repository-root> [--allow-repo-mismatch] [--allow-missing-commit] [--dry-run] [--yes] [--json]\n\nShows and repeats repository checks before any target writer or replay-ledger side effect. --dry-run does not consume replay. --yes skips only confirmation.",
+  "cloud:delete": "usage: sinter cloud delete <capsule-id> [--yes] [--json]\n\nPermanently deletes one capsule and requires final deleted state. Alias: rm.",
   telemetry: "usage: sinter telemetry [status|enable|disable] [--endpoint https://…]\n\nOpt-in anonymous active-use measurement. CI and non-interactive commands never emit events.",
   gui: "usage: sinter gui [--port n] [--no-open]\n\nRuns a token-protected workspace on 127.0.0.1; transcripts never leave this machine.",
   completion: "usage: sinter completion <zsh|bash|fish>\n\nPrints a native completion script to stdout; does not modify shell configuration.",
@@ -326,8 +340,10 @@ const COMMAND_HELP: Record<string, string> = {
   menu: "usage: sinter menu [--all] [--mode full|slim|compact]\n\nRequires an interactive terminal.",
 };
 
-function helpFor(command: string): string {
-  return `${COMMAND_HELP[command] ?? HELP.trimEnd()}\n\nGlobal flags: --profile <name>, --config <path>, --ledger <path>, --no-color, --no-scan, --no-update-check, -h/--help`;
+function helpFor(command: string, subcommand?: string): string {
+  const normalized = command === "cloud" && subcommand === "ls" ? "list" : command === "cloud" && subcommand === "rm" ? "delete" : subcommand;
+  const key = normalized ? `${command}:${normalized}` : command;
+  return `${COMMAND_HELP[key] ?? COMMAND_HELP[command] ?? HELP.trimEnd()}\n\nGlobal flags: --profile <name>, --config <path>, --ledger <path>, --no-color, --no-scan, --no-update-check, -h/--help`;
 }
 
 export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile?: SinterProfile } = {}): Ctx {
@@ -364,6 +380,7 @@ export function makeCtx(overrides: Partial<Ctx> & { ledgerPath?: string; profile
     cloudAuth: overrides.cloudAuth,
     cloudDevices: overrides.cloudDevices,
     capsuleTest: overrides.capsuleTest,
+    cloudCapsules: overrides.cloudCapsules,
     repositoryBinding: overrides.repositoryBinding,
   };
 }
@@ -387,7 +404,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       ctx.err(`unknown help topic: ${topic}\ntry: sinter help`);
       return EXIT.ERROR;
     }
-    ctx.out(topic ? helpFor(topic) : HELP.trimEnd());
+    ctx.out(topic ? helpFor(topic, rest[1]) : HELP.trimEnd());
     return EXIT.OK;
   }
   if (cmd === "--version" || cmd === "-v" || cmd === "version") {
@@ -405,7 +422,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     return EXIT.ERROR;
   }
   if (rest.includes("--help") || rest.includes("-h")) {
-    ctx.out(helpFor(cmd));
+    ctx.out(helpFor(cmd, rest[0]));
     return EXIT.OK;
   }
 
@@ -466,6 +483,7 @@ export async function main(
   const standalone =
     command !== undefined &&
     (["login", "whoami", "logout", "devices", "update"].includes(command) ||
+      (command === "cloud" && [undefined, "list", "ls", "inspect", "delete", "rm"].includes(argv[1])) ||
       (command === "config" && argv[1] === "discover-shell"));
   const operational = (!command || Boolean(COMMANDS[command])) && !informational && !helpRequested && !standalone;
   let bootstrap: ReturnType<typeof bootstrapDefaultConfig> | undefined;

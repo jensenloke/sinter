@@ -17,6 +17,12 @@ describe("shell completions", () => {
     expect(script).toContain("whoami");
     expect(script).toContain("logout");
     expect(script).toContain("devices");
+    expect(script).toContain("cloud");
+    expect(script).toContain("push");
+    expect(script).toContain("inspect");
+    expect(script).toContain("pull");
+    expect(script).toContain("delete");
+    expect(script).toContain("dry-run");
     expect(script).toContain("approve");
     expect(script).toContain("capsule-test");
     expect(script).toContain("create");

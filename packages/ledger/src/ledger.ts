@@ -122,6 +122,20 @@ LEFT JOIN session_pins AS p
 LEFT JOIN session_notes AS n
   ON n.harness = s.harness AND n.instance_id = s.instance_id AND n.native_id = s.native_id`;
 
+const CAPSULE_REPLAY_KEY_BYTES = 217;
+const CAPSULE_REPLAY_KEY_PATTERN = /^([0-9a-f]{64}):([A-Za-z0-9_-]{22}):([0-9a-f]{64}):([0-9a-f]{64})$/;
+
+function validateCapsuleReplayKey(value: unknown): asserts value is string {
+  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > CAPSULE_REPLAY_KEY_BYTES) {
+    throw new Error("Capsule replay key is malformed or oversized");
+  }
+  const match = CAPSULE_REPLAY_KEY_PATTERN.exec(value);
+  if (!match) throw new Error("Capsule replay key is malformed");
+  const capsuleId = match[2]!;
+  const decoded = Buffer.from(capsuleId, "base64url");
+  if (decoded.length !== 16 || decoded.toString("base64url") !== capsuleId) throw new Error("Capsule replay key is malformed");
+}
+
 const COLUMNS = [
   "harness",
   "instance_id",
@@ -318,6 +332,19 @@ export class Ledger {
   }
 
   // ------------------------------------------------------------ write path
+
+  acceptCapsuleReplay(replayKey: string): boolean {
+    validateCapsuleReplayKey(replayKey);
+    return this.db.run(
+      "INSERT OR IGNORE INTO capsule_replays (replay_key, accepted_at) VALUES (?, ?)",
+      [replayKey, new Date().toISOString()],
+    ).changes === 1;
+  }
+
+  releaseCapsuleReplay(replayKey: string): boolean {
+    validateCapsuleReplayKey(replayKey);
+    return this.db.run("DELETE FROM capsule_replays WHERE replay_key = ?", [replayKey]).changes === 1;
+  }
 
   /** Insert-or-update one summary. Returns what happened. */
   upsert(s: SessionSummary): "inserted" | "updated" | "unchanged" {

@@ -426,6 +426,8 @@ code { padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; back
 .admin-entitlement-form label:not(.confirmation-row) { display: grid; gap: 7px; }
 .admin-control-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .admin-control-row .confirmation-row { padding: 13px; border: 1px solid var(--line); border-radius: 8px; background: #0d100e; }
+.upload-entitlement-field .confirmation-row { width: 100%; }
+.upload-entitlement-field .quota-authority { margin-top: 7px; }
 .locked-control { cursor: not-allowed; opacity: .7; }
 .admin-submit-row { display: flex; align-items: center; gap: 16px; }
 .admin-submit-row .lifecycle-message { padding: 0; }

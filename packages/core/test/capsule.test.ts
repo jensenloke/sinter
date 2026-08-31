@@ -6,10 +6,12 @@ import {
   CAPSULE_MANIFEST_CIPHERTEXT_BYTES,
   CAPSULE_MANIFEST_PADDED_BYTES,
   CAPSULE_MANIFEST_SCHEMA,
+  CAPSULE_MAX_COMBINED_CIPHERTEXT_BYTES,
   CAPSULE_MAX_RECIPIENTS,
   CAPSULE_MAX_SERIALIZED_BYTES,
   CAPSULE_PART_SCHEMA,
   CAPSULE_PAYLOAD_SCHEMA,
+  CAPSULE_SESSION_PAYLOAD_SCHEMA,
   CAPSULE_RECIPIENT_SCHEMA,
   CAPSULE_RFC9180_SUITE_IDS,
   CAPSULE_SCHEMA,
@@ -23,7 +25,9 @@ import {
   capsuleRecipientFingerprint,
   capsuleReplayKey,
   capsuleSignatureInput,
+  createSessionCapsule,
   createSyntheticCapsule,
+  openSessionCapsule,
   openSyntheticCapsule,
   parseSyntheticCapsule,
   serializeSyntheticCapsule,
@@ -31,6 +35,8 @@ import {
   type CapsuleManifest,
   type CapsuleRecipientIdentity,
   type CapsuleSenderIdentity,
+  type SessionCapsule,
+  type SessionCapsulePayload,
   type SyntheticCapsule,
   type SyntheticCapsulePayload,
 } from "../src/index";
@@ -110,6 +116,35 @@ function payload(text = "Synthetic prompt content"): SyntheticCapsulePayload {
   };
 }
 
+function sessionPayload(): SessionCapsulePayload {
+  return {
+    schema: CAPSULE_SESSION_PAYLOAD_SCHEMA,
+    synthetic: false,
+    transfer: {
+      schema: "sinter.session-transfer.v2",
+      repository: {
+        schema: "sinter.repository-binding.v1",
+        remotes: [{ host: "github.com", path: "example/project" }],
+        selectedRemote: { host: "github.com", path: "example/project" },
+        commit: "a".repeat(40),
+        relativeCwd: "packages/core",
+      },
+      session: {
+        sif: "sif/0",
+        id: "real-session-id",
+        origin: { harness: "codex", nativeId: "native-session-id" },
+        cwd: "",
+        entries: [{
+          kind: "user",
+          id: "entry-1",
+          parentId: null,
+          content: [{ type: "text", text: "Real transferred prompt" }],
+        }],
+      },
+    },
+  };
+}
+
 function recipient(value: TestIdentity): CapsuleRecipientIdentity {
   return {
     encryptionPublicKey: value.encryptionPublicKey,
@@ -142,6 +177,15 @@ async function capsule(
   text?: string,
 ): Promise<SyntheticCapsule> {
   return createSyntheticCapsule({ manifest: manifest(title), payload: payload(text), sender: sender(), recipients });
+}
+
+async function sessionCapsule(): Promise<SessionCapsule> {
+  return createSessionCapsule({
+    manifest: manifest("Real session capsule"),
+    payload: sessionPayload(),
+    sender: sender(),
+    recipients: [recipient(identities[0]!)],
+  });
 }
 
 function clone<T>(value: T): T {
@@ -388,6 +432,60 @@ describe("C2 manifest privacy and strict parsing", () => {
     manifestSize.manifest.ciphertext = manifestSize.manifest.ciphertext.slice(0, -2);
     manifestSize.manifest.ciphertextBytes -= 1;
     await expect(parseSyntheticCapsule(manifestSize)).rejects.toThrow(/fixed padded size/);
+  });
+});
+
+describe("session capsule payloads", () => {
+  test("round-trips an opaque direct-transfer v2 JSON object", async () => {
+    const value = await sessionCapsule();
+    const opened = await openSessionCapsule(serializeSyntheticCapsule(value), opener(identities[0]!));
+    expect(opened.manifest).toEqual(manifest("Real session capsule"));
+    expect(opened.payload).toEqual(sessionPayload());
+  });
+
+  test("rejects the wrong payload API and schema without consuming replay state", async () => {
+    const real = await sessionCapsule();
+    const synthetic = await capsule();
+    const guard = new MemoryCapsuleReplayGuard();
+    await expect(openSyntheticCapsule(real, opener(identities[0]!), { replayGuard: guard })).rejects.toThrow(/nonsynthetic/);
+    await expect(openSessionCapsule(synthetic, opener(identities[0]!), { replayGuard: guard })).rejects.toThrow(/synthetic/);
+    await expect(openSessionCapsule(real, opener(identities[0]!), { replayGuard: guard })).resolves.toBeDefined();
+    await expect(openSyntheticCapsule(synthetic, opener(identities[0]!), { replayGuard: guard })).resolves.toBeDefined();
+
+    const wrongSchema = { ...sessionPayload(), schema: `${CAPSULE_SESSION_PAYLOAD_SCHEMA}.next` };
+    await expect(createSessionCapsule({
+      manifest: manifest(), payload: wrongSchema as never, sender: sender(), recipients: [recipient(identities[0]!)],
+    })).rejects.toThrow(/Unsupported/);
+  });
+
+  test("validates exact payload keys, plain canonical JSON, depth, Unicode, and ciphertext budget", async () => {
+    const create = (value: unknown) => createSessionCapsule({
+      manifest: manifest(), payload: value as SessionCapsulePayload, sender: sender(), recipients: [recipient(identities[0]!)],
+    });
+    await expect(create({ ...sessionPayload(), extra: true })).rejects.toThrow(/unsupported/);
+    await expect(create({ ...sessionPayload(), transfer: [] })).rejects.toThrow(/must be an object/);
+    await expect(create({ ...sessionPayload(), transfer: new Date() })).rejects.toThrow(/plain object/);
+    await expect(create({ ...sessionPayload(), transfer: { amount: Number.NaN } })).rejects.toThrow(/non-finite/);
+    await expect(create({ ...sessionPayload(), transfer: { ["\ud800"]: true } })).rejects.toThrow(/surrogate/);
+    let deep: unknown = "leaf";
+    for (let index = 0; index < 66; index += 1) deep = { nested: deep };
+    await expect(create({ ...sessionPayload(), transfer: { deep } })).rejects.toThrow(/deep/);
+    await expect(create({
+      ...sessionPayload(), transfer: { data: "x".repeat(CAPSULE_MAX_COMBINED_CIPHERTEXT_BYTES) },
+    })).rejects.toThrow(/provisional limit/);
+  });
+
+  test("retains outer tamper, signature, and replay protections", async () => {
+    const value = await sessionCapsule();
+    const changedCiphertext = clone(value);
+    changedCiphertext.payload.ciphertext = flip(changedCiphertext.payload.ciphertext);
+    await expect(openSessionCapsule(changedCiphertext, opener(identities[0]!))).rejects.toThrow(/hash mismatch/);
+    const changedSignature = clone(value);
+    changedSignature.sender.signature = flip(changedSignature.sender.signature);
+    await expect(openSessionCapsule(changedSignature, opener(identities[0]!))).rejects.toThrow(/signature verification/);
+    const guard = new MemoryCapsuleReplayGuard();
+    await expect(openSessionCapsule(value, opener(identities[0]!), { replayGuard: guard })).resolves.toBeDefined();
+    await expect(openSessionCapsule(value, opener(identities[0]!), { replayGuard: guard })).rejects.toBeInstanceOf(CapsuleReplayError);
   });
 });
 

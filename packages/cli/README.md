@@ -43,23 +43,28 @@ ambiguous, pass `--package-manager bun` or `--package-manager npm`; use
 `--check` for a side-effect-free registry check. A newer development build
 reports `newer-local` and does not downgrade to npm `latest` without `--force`.
 
-Sinter Cloud is currently a private alpha for existing members; the CLI remains
-fully usable without it. Approved members can register devices without uploading
-sessions:
+Sinter Cloud is currently an owner-only development alpha; the CLI remains fully
+usable without it. The private `0.5.0-dev.0` build supports device enrollment and
+locally encrypted session capsules:
 
 ```sh
 sinter login
 sinter devices register --name "My Mac"
-sinter devices list
+sinter cloud push <id-prefix> --preview
+sinter cloud push <id-prefix>
+sinter cloud list
+sinter cloud inspect <capsule-id>
+sinter cloud pull <capsule-id> --to claude@work --cwd ~/Code/project
+sinter cloud delete <capsule-id>
 ```
 
-Private device keys stay local. A subsequent device requires signed approval
-from an existing active device. Registration waits for that approval by default
-and saves the approved device ID automatically; use `--no-wait` to return the
-pending request immediately in scripts, or `--timeout 5m` to shorten the wait.
-Progress is written to stderr so `--json` emits one final document on stdout.
-Ctrl+C stops waiting without deleting the request or local keys. Session upload
-and sync remain disabled.
+Private device keys and plaintext stay local. A subsequent device requires signed
+approval from an existing active device. Cloud push applies repository binding
+and metadata stripping before local encryption; only ciphertext and bounded
+routing metadata reach private Storage. Signed device requests, durable replay,
+atomic quotas, retryable cleanup, and permanent deletion are enforced. Real
+uploads and owner entitlement remain disabled until migration and deployment are
+explicitly approved.
 
 Approved members with two active registered devices can explicitly test the
 local synthetic capsule protocol without reading or uploading any session:

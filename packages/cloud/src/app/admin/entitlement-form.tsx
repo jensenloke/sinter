@@ -11,10 +11,17 @@ import {
   updateEntitlementAction,
   type AdminEntitlementActionState,
 } from "./actions";
+import { UploadEntitlementControl } from "./upload-entitlement-control";
 
 const INITIAL_STATE: AdminEntitlementActionState = { status: "idle", message: "" };
 
-export function EntitlementForm({ entitlement }: { entitlement: AdminEntitlementMetadata }) {
+export function EntitlementForm({
+  entitlement,
+  uploadFeatureGateEnabled,
+}: {
+  entitlement: AdminEntitlementMetadata;
+  uploadFeatureGateEnabled: boolean;
+}) {
   const [state, action, pending] = useActionState(updateEntitlementAction, INITIAL_STATE);
   const id = entitlement.account_id;
   const confirmation = `${ADMIN_UPDATE_CONFIRMATION_PREFIX} ${id}`;
@@ -22,7 +29,6 @@ export function EntitlementForm({ entitlement }: { entitlement: AdminEntitlement
   return (
     <form className="admin-entitlement-form" action={action}>
       <input type="hidden" name="target_account_id" value={id} />
-      <input type="hidden" name="uploads_enabled" value="false" />
       <div className="admin-form-grid">
         <label htmlFor={`plan-${id}`}>Plan code
           <input id={`plan-${id}`} name="plan_code" defaultValue={entitlement.plan_code} maxLength={64} pattern="[a-z0-9][a-z0-9_-]{0,63}" required />
@@ -51,10 +57,10 @@ export function EntitlementForm({ entitlement }: { entitlement: AdminEntitlement
           <input id={`unmetered-${id}`} name="unmetered" type="checkbox" value="true" defaultChecked={entitlement.unmetered} />
           Unmetered storage and session counts
         </label>
-        <label className="confirmation-row locked-control">
-          <input type="checkbox" checked={false} disabled readOnly />
-          Uploads enabled (locked off globally)
-        </label>
+        <UploadEntitlementControl
+          entitlementEnabled={entitlement.uploads_enabled}
+          featureGateEnabled={uploadFeatureGateEnabled}
+        />
       </div>
       <label htmlFor={`reason-${id}`}>Required audit reason
         <input id={`reason-${id}`} name="reason" minLength={ADMIN_REASON_LIMITS.minimum} maxLength={ADMIN_REASON_LIMITS.maximum} required />

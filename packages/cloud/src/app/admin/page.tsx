@@ -1,5 +1,10 @@
 import { notFound, redirect } from "next/navigation";
-import { AdminPortalError, loadAdminAccounts, type AdminAccountMetadata } from "@/lib/admin";
+import {
+  AdminPortalError,
+  loadAdminAccounts,
+  realUploadsEnabled,
+  type AdminAccountMetadata,
+} from "@/lib/admin";
 import { auth0 } from "@/lib/auth0";
 import { formatBytes } from "@/lib/cloud-quota";
 import { Brand } from "../brand";
@@ -26,7 +31,16 @@ function limit(value: number | null, unmetered: boolean, unit: "bytes" | "sessio
   return unit === "bytes" ? formatBytes(value) : value.toLocaleString("en");
 }
 
-function AccountCard({ account }: { account: AdminAccountMetadata }) {
+function AccountCard({
+  account,
+  uploadFeatureGateEnabled,
+}: {
+  account: AdminAccountMetadata;
+  uploadFeatureGateEnabled: boolean;
+}) {
+  const uploadEntitlement = account.uploads_enabled ? "Enabled" : "Disabled";
+  const effectiveUploads = uploadFeatureGateEnabled && account.uploads_enabled ? "enabled" : "disabled";
+
   return (
     <article className="portal-section admin-account-card">
       <div className="section-heading admin-account-heading">
@@ -45,7 +59,8 @@ function AccountCard({ account }: { account: AdminAccountMetadata }) {
         <dl className="detail-list">
           <div><dt>Created</dt><dd>{formatTimestamp(account.account_created_at)}</dd></div>
           <div><dt>Deletion status</dt><dd>{account.deletion_requested_at ? `Requested ${formatTimestamp(account.deletion_requested_at)}` : "No request"}</dd></div>
-          <div><dt>Uploads</dt><dd>Disabled globally</dd></div>
+          <div><dt>Upload entitlement</dt><dd>{uploadEntitlement}</dd></div>
+          <div><dt>Effective uploads</dt><dd>{effectiveUploads} · global gate {uploadFeatureGateEnabled ? "enabled" : "disabled"}</dd></div>
           <div><dt>Entitlement updated</dt><dd>{formatTimestamp(account.updated_at)}</dd></div>
         </dl>
         <dl className="detail-list">
@@ -70,7 +85,10 @@ function AccountCard({ account }: { account: AdminAccountMetadata }) {
 
       <details className="admin-update-panel">
         <summary>Update entitlement metadata</summary>
-        <EntitlementForm entitlement={account} />
+        <EntitlementForm
+          entitlement={account}
+          uploadFeatureGateEnabled={uploadFeatureGateEnabled}
+        />
       </details>
     </article>
   );
@@ -102,6 +120,7 @@ export default async function AdminPage() {
     if (!(error instanceof AdminPortalError) || error.code !== "account-list") notFound();
     return <AdminUnavailable />;
   }
+  const uploadFeatureGateEnabled = realUploadsEnabled();
 
   return (
     <main className="portal-shell">
@@ -128,13 +147,21 @@ export default async function AdminPage() {
 
         <section id="accounts" className="admin-account-list" aria-label="Cloud account metadata">
           {accounts.length > 0
-            ? accounts.map((account) => <AccountCard account={account} key={account.account_id} />)
+            ? accounts.map((account) => (
+              <AccountCard
+                account={account}
+                key={account.account_id}
+                uploadFeatureGateEnabled={uploadFeatureGateEnabled}
+              />
+            ))
             : <div className="empty-state"><h2>No account metadata returned</h2><p>The administrative listing RPC returned no rows.</p></div>}
         </section>
 
         <footer className="portal-footer">
           <span>Sinter Cloud administrative metadata</span>
-          <span>No session content · No cryptographic material · Uploads disabled</span>
+          <span>
+            No session content · No cryptographic material · Global upload gate {uploadFeatureGateEnabled ? "enabled" : "disabled"}
+          </span>
         </footer>
       </div>
     </main>
