@@ -9,27 +9,26 @@ operations.
 
 ## Release state
 
-- Stable Cloud release preparation on `release/v0.5.0`: `0.5.0`.
-- Public `main` includes the reviewed Cloud feature at
-  `f78ff84 feat: add owner-only encrypted Cloud sync (#30)`.
-- Current published CLI and npm `latest`: `@jensenloke/sinter@0.4.1` until final
-  v0.5 publication succeeds.
-- npm `0.5.0` and GitHub tag/release `v0.5.0` must be absent before publication.
-- Stable 24-file tarball rehearsal shasum:
+- Current public CLI, npm `latest`, annotated Git tag, and GitHub release:
+  `@jensenloke/sinter@0.5.0` / `v0.5.0`.
+- Feature PR #30 merged at `f78ff84`; stable release PR #31 merged at
+  `ed5813f`, which is the exact `v0.5.0` tag target.
+- Registry and rehearsed 24-file tarball shasum:
   `d03df55cf03a103e724a34bdd26d88037ce703a1`.
+- Isolated Bun and npm installs both report `0.5.0` and expose Cloud help.
 - Release notes: [releases/v0.5.0.md](releases/v0.5.0.md).
-- npm `0.4.1` is immutable and must never be republished.
+- npm `0.4.1` and `0.5.0` are immutable and must never be republished.
 
 ## Git state at handoff
 
-- The current working branch is `release/v0.5.0`, created from clean public
-  `main` at `f78ff84`.
-- PR #30 merged the owner-only Cloud feature after macOS, Ubuntu, and isolated
-  database-policy CI passed. The feature branch retains checkpoints `ff4b8a7`,
-  `33a9b8c`, `8e8731f`, and the physical evidence handoff `5dc7860`.
-- Public `main` now contains encrypted push/list/inspect/pull/delete, signed
-  device requests, durable replay, atomic quotas/cleanup/deletion, and
-  repository-bound restore.
+- The current working branch is `docs/v0.5.0-release-status`, created from
+  public `main` at release commit `ed5813f`.
+- PRs #30 and #31 passed macOS, Ubuntu, and isolated database-policy CI. The
+  feature branch retains checkpoints `ff4b8a7`, `33a9b8c`, `8e8731f`, and the
+  physical evidence handoff `5dc7860`.
+- Public `main` contains encrypted push/list/inspect/pull/delete, signed device
+  requests, durable replay, atomic quotas/cleanup/deletion, and repository-bound
+  restore. The exact release commit is tagged and published.
 - The CLI/source are public; the hosted service remains restricted to exactly
   the owner's entitlement during testing and public signup remains closed.
 - PR #25 remains open with its previous CI green, but GitHub mergeability must be
@@ -480,12 +479,12 @@ bunx @jensenloke/sinter@0.4.1 --version
 
 ## Recommended next actions
 
-1. Review the stable v0.5 metadata diff and exact tarball inventory; PR #30 and
-   its macOS/Ubuntu/database policy checks are complete.
-2. Keep public signup closed and exactly one owner entitlement enabled; do not
-   broaden hosted access during or after client publication.
-3. Merge `release/v0.5.0`, create the exact tag from clean `main`, rerun the
-   publication guard, and publish once only after explicit final approval. Never
-   republish immutable v0.4.1.
+1. Keep public signup closed and exactly one owner entitlement enabled; do not
+   imply that installing the public client grants hosted access.
+2. Monitor owner-only Storage/egress, cleanup, auth refresh, and deletion behavior
+   before admitting any tester or designing paid limits.
+3. Treat npm `0.5.0` and tag `v0.5.0` as immutable; prepare a new version for every
+   future package change.
 4. Re-evaluate PR #25 separately against current public `main`; do not mix it into
-   the Cloud release without resolving its named-instance and UTF-8 findings.
+   the released Cloud history without resolving its named-instance and UTF-8
+   findings.
