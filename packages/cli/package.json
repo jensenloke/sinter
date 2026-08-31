@@ -1,7 +1,6 @@
 {
   "name": "@jensenloke/sinter",
-  "private": true,
-  "version": "0.5.0-dev.0",
+  "version": "0.5.0",
   "description": "Port and resume coding-agent sessions across harnesses.",
   "license": "Apache-2.0",
   "repository": {
@@ -11,7 +10,8 @@
   "homepage": "https://github.com/jensenloke/sinter#readme",
   "bugs": "https://github.com/jensenloke/sinter/issues",
   "publishConfig": {
-    "tag": "next"
+    "access": "public",
+    "tag": "latest"
   },
   "keywords": [
     "coding-agent",

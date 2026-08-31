@@ -17,11 +17,11 @@ function releasable(overrides: Partial<PublishGuardState> = {}): PublishGuardSta
 }
 
 describe("release publication guard", () => {
-  test("keeps source, package, and development publication state aligned", () => {
+  test("keeps source, package, and stable release state aligned", () => {
     expect(VERSION).toBe(pkg.version);
-    expect(pkg.version).toBe("0.5.0-dev.0");
-    expect(pkg.private).toBe(true);
-    expect(pkg.publishConfig).toEqual({ tag: "next" });
+    expect(pkg.version).toBe("0.5.0");
+    expect("private" in pkg).toBe(false);
+    expect(pkg.publishConfig).toEqual({ access: "public", tag: "latest" });
   });
 
   test("permits only an explicitly approved clean tagged stable main build absent from npm", () => {
