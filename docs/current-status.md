@@ -1,6 +1,6 @@
 # Sinter current status
 
-Last updated: 2026-08-29 (Asia/Singapore)
+Last updated: 2026-08-30 (Asia/Singapore)
 
 This is the durable continuation handoff for maintainers and coding agents.
 Read the root [AGENTS.md](../AGENTS.md) first. Mutable facts below were verified
@@ -9,57 +9,46 @@ operations.
 
 ## Release state
 
-- Development CLI version on `feat/repository-binding-v2`: `0.5.0-dev.0`.
-- The verified `0.4.1` candidate remains scoped to automatic device-enrollment
-  waiting and synthetic capsule diagnostics on the parent branch.
-- Latest published CLI version: `0.4.0`.
-- npm package and `latest`: `@jensenloke/sinter@0.4.0`.
-- Registry shasum `972494f4c4cc25d537dbcea407441de9c98b0e30` matches the
-  published package; both installed global executables still report `0.4.0`.
-- Unpublished candidate notes: [releases/v0.4.1.md](releases/v0.4.1.md).
-- Published release notes: [releases/v0.4.0.md](releases/v0.4.0.md).
-- npm publication source HEAD: `90ed981 docs: record the 0.4.0 release gate`.
-- npm `0.4.0` is immutable. The `0.4.1` candidate requires explicit publication
-  approval after physical-device verification. `0.5.0-dev.0` is development-only and
-  must not be pushed, tagged, released, or published from this branch.
+- Development CLI version on `int/v0.5-cloud-v0.4.1`: `0.5.0-dev.0`.
+- Current published CLI and npm `latest`: `@jensenloke/sinter@0.4.1`.
+- Registry shasum `4c944de67e826899e137c9a06aa571ea9e32d472` matches the
+  published package; the public executable reports `0.4.1`.
+- Published release notes: [releases/v0.4.1.md](releases/v0.4.1.md).
+- npm publication source: `4d51a11 release: prepare Cloud-free v0.4.1 (#28)`;
+  public `main` is `820d202` after its status update.
+- npm `0.4.1` is immutable. `0.5.0-dev.0` is a private implementation branch and
+  must not be tagged, deployed, or published until real encrypted sync, owner-only
+  authorization, local/adversarial tests, and physical two-device tests pass.
 
 ## Git state at handoff
 
 - The current working branch is the local, unpushed
-  `feat/repository-binding-v2`, created as a child of the Cloud development line.
-  It contains private `0.5.0-dev.0` repository-bound transfer work and is not the
-  `0.4.1` publication candidate. At the overnight handoff its checkpoint HEAD is
-  `a26fd54`, with reviewed hardening intentionally left uncommitted for morning
-  inspection. It has no tracking branch and is 43 commits ahead of `origin/main`
-  and 22 ahead of `origin/docs/sinter-cloud-inventory`; nothing was pushed.
-- Cloud foundation and the parent `0.4.1` candidate remain on
-  `docs/sinter-cloud-inventory`.
-- Separate public CLI release work remains on `feat/multi-instance-lan`, which
-  tracks `origin/feat/multi-instance-lan` and has not merged into `origin/main`.
-- GitHub PR #24 targets `main`:
-  `https://github.com/jensenloke/sinter/pull/24`.
-- PR #24's macOS and Ubuntu verification checks pass at current head `dd46ad1`.
-- PR #25 is open, GitHub-mergeable, and CI-green, but review found it must not
-  merge yet: merge/rebase on PR #24 first, preserve named-instance routing, keep
-  direct send modes concrete, and fix Devin UTF-8 byte-budget clipping/write
-  enforcement. No GitHub review/comment was submitted.
-- The sibling `sinter-public` checkout currently uses the same GitHub upstream,
-  `jensenloke/sinter`, and was clean at `origin/main`/`v0.2.0` before this
-  branch was pushed. Follow the public-clone parity protocol in `AGENTS.md`;
-  update that checkout by clean fast-forward after merge, not by copying files.
-- By explicit product decision, npm `0.4.0` includes optional Cloud login/device
-  identity commands so the private-alpha second device can enroll. Hosted app,
-  admin, database, and capsule transport code are not packaged; the local CLI
-  remains fully useful without an account and cannot upload sessions.
-- Cloud planning and implementation continue on `docs/sinter-cloud-inventory`;
-  its inventory is documented in
+  `int/v0.5-cloud-v0.4.1`, created from private checkpoint `6eedca6`.
+- The branch merged public `main` at `820d202`, preserving released terminal
+  features and connecting v0.5 to the open-source history without rewriting the
+  reviewed repository-binding commits.
+- Public PRs #24, #26, #27, #28, and #29 are merged. Public `main`, npm `latest`,
+  annotated tag, and GitHub release are synchronized at v0.4.1.
+- The v0.5 product scope is a public/open-source CLI and source tree with the
+  hosted service restricted to the owner's entitlement during testing. The
+  release requires encrypted push/list/inspect/pull/delete, durable replay,
+  atomic quotas, and repository-bound restore.
+- PR #25 remains open with its previous CI green, but GitHub mergeability must be
+  re-evaluated against the new public `main`. Preserve named-instance routing,
+  keep direct send modes concrete, and fix Devin UTF-8 byte-budget clipping/write
+  enforcement before considering it.
+- The sibling `sinter-public` checkout uses the same GitHub upstream and is clean
+  at public `main` `820d202`. Follow the public-clone parity protocol in
+  `AGENTS.md`; never copy private files into it blindly.
+- Published npm `0.4.1` is terminal-only and contains no Cloud commands. v0.5 is
+  the first planned public Cloud client, while the hosted service remains
+  owner-only during testing and the CLI remains useful without an account.
+- Cloud design history is documented in
   [sinter-cloud-inventory.md](sinter-cloud-inventory.md).
-- Real-session direct transfer v2 now binds an explicitly selected target
+- Repository-bound direct transfer v2 binds an explicitly selected target
   checkout to sanitized repository identity rather than a source absolute path.
-  The design, resolved mismatch policy, acceptance tests, and continuation
-  guidance are in [repository-binding-design.md](repository-binding-design.md).
-  The implementation is isolated on `feat/repository-binding-v2` and does not
-  change the scoped `0.4.1` synthetic candidate.
+  Its design, mismatch policy, tests, and continuation guidance are in
+  [repository-binding-design.md](repository-binding-design.md).
 - The Cloud branch is ahead of `origin/docs/sinter-cloud-inventory` with
   reviewed, unpushed commits. Phase 1 device identity and the metadata-only
   control plane are deployed; the C2 local-only envelope remains disconnected

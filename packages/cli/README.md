@@ -12,27 +12,23 @@ sinter scan
 sinter
 ```
 
-npm `latest` remains `0.4.0`. This `0.5.0-dev.0` package is private development
+npm `latest` is `0.4.1`. This `0.5.0-dev.0` package is private development
 metadata; repository-bound v2 testing uses a locally packed tarball installed
 identically on both devices, not the public install commands above.
 
-Sinter reads local harness stores and keeps its index on your machine. It does
-not require an account or upload transcripts. Historical tool calls are inert
-during cross-harness ports unless explicitly enabled for a compatible target.
-On POSIX systems, the local SQLite ledger and sidecar files are restricted to
-the current user.
+Sinter reads local harness stores and keeps its index on your machine. Historical
+tool calls are inert during cross-harness ports unless explicitly enabled for a
+compatible target. On POSIX systems, the local SQLite ledger and sidecar files
+are restricted to the current user.
 
-Sinter also supports named instances of the same harness and direct encrypted
-context transfer over LAN or Tailscale. Direct transfer v2 requires the receiver
-to select a target Git root with `--cwd`, compares sanitized repository identity,
+Sinter supports named instances of the same harness and direct encrypted context
+transfer over LAN or Tailscale. Direct transfer v2 requires the receiver to
+select a target Git root with `--cwd`, compares sanitized repository identity,
 checks commit availability, previews dirty state without modifying it, and
 rewrites the imported session to the target-local monorepo directory. Legacy
 unbound payloads and unsafe targets fail closed; dedicated mismatch and
-missing-commit overrides remain explicit in provenance. Run the command-specific
-help for `sinter receive` and `sinter send` for the one-use workflow. When multiple
-`~/.claude*` stores are present, the first operational run creates and selects
-a default multi-instance config without overwriting existing configuration.
-Run `sinter help instances` for the agent-safe porting workflow.
+missing-commit overrides remain explicit in provenance. Run `sinter help
+instances`, `sinter help receive`, and `sinter help send` for the workflows.
 
 Custom Claude stores hidden behind shell aliases can be previewed only through
 `sinter config discover-shell`. This explicit opt-in executes the selected
@@ -42,7 +38,7 @@ raw alias output is suppressed, and `--write --yes` creates a missing owner-only
 config without ever overwriting an existing one.
 
 Run `sinter update` to install the exact latest published build into the global
-bun or npm installation that owns the current executable. If that ownership is
+Bun or npm installation that owns the current executable. If that ownership is
 ambiguous, pass `--package-manager bun` or `--package-manager npm`; use
 `--check` for a side-effect-free registry check. A newer development build
 reports `newer-local` and does not downgrade to npm `latest` without `--force`.
