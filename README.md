@@ -23,8 +23,9 @@ sinter --help
 
 Interactive runs check npm at most once per day and offer to install a newer release. Use `--no-update-check` or set `SINTER_NO_UPDATE_CHECK=1` to disable this; scripts, CI, and non-interactive output never prompt.
 
-npm `latest` is `0.5.0`, the public encrypted Cloud client release. See the
-[v0.5.0 release notes](docs/releases/v0.5.0.md) for release scope and owner-only
+npm `latest` is `0.5.1`, including the compacted Codex-to-Claude resume fix. See
+[v0.5.1 release notes](docs/releases/v0.5.1.md) for the patch and
+[v0.5.0 release notes](docs/releases/v0.5.0.md) for Cloud scope and owner-only
 hosted-service boundaries.
 
 ## Quick start
