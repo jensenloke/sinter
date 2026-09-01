@@ -580,11 +580,13 @@ function buildClaudeTranscript(
     const timestamp = timestampFor(entry);
 
     if (entry.kind === "user") {
-      const content = entry.content.map((part) =>
+      const content: unknown[] = entry.content.map((part) =>
         part.type === "text"
           ? { type: "text", text: part.text }
           : { type: "image", source: { media_type: part.mimeType, data: part.data } },
       );
+      if (!entry.content.some((part) => part.type === "image" ? !!part.data : !!part.text.trim()))
+        content.push({ type: "text", text: "[empty historical user turn]" });
       out.push(
         JSON.stringify({
           ...common(uuid, parentUuid, timestamp),
@@ -644,7 +646,10 @@ function buildClaudeTranscript(
       continue;
     }
     if (entry.kind === "compaction") {
-      out.push(JSON.stringify({ ...common(uuid, parentUuid, timestamp), type: "user", isCompactSummary: true, message: { role: "user", content: entry.summary ?? "" } }));
+      const summary = entry.summary?.trim()
+        ? entry.summary
+        : `Earlier ${session.origin.harness} context was compacted, but its portable summary is not available. Continue from the history after this boundary.`;
+      out.push(JSON.stringify({ ...common(uuid, parentUuid, timestamp), type: "user", isCompactSummary: true, message: { role: "user", content: summary } }));
       continue;
     }
     if (entry.kind === "modelChange") {

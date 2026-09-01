@@ -254,6 +254,28 @@ function normText(s: string): string {
   return s.trim();
 }
 
+function compactionSummary(payload: any): string {
+  if (typeof payload?.message === "string" && payload.message.trim()) return payload.message;
+  const requests = Array.isArray(payload?.replacement_history)
+    ? payload.replacement_history.flatMap((item: any) => {
+        const kinds = item?.internal_chat_message_metadata_passthrough?.content_item_kinds;
+        const userOnly = Array.isArray(kinds) && kinds.includes("user.text") && kinds.every((kind: unknown) =>
+          typeof kind === "string" && kind.startsWith("user."));
+        if (item?.type !== "message" || item.role !== "user" || !userOnly) return [];
+        const text = typeof item.content === "string"
+          ? item.content.trim()
+          : Array.isArray(item.content)
+            ? item.content.filter((part: any) => part?.type === "input_text" && typeof part.text === "string")
+                .map((part: any) => part.text).join("\n").trim()
+            : "";
+        return text ? [Array.from(text).slice(0, 2_000).join("")] : [];
+      })
+    : [];
+  const unavailable = "Earlier Codex context was compacted, but its provider-private summary is not available across harnesses.";
+  const retained = requests.slice(-6).map((request: string, index: number) => `${index + 1}. ${request}`).join("\n\n");
+  return retained ? `${unavailable}\n\nRetained user requests:\n\n${retained}` : unavailable;
+}
+
 // ---------------------------------------------------------------- builder
 
 class SessionBuilder {
@@ -1127,7 +1149,7 @@ export class CodexAdapter implements HarnessAdapter {
             id: b.nextId(line),
             parentId: null,
             ts: b.ts(ts),
-            summary: typeof p.message === "string" ? p.message : undefined,
+            summary: compactionSummary(p),
             replacedHistory: p.replacement_history,
             origin: { nativeType: "compacted" },
             raw: v,
@@ -1549,7 +1571,7 @@ export class CodexAdapter implements HarnessAdapter {
                 id: b.nextId(line),
                 parentId: null,
                 ts: b.ts(ts),
-                summary: typeof p.message === "string" ? p.message : undefined,
+                summary: compactionSummary(p),
                 origin: { nativeType: "event_msg:context_compacted" },
                 raw: v,
               });

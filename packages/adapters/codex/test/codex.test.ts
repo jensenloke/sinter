@@ -311,6 +311,35 @@ describe("modern rollout (2026-07)", () => {
     expect(c.replacedHistory.length).toBe(compacted[0].payload.replacement_history.length);
   });
 
+  test("empty encrypted compactions retain portable user intent", async () => {
+    const path = join(tmpRoot, "rollout-2026-08-31T00-00-00-empty-compaction.jsonl");
+    const records = [
+      { timestamp: "2026-08-31T00:00:00.000Z", type: "session_meta", payload: { id: "empty-compaction", session_id: "empty-compaction", cwd: "/tmp/compact", model_provider: "openai" } },
+      {
+        timestamp: "2026-08-31T00:00:01.000Z",
+        type: "compacted",
+        payload: {
+          message: "",
+          replacement_history: [
+            { type: "message", role: "user", content: [{ type: "input_text", text: "Build the workflow editor" }], internal_chat_message_metadata_passthrough: { content_item_kinds: ["user.text"] } },
+            { type: "message", role: "user", content: [{ type: "input_text", text: "private runtime instructions" }], internal_chat_message_metadata_passthrough: { content_item_kinds: ["agents_md.instructions"] } },
+            { type: "message", role: "user", content: [{ type: "input_text", text: "Verify it and prepare the handoff" }], internal_chat_message_metadata_passthrough: { content_item_kinds: ["user.text"] } },
+            { type: "compaction", encrypted_content: "encrypted-blob-value" },
+          ],
+        },
+      },
+    ];
+    writeFileSync(path, records.map((record) => JSON.stringify(record)).join("\n"));
+
+    const session = await adapter.readFile(path);
+    const compaction = session.entries.find((entry) => entry.kind === "compaction");
+    expect(compaction?.summary).toContain("Build the workflow editor");
+    expect(compaction?.summary).toContain("Verify it and prepare the handoff");
+    expect(compaction?.summary).not.toContain("private runtime instructions");
+    expect(compaction?.summary).not.toContain("encrypted-blob-value");
+    expect(compaction?.replacedHistory).toEqual(records[1]!.payload.replacement_history);
+  });
+
   test("reasoning keeps encrypted_content as a part signature (never dropped)", async () => {
     const s = await readFixture(MODERN);
     const raws = await rawLines(MODERN);

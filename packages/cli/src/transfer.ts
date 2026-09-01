@@ -14,6 +14,7 @@
 import type {
   AssistantContentPart,
   AssistantEntry,
+  CompactionEntry,
   SifEntry,
   SifSession,
   TextPart,
@@ -190,6 +191,16 @@ export function compactSession(session: SifSession, opts: CompactOpts = {}): Tra
       return { ...a, content };
     }
 
+    if (base.kind === "compaction") {
+      const { replacedHistory: _replacedHistory, ...portable } = base as CompactionEntry;
+      return {
+        ...portable,
+        summary: portable.summary?.trim()
+          ? portable.summary
+          : "Earlier context was compacted, but its portable summary is not available across harnesses.",
+      };
+    }
+
     if (base.kind === "toolResult") {
       const r = base as ToolResultEntry;
       const body = textOf(r.content);
@@ -234,7 +245,7 @@ export function compactSession(session: SifSession, opts: CompactOpts = {}): Tra
     noteType: "sinter_compaction",
     text:
       `compacted by sinter before porting: ${resultsCollapsed} superseded tool result(s) and ` +
-      `${thinkingDropped} thinking block(s) omitted, source records stripped ` +
+      `${thinkingDropped} thinking block(s) omitted, source records and provider-private compaction state stripped ` +
       `(${fmtBytes(bytesBefore)} → ${fmtBytes(bytesAfter)}).` +
       (files.length ? ` Files touched: ${files.slice(0, 40).join(", ")}${files.length > 40 ? ", …" : ""}.` : ""),
   };

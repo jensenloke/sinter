@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { validateSession, threadPath, type SifSession } from "@sinter/core";
@@ -502,6 +502,39 @@ describe("write", () => {
       const rows: string[] = [];
       for await (const row of target.list()) rows.push(row.nativeId);
       expect(rows).toContain(ref.nativeId);
+    } finally {
+      if (oldSinterHome === undefined) delete process.env.SINTER_HOME;
+      else process.env.SINTER_HOME = oldSinterHome;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("writes non-empty Claude user messages across incomplete source compactions", async () => {
+    const root = mkdtempSync(join(tmpdir(), "sinter-claude-compaction-"));
+    const oldSinterHome = process.env.SINTER_HOME;
+    process.env.SINTER_HOME = join(root, "sinter-home");
+    try {
+      const source: SifSession = {
+        sif: "sif/0",
+        id: "incomplete-compaction",
+        origin: { harness: "codex", nativeId: "codex-source" },
+        cwd: "/tmp/source",
+        entries: [
+          { kind: "user", id: "u1", parentId: null, content: [] },
+          { kind: "compaction", id: "c1", parentId: "u1", summary: "" },
+          { kind: "assistant", id: "a1", parentId: "c1", content: [{ type: "text", text: "Current state" }] },
+        ],
+      };
+      const target = new ClaudeAdapter({ root: join(root, "projects") });
+      const ref = await target.write(source, { cwd: "/tmp/ported-claude", mode: "compact" });
+      const records = readFileSync(ref.nativePath!, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+      const users = records.filter((record) => record.type === "user");
+      expect(users).toHaveLength(2);
+      for (const record of users) {
+        const content = Array.isArray(record.message.content) ? record.message.content : [record.message.content];
+        expect(content.some((part: unknown) => typeof part === "string" ? part.trim() : typeof (part as { text?: unknown })?.text === "string" && !!(part as { text: string }).text.trim())).toBe(true);
+      }
+      expect(users.find((record) => record.isCompactSummary)?.message.content).toContain("not available");
     } finally {
       if (oldSinterHome === undefined) delete process.env.SINTER_HOME;
       else process.env.SINTER_HOME = oldSinterHome;
