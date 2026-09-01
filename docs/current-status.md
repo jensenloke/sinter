@@ -10,26 +10,24 @@ operations.
 ## Release state
 
 - Current public CLI, npm `latest`, annotated Git tag, and GitHub release:
-  `@jensenloke/sinter@0.5.0` / `v0.5.0`.
-- Stable patch preparation on `release/v0.5.1`: `0.5.1`; npm/tag/release
-  `0.5.1` must remain absent until the final guard passes.
-- PR #32 merged the compacted Codex-to-Claude resume fix at `1b759c4` after all
-  three CI jobs passed.
-- v0.5.0 registry shasum: `d03df55cf03a103e724a34bdd26d88037ce703a1`.
-- v0.5.1 24-file tarball rehearsal shasum:
+  `@jensenloke/sinter@0.5.1` / `v0.5.1`.
+- PR #32 merged the compacted Codex-to-Claude resume fix at `1b759c4`; release
+  PR #34 merged at `9190954`, the exact v0.5.1 tag target.
+- v0.5.1 registry and rehearsed 24-file tarball shasum:
   `e5d2b3dbe35ab5c79ca8d35864cb549f0d92cf81`.
+- Isolated Bun and npm installs both report `0.5.1` and expose Cloud help.
 - Patch notes: [releases/v0.5.1.md](releases/v0.5.1.md).
-- npm `0.4.1` and `0.5.0` are immutable and must never be republished.
+- npm `0.4.1`, `0.5.0`, and `0.5.1` are immutable and must never be republished.
 
 ## Git state at handoff
 
-- The current working branch is `release/v0.5.1`, created from public `main` at
-  patch commit `1b759c4`.
-- PRs #30, #31, #32, and #33 passed macOS, Ubuntu, and isolated database-policy
-  CI. The v0.5 feature branch retains checkpoints `ff4b8a7`, `33a9b8c`,
+- The current working branch is `docs/v0.5.1-release-status`, created from public
+  `main` at release commit `9190954`.
+- PRs #30, #31, #32, #33, and #34 passed macOS, Ubuntu, and isolated database-
+  policy CI. The v0.5 feature branch retains checkpoints `ff4b8a7`, `33a9b8c`,
   `8e8731f`, and physical evidence handoff `5dc7860`.
-- Public `main` contains the released Cloud client plus the merged v0.5.1
-  compaction fix. The exact v0.5.0 release commit remains tagged and published.
+- Public `main` contains the released Cloud client and compact-resume patch. The
+  exact v0.5.0 and v0.5.1 release commits remain tagged and published.
 - The CLI/source are public; the hosted service remains restricted to exactly
   the owner's entitlement during testing and public signup remains closed.
 - PR #25 remains open with its previous CI green, but GitHub mergeability must be
@@ -480,13 +478,12 @@ bunx @jensenloke/sinter@0.4.1 --version
 
 ## Recommended next actions
 
-1. Verify the v0.5.1 package contains PR #32 and no provider-private compaction
-   state, then merge the stable patch release PR.
-2. Keep public signup closed and exactly one owner entitlement enabled; this patch
+1. Treat npm `0.5.1` and tag `v0.5.1` as immutable; use a new patch version for
+   every future package change.
+2. Keep public signup closed and exactly one owner entitlement enabled; v0.5.1
    changes client-side adapter/transfer behavior only.
-3. Tag and publish v0.5.1 only from clean `main` after explicit approval; treat
-   npm v0.5.0 as immutable.
-4. Monitor owner-only Storage/egress, cleanup, auth refresh, and deletion behavior
-   before admitting any tester or designing paid limits.
-5. Re-evaluate PR #25 separately against current public `main`; do not mix it into
-   this patch release without resolving its named-instance and UTF-8 findings.
+3. Monitor owner-only Storage/egress, cleanup, auth refresh, deletion, and
+   compacted Codex-to-Claude resumes before admitting any tester.
+4. Re-evaluate PR #25 separately against current public `main`; do not mix it into
+   the released patch history without resolving its named-instance and UTF-8
+   findings.
