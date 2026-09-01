@@ -8,9 +8,9 @@ function releasable(overrides: Partial<PublishGuardState> = {}): PublishGuardSta
     approved: true,
     branch: "main",
     clean: true,
-    tags: ["v0.5.0"],
-    version: "0.5.0",
-    runtimeVersion: "0.5.0",
+    tags: ["v0.5.1"],
+    version: "0.5.1",
+    runtimeVersion: "0.5.1",
     registry: "absent",
     ...overrides,
   };
@@ -19,7 +19,7 @@ function releasable(overrides: Partial<PublishGuardState> = {}): PublishGuardSta
 describe("release publication guard", () => {
   test("keeps source, package, and stable release state aligned", () => {
     expect(VERSION).toBe(pkg.version);
-    expect(pkg.version).toBe("0.5.0");
+    expect(pkg.version).toBe("0.5.1");
     expect("private" in pkg).toBe(false);
     expect(pkg.publishConfig).toEqual({ access: "public", tag: "latest" });
   });
@@ -29,9 +29,9 @@ describe("release publication guard", () => {
     expect(publishGuardFailure(releasable({ approved: false }))).toContain("SINTER_RELEASE_APPROVED=1");
     expect(publishGuardFailure(releasable({ branch: "feat/repository-binding-v2" }))).toContain("only from main");
     expect(publishGuardFailure(releasable({ clean: false }))).toContain("clean worktree");
-    expect(publishGuardFailure(releasable({ runtimeVersion: "0.5.1" }))).toContain("versions do not match");
-    expect(publishGuardFailure(releasable({ version: "0.5.0-dev.0", runtimeVersion: "0.5.0-dev.0", tags: ["v0.5.0-dev.0"] }))).toContain("development versions");
-    expect(publishGuardFailure(releasable({ tags: [] }))).toContain("exact v0.5.0 tag");
+    expect(publishGuardFailure(releasable({ runtimeVersion: "0.5.2" }))).toContain("versions do not match");
+    expect(publishGuardFailure(releasable({ version: "0.5.1-dev.0", runtimeVersion: "0.5.1-dev.0", tags: ["v0.5.1-dev.0"] }))).toContain("development versions");
+    expect(publishGuardFailure(releasable({ tags: [] }))).toContain("exact v0.5.1 tag");
     expect(publishGuardFailure(releasable({ registry: "present" }))).toContain("already published");
     expect(publishGuardFailure(releasable({ registry: "unavailable" }))).toContain("could not be verified");
   });

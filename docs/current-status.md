@@ -11,24 +11,25 @@ operations.
 
 - Current public CLI, npm `latest`, annotated Git tag, and GitHub release:
   `@jensenloke/sinter@0.5.0` / `v0.5.0`.
-- Feature PR #30 merged at `f78ff84`; stable release PR #31 merged at
-  `ed5813f`, which is the exact `v0.5.0` tag target.
-- Registry and rehearsed 24-file tarball shasum:
-  `d03df55cf03a103e724a34bdd26d88037ce703a1`.
-- Isolated Bun and npm installs both report `0.5.0` and expose Cloud help.
-- Release notes: [releases/v0.5.0.md](releases/v0.5.0.md).
+- Stable patch preparation on `release/v0.5.1`: `0.5.1`; npm/tag/release
+  `0.5.1` must remain absent until the final guard passes.
+- PR #32 merged the compacted Codex-to-Claude resume fix at `1b759c4` after all
+  three CI jobs passed.
+- v0.5.0 registry shasum: `d03df55cf03a103e724a34bdd26d88037ce703a1`.
+- v0.5.1 24-file tarball rehearsal shasum:
+  `e5d2b3dbe35ab5c79ca8d35864cb549f0d92cf81`.
+- Patch notes: [releases/v0.5.1.md](releases/v0.5.1.md).
 - npm `0.4.1` and `0.5.0` are immutable and must never be republished.
 
 ## Git state at handoff
 
-- The current working branch is `docs/v0.5.0-release-status`, created from
-  public `main` at release commit `ed5813f`.
-- PRs #30 and #31 passed macOS, Ubuntu, and isolated database-policy CI. The
-  feature branch retains checkpoints `ff4b8a7`, `33a9b8c`, `8e8731f`, and the
-  physical evidence handoff `5dc7860`.
-- Public `main` contains encrypted push/list/inspect/pull/delete, signed device
-  requests, durable replay, atomic quotas/cleanup/deletion, and repository-bound
-  restore. The exact release commit is tagged and published.
+- The current working branch is `release/v0.5.1`, created from public `main` at
+  patch commit `1b759c4`.
+- PRs #30, #31, #32, and #33 passed macOS, Ubuntu, and isolated database-policy
+  CI. The v0.5 feature branch retains checkpoints `ff4b8a7`, `33a9b8c`,
+  `8e8731f`, and physical evidence handoff `5dc7860`.
+- Public `main` contains the released Cloud client plus the merged v0.5.1
+  compaction fix. The exact v0.5.0 release commit remains tagged and published.
 - The CLI/source are public; the hosted service remains restricted to exactly
   the owner's entitlement during testing and public signup remains closed.
 - PR #25 remains open with its previous CI green, but GitHub mergeability must be
@@ -155,7 +156,7 @@ operations.
   audit reason. Defaults remain off; no email/account heuristic enables anyone.
 - A secret-protected daily cleanup route processes retryable reservations and
   expired request nonces even while uploads are disabled.
-- Local verification passes 934 tests and 10,457 assertions, 320 pgTAP database
+- Local verification passes 938 tests and 10,473 assertions, 320 pgTAP database
   assertions from a clean migration reset, both TypeScript checks, CLI and Cloud
   production builds, Cloud-enabled package rehearsal, frozen lockfile, and
   `git diff --check`. Two independent post-fix reviews found no remaining
@@ -479,12 +480,13 @@ bunx @jensenloke/sinter@0.4.1 --version
 
 ## Recommended next actions
 
-1. Keep public signup closed and exactly one owner entitlement enabled; do not
-   imply that installing the public client grants hosted access.
-2. Monitor owner-only Storage/egress, cleanup, auth refresh, and deletion behavior
+1. Verify the v0.5.1 package contains PR #32 and no provider-private compaction
+   state, then merge the stable patch release PR.
+2. Keep public signup closed and exactly one owner entitlement enabled; this patch
+   changes client-side adapter/transfer behavior only.
+3. Tag and publish v0.5.1 only from clean `main` after explicit approval; treat
+   npm v0.5.0 as immutable.
+4. Monitor owner-only Storage/egress, cleanup, auth refresh, and deletion behavior
    before admitting any tester or designing paid limits.
-3. Treat npm `0.5.0` and tag `v0.5.0` as immutable; prepare a new version for every
-   future package change.
-4. Re-evaluate PR #25 separately against current public `main`; do not mix it into
-   the released Cloud history without resolving its named-instance and UTF-8
-   findings.
+5. Re-evaluate PR #25 separately against current public `main`; do not mix it into
+   this patch release without resolving its named-instance and UTF-8 findings.
