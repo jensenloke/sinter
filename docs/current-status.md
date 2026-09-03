@@ -31,10 +31,12 @@ operations.
   exact v0.5.0 and v0.5.1 release commits remain tagged and published.
 - The CLI/source are public; the hosted service remains restricted to exactly
   the owner's entitlement during testing and public signup remains closed.
-- PR #25 remains open with its previous CI green, but GitHub mergeability must be
-  re-evaluated against the new public `main`. Preserve named-instance routing,
-  keep direct send modes concrete, and fix Devin UTF-8 byte-budget clipping/write
-  enforcement before considering it.
+- PR #25 is superseded by PR #38, which re-lands the context-budget fitting
+  feature on current `main` with named-instance routing preserved, concrete
+  send/Cloud modes, and UTF-8 byte-accurate Devin clipping; close #25 once #38
+  merges. Draft PRs #4–#9 and #11–#22 were closed as superseded by the merged
+  v0.2.0 umbrella (#23). PR #10 (local-file encrypted capsules) remains open
+  and security-blocked; it is not in `main`.
 - The `sinter-public` checkout is the sole active maintainer checkout. Previous
   local checkouts and linked worktrees were retired; do not recover, copy from,
   or push their legacy local-only history. The public GitHub repository is the
@@ -487,6 +489,7 @@ bunx @jensenloke/sinter@0.4.1 --version
    changes client-side adapter/transfer behavior only.
 3. Monitor owner-only Storage/egress, cleanup, auth refresh, deletion, and
    compacted Codex-to-Claude resumes before admitting any tester.
-4. Re-evaluate PR #25 separately against current public `main`; do not mix it into
-   the released patch history without resolving its named-instance and UTF-8
-   findings.
+4. Review and merge PR #38 (context-budget fitting) and PR #39 (ledger
+   backup/verify/repair); then close PR #25 as superseded and decide whether PR
+   #10 should be closed or redesigned against the shipped device-transfer
+   capsules.
