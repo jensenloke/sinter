@@ -9,6 +9,12 @@ opaque hosted dataset.
 This is a direction document, not a release commitment. Each phase should earn
 the next one through real usage and privacy review.
 
+## Active implementation handoffs
+
+- [Intelligent target-aware porting](docs/intelligent-porting.md) documents the
+  automatic fit algorithm, named-instance routing, Devin coverage, safety
+  boundaries, and verification baseline for the context-budget feature.
+
 ## Near term: better CLI ergonomics
 
 1. **Shell completions — ready in draft PR #4.** Generate native completion

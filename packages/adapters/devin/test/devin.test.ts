@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SIF_VERSION, validateSession, type SifSession } from "@sinter/core";
-import { DevinAdapter } from "../src/index";
+import { capNativeHistory, DevinAdapter, messageBytes, type NativeMessage } from "../src/index";
 
 let root: string;
 let dbPath: string;
@@ -94,6 +94,20 @@ function portableSession(): SifSession {
       { kind: "toolResult", id: "t1", parentId: "a1", callId: "c1", toolName: "exec", content: [{ type: "text", text: "4 pass" }] },
       { kind: "assistant", id: "a2", parentId: "t1", content: [{ type: "text", text: "All checks pass." }] },
     ],
+  };
+}
+
+function nativeMessage(nodeId: number, parentNodeId: number | null, role: string, content: string): NativeMessage {
+  return {
+    nodeId,
+    parentNodeId,
+    createdAt: 1_755_000_000 + nodeId,
+    message: {
+      message_id: `message-${nodeId}`,
+      role,
+      content,
+      metadata: { created_at: "2026-08-19T01:00:00.000Z" },
+    },
   };
 }
 
@@ -235,6 +249,15 @@ describe("DevinAdapter", () => {
       parentId = id;
     }
     session.entries.push({ kind: "user", id: "latest", parentId, content: [{ type: "text", text: "Latest question" }] });
+    const plan = await adapter.planWrite(session);
+    expect(plan.context).toMatchObject({
+      unit: "bytes",
+      limit: 200_000,
+      strategy: "opening-and-tail",
+    });
+    expect(plan.context!.before).toBeGreaterThan(plan.context!.limit);
+    expect(plan.context!.after).toBeLessThanOrEqual(plan.context!.limit);
+    expect(plan.context!.omittedEntries).toBeGreaterThan(0);
     const ref = await adapter.write(session);
     const db = new Database(dbPath, { readonly: true });
     const stats = db.query<{ nodes: number; bytes: number; main_chain_id: number }, [string]>(`
@@ -246,11 +269,54 @@ describe("DevinAdapter", () => {
     ).all(ref.nativeId).map((row) => row.content);
     db.close();
     expect(stats.nodes).toBeLessThan(session.entries.length);
+    expect(stats.bytes).toBe(plan.context!.after);
     expect(stats.bytes).toBeLessThan(210_000);
     expect(stats.main_chain_id).toBe(stats.nodes - 1);
     expect(contents[0]).toBe("Original objective");
     expect(contents.some((content) => content.includes("older messages") && content.includes("omitted"))).toBe(true);
     expect(contents.at(-1)).toBe("Latest question");
+  });
+
+  test("caps UTF-8-heavy histories without splitting Unicode or exceeding message budgets", async () => {
+    const messages = [nativeMessage(0, null, "user", "Original objective")];
+    for (let i = 1; i <= 50; i++) messages.push(nativeMessage(i, i - 1, "assistant", `${i}:` + "界😀".repeat(1_000)));
+    const capped = capNativeHistory(messages, messages.length - 1);
+    expect(capped.bytesBefore).toBeGreaterThan(200_000);
+    expect(capped.bytesAfter).toBeLessThanOrEqual(200_000);
+    expect(capped.omitted).toBeGreaterThan(0);
+    for (const item of capped.messages) {
+      expect(messageBytes(item)).toBeLessThanOrEqual(40_000);
+      expect(Buffer.from(String(item.message.content), "utf8").toString("utf8")).toBe(item.message.content);
+    }
+
+    const session = portableSession();
+    session.entries = [{ kind: "user", id: "u0", parentId: null, content: [{ type: "text", text: "Original objective" }] }];
+    let parentId = "u0";
+    for (let i = 1; i <= 50; i++) {
+      const id = `a${i}`;
+      session.entries.push({ kind: "assistant", id, parentId, content: [{ type: "text", text: `${i}:` + "界😀".repeat(1_000) }] });
+      parentId = id;
+    }
+    const plan = await new DevinAdapter({ dbPath }).planWrite(session);
+    expect(plan.context!.after).toBeLessThanOrEqual(plan.context!.limit);
+  });
+
+  test("clips a single oversized newest multibyte message to the strict history limit", async () => {
+    const messages = [
+      nativeMessage(0, null, "user", "Original objective"),
+      nativeMessage(1, 0, "assistant", "😀".repeat(150_000)),
+    ];
+    const capped = capNativeHistory(messages, 1);
+    expect(capped.bytesAfter).toBeLessThanOrEqual(200_000);
+    expect(capped.messages.every((item) => messageBytes(item) <= 40_000 || item.message.role === "assistant")).toBe(true);
+
+    const session = portableSession();
+    session.entries = [
+      { kind: "user", id: "u0", parentId: null, content: [{ type: "text", text: "Original objective" }] },
+      { kind: "assistant", id: "a1", parentId: "u0", content: [{ type: "text", text: "😀".repeat(150_000) }] },
+    ];
+    const plan = await new DevinAdapter({ dbPath }).planWrite(session);
+    expect(plan.context!.after).toBeLessThanOrEqual(plan.context!.limit);
   });
 
   test("same-harness writes preserve Devin settings and the selected active branch", async () => {
