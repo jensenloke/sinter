@@ -1,6 +1,6 @@
 # Sinter current status
 
-Last updated: 2026-08-30 (Asia/Singapore)
+Last updated: 2026-09-03 (Asia/Singapore)
 
 This is the durable continuation handoff for maintainers and coding agents.
 Read the root [AGENTS.md](../AGENTS.md) first. Mutable facts below were verified
@@ -21,11 +21,12 @@ operations.
 
 ## Git state at handoff
 
-- The current working branch is `docs/v0.5.1-release-status`, created from public
-  `main` at release commit `9190954`.
-- PRs #30, #31, #32, #33, and #34 passed macOS, Ubuntu, and isolated database-
-  policy CI. The v0.5 feature branch retains checkpoints `ff4b8a7`, `33a9b8c`,
-  `8e8731f`, and physical evidence handoff `5dc7860`.
+- Public `main` includes the Devin Cloud continuation handoff from PR #36 after
+  the v0.5.1 release; this documentation-only change does not alter the package
+  or runtime version.
+- PRs #30, #31, #32, #33, #34, and #36 passed macOS, Ubuntu, and isolated
+  database-policy CI. The v0.5 feature branch retains checkpoints `ff4b8a7`,
+  `33a9b8c`, `8e8731f`, and physical evidence handoff `5dc7860`.
 - Public `main` contains the released Cloud client and compact-resume patch. The
   exact v0.5.0 and v0.5.1 release commits remain tagged and published.
 - The CLI/source are public; the hosted service remains restricted to exactly
@@ -34,14 +35,16 @@ operations.
   re-evaluated against the new public `main`. Preserve named-instance routing,
   keep direct send modes concrete, and fix Devin UTF-8 byte-budget clipping/write
   enforcement before considering it.
-- The `sinter-public` checkout is the active stable-release worktree; the sibling
-  `sinter` checkout remains on the synchronized feature branch. Both use the same
-  GitHub upstream.
+- The `sinter-public` checkout is the sole active maintainer checkout. Previous
+  local checkouts and linked worktrees were retired; do not recover, copy from,
+  or push their legacy local-only history. The public GitHub repository is the
+  source of truth.
 - Published npm `0.4.1` is terminal-only. v0.5 is the first public Cloud client,
   while the CLI remains fully useful without an account.
-- Cloud history and current evidence are documented in
-  [sinter-cloud-inventory.md](sinter-cloud-inventory.md). Repository-bound direct
-  transfer v2 design and mismatch policy are in
+- Cloud-agent continuation instructions and the verified environment gate are in
+  [handoff-summary.md](handoff-summary.md). Cloud history and current evidence
+  are documented in [sinter-cloud-inventory.md](sinter-cloud-inventory.md).
+  Repository-bound direct transfer v2 design and mismatch policy are in
   [repository-binding-design.md](repository-binding-design.md).
 
 ## Historical synthetic capsule diagnostic checkpoint
