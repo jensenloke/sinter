@@ -30,7 +30,8 @@ npm view @jensenloke/sinter version dist-tags --json
 - The sole active source of truth is the public GitHub repository
   `jensenloke/sinter`.
 - The default branch is `main`.
-- At this handoff, local `main` and `origin/main` both point to `e09fd72`.
+- At this handoff, local `main` and `origin/main` are synchronized. Verify the
+  exact commit at the start of every session.
 - The current public CLI, Git tag, GitHub release, and npm `latest` are v0.5.1.
 - npm versions 0.4.1, 0.5.0, and 0.5.1 are immutable and must not be
   republished.
