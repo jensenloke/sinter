@@ -8,5 +8,8 @@ export type {
   ScanResult,
   ScanHarnessStat,
   ResolveResult,
+  LedgerBackupResult,
+  LedgerVerifyReport,
+  LedgerRepairResult,
 } from "./ledger";
-export { SCHEMA_SQL, SCHEMA_VERSION } from "./schema";
+export { FTS_REBUILD_SQL, LEDGER_TABLES, SCHEMA_SQL, SCHEMA_VERSION } from "./schema";

@@ -21,6 +21,31 @@
 
 export const SCHEMA_VERSION = 8;
 
+export const LEDGER_TABLES = [
+  "sessions",
+  "sessions_fts",
+  "meta",
+  "session_aliases",
+  "session_pins",
+  "lineage",
+  "saved_views",
+  "session_notes",
+  "session_tags",
+  "capsule_replays",
+] as const;
+
+export const FTS_REBUILD_SQL = `
+INSERT INTO sessions_fts (harness, instance_id, native_id, title, first_prompt)
+  SELECT s.harness, s.instance_id, s.native_id,
+    trim(coalesce(a.alias || char(10), '') || coalesce(s.title || char(10), '') ||
+      coalesce((SELECT group_concat(t.tag, ' ') FROM session_tags t
+        WHERE t.harness=s.harness AND t.instance_id=s.instance_id AND t.native_id=s.native_id), '')),
+    trim(coalesce(s.first_prompt || char(10), '') || coalesce(n.note, ''))
+  FROM sessions s
+  LEFT JOIN session_aliases a ON a.harness=s.harness AND a.instance_id=s.instance_id AND a.native_id=s.native_id
+  LEFT JOIN session_notes n ON n.harness=s.harness AND n.instance_id=s.instance_id AND n.native_id=s.native_id;
+`;
+
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS sessions (
   harness           TEXT NOT NULL,
@@ -219,15 +244,7 @@ export function migrateLedgerV7(db: import("bun:sqlite").Database): void {
         harness UNINDEXED, instance_id UNINDEXED, native_id UNINDEXED, title, first_prompt,
         tokenize = 'unicode61'
       );
-      INSERT INTO sessions_fts (harness, instance_id, native_id, title, first_prompt)
-        SELECT s.harness, s.instance_id, s.native_id,
-          trim(coalesce(a.alias || char(10), '') || coalesce(s.title || char(10), '') ||
-            coalesce((SELECT group_concat(t.tag, ' ') FROM session_tags t
-              WHERE t.harness=s.harness AND t.instance_id=s.instance_id AND t.native_id=s.native_id), '')),
-          trim(coalesce(s.first_prompt || char(10), '') || coalesce(n.note, ''))
-        FROM sessions s
-        LEFT JOIN session_aliases a ON a.harness=s.harness AND a.instance_id=s.instance_id AND a.native_id=s.native_id
-        LEFT JOIN session_notes n ON n.harness=s.harness AND n.instance_id=s.instance_id AND n.native_id=s.native_id;
+      ${FTS_REBUILD_SQL}
       INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', '7');
     `);
   }).immediate();

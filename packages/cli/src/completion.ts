@@ -21,6 +21,7 @@ const COMMANDS = [
   ["tags", "list local session tags"],
   ["note", "set a searchable local session note"],
   ["ghosts", "preview or prune disposable ghost rows"],
+  ["ledger", "back up, verify, or repair the local ledger"],
   ["view", "manage reusable local session filters"],
   ["thread", "inspect session port lineage"],
   ["projects", "group sessions by working directory"],
@@ -50,7 +51,7 @@ const COMMANDS = [
 
 const HARNESSES = ["claude", "codex", "devin", "opencode", "zcode", "omp", "pi"];
 const MODES = ["full", "slim", "compact"];
-const GLOBAL_FLAGS = ["--profile", "--config", "--ledger", "--no-color", "--no-scan", "--no-update-check", "--help", "--version"];
+const GLOBAL_FLAGS = ["--profile", "--config", "--ledger", "--no-color", "--no-scan", "--no-update-check", "--no-backup", "--help", "--version"];
 
 function zsh(): string {
   const commands = COMMANDS.map(([name, description]) => `    '${name}:${description}'`).join("\n");
@@ -97,6 +98,7 @@ ${commands}
     tags) _arguments $global_args '--json' ;;
     note) _arguments $global_args '1:session id' '*:note text' '--clear' ;;
     ghosts) _arguments $global_args '1:action:(preview prune)' '--older-than=[minimum ghost age]:duration' '--harness=[filter by harness]:harness:($harnesses)' '--json' '--yes' ;;
+    ledger) _arguments $global_args '1:action:(backup verify repair)' '--output=[backup file]:file:_files' '--yes' '--no-backup' '--json' ;;
     view) _arguments $global_args '1:action:(save list show run delete)' '2:view name' '--harness=[filter by harness]:harnesses' '--all-harnesses' '--cwd=[filter by directory]:directory:_directories' '--all-cwd' '--since=[time window]:duration' '--all-time' '--limit=[maximum rows]:count' '--ghosts' '--no-ghosts' '--subagents' '--no-subagents' '--force' '--json' ;;
     thread) _arguments $global_args '1:session id' '--json' ;;
     projects) _arguments $global_args '--harness=[filter by harness]:harnesses' '--since=[time window]:duration' '--limit=[maximum projects]:count' '--json' ;;
@@ -259,6 +261,11 @@ function fish(): string {
     "complete -c sinter -n '__fish_seen_subcommand_from ghosts' -l older-than -r -d 'Minimum ghost age'",
     "complete -c sinter -n '__fish_seen_subcommand_from ghosts' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from ghosts' -l yes -d 'Confirm pruning'",
+    "complete -c sinter -n '__fish_seen_subcommand_from ledger' -a 'backup verify repair' -d 'Action'",
+    "complete -c sinter -n '__fish_seen_subcommand_from ledger' -l output -r -d 'Backup file'",
+    "complete -c sinter -n '__fish_seen_subcommand_from ledger' -l yes -d 'Confirm repair'",
+    "complete -c sinter -n '__fish_seen_subcommand_from ledger' -l no-backup -d 'Do not create a repair backup'",
+    "complete -c sinter -n '__fish_seen_subcommand_from ledger' -l json -d 'Emit versioned JSON'",
     "complete -c sinter -n '__fish_seen_subcommand_from view' -a 'save list show run delete' -d 'Action'",
     `complete -c sinter -n '__fish_seen_subcommand_from view' -l harness -xa '${HARNESSES.join(" ")}' -d 'Filter by harness'`,
     "complete -c sinter -n '__fish_seen_subcommand_from view' -l all-harnesses -d 'Clear the saved harness filter'",

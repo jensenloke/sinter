@@ -838,6 +838,9 @@ export async function cmdPinned(argv: string[], ctx: Ctx): Promise<number> {
 }
 
 const GHOSTS_SCHEMA = "sinter.ghosts.v1";
+const LEDGER_BACKUP_SCHEMA = "sinter.ledger-backup.v1";
+const LEDGER_VERIFY_SCHEMA = "sinter.ledger-verify.v1";
+const LEDGER_REPAIR_SCHEMA = "sinter.ledger-repair.v1";
 
 /** Preview or explicitly prune disposable, locally cached ghost rows. */
 export async function cmdGhosts(argv: string[], ctx: Ctx): Promise<number> {
@@ -939,6 +942,84 @@ export async function cmdGhosts(argv: string[], ctx: Ctx): Promise<number> {
     ctx.out(ctx.pal.dim(`preview only — apply with: sinter ghosts prune --older-than ${olderThan}${harness ? ` --harness ${harness}` : ""} --yes`));
   }
   return EXIT.OK;
+}
+
+function ledgerVerifyRows(report: import("@sinter/ledger").LedgerVerifyReport): string[][] {
+  const missing = report.missingTables.length ? `missing: ${report.missingTables.join(",")}` : "ok";
+  const metadata = Object.entries(report.orphanMetadata)
+    .map(([key, count]) => `${key} ${count}`)
+    .join(", ");
+  return [
+    ["integrity", report.integrity],
+    ["schema version", `${report.schemaVersion ?? "missing"} / expected ${report.expectedSchemaVersion}`],
+    ["tables", missing],
+    [
+      "search index",
+      `${report.fts.sessions} sessions, ${report.fts.indexed} indexed, missing ${report.fts.missing}, orphaned ${report.fts.orphaned}, integrity ${report.fts.integrity}`,
+    ],
+    ["orphan metadata", metadata],
+    ["healthy", report.healthy ? "yes" : "no"],
+  ];
+}
+
+/** Back up, verify, or repair only Sinter's local ledger and derived indexes. */
+export async function cmdLedger(argv: string[], ctx: Ctx): Promise<number> {
+  const args = parseArgs(argv, {
+    strings: ["output"],
+    booleans: ["json", "yes", "no-backup"],
+    alias: { o: "output" },
+  });
+  const action = args._[0];
+  if (!action || args._.length > 1 || !["backup", "verify", "repair"].includes(action))
+    throw new CliError("usage: sinter ledger <backup [--output file]|verify|repair [--yes] [--no-backup]> [--json]");
+
+  const ledger = ctx.ledger();
+  if (action === "backup") {
+    const result = ledger.backup(flagString(args, "output"));
+    if (flagBool(args, "json")) {
+      ctx.out(JSON.stringify({ schema: LEDGER_BACKUP_SCHEMA, ledger: ledger.path, ...result }, null, 2));
+    } else {
+      ctx.out(result.path);
+      ctx.err(ctx.pal.dim(`wrote ${result.path} (${fmtBytes(result.bytes)}, sha256 ${result.sha256.slice(0, 16)}…)`));
+    }
+    return EXIT.OK;
+  }
+
+  if (action === "verify") {
+    const report = ledger.verify();
+    if (flagBool(args, "json")) {
+      ctx.out(JSON.stringify({ schema: LEDGER_VERIFY_SCHEMA, ...report }, null, 2));
+    } else {
+      ctx.out(
+        renderTable(
+          [{ header: "FIELD" }, { header: "VALUE", flex: true }],
+          ledgerVerifyRows(report),
+          { width: ctx.width, pal: ctx.pal },
+        ),
+      );
+    }
+    return report.healthy ? EXIT.OK : EXIT.ERROR;
+  }
+
+  if (!flagBool(args, "yes")) throw new CliError("refusing to repair without --yes; run `sinter ledger verify` first");
+  const result = ledger.repair({ backup: !flagBool(args, "no-backup") });
+  if (flagBool(args, "json")) {
+    ctx.out(JSON.stringify({ schema: LEDGER_REPAIR_SCHEMA, ...result }, null, 2));
+  } else {
+    if (result.backup) ctx.err(ctx.pal.dim(`backup: ${result.backup.path}`));
+    ctx.out(
+      renderTable(
+        [{ header: "FIELD" }, { header: "VALUE", flex: true }],
+        [
+          ["healthy", `${result.before.healthy ? "yes" : "no"} → ${result.after.healthy ? "yes" : "no"}`],
+          ["search index", `${result.ftsRowsBefore} → ${result.ftsRowsAfter} rows`],
+          ["reindexed", result.reindexed ? "yes" : "no"],
+        ],
+        { width: ctx.width, pal: ctx.pal },
+      ),
+    );
+  }
+  return result.after.healthy ? EXIT.OK : EXIT.ERROR;
 }
 
 const VIEW_NAME = /^[a-z0-9][a-z0-9._-]{0,39}$/i;

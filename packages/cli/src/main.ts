@@ -26,6 +26,7 @@ import {
   cmdGui,
   cmdImport,
   cmdLast,
+  cmdLedger,
   cmdLogin,
   cmdLs,
   cmdLogout,
@@ -65,7 +66,7 @@ import { trackTelemetry, type TelemetryEvent } from "./telemetry";
 export const VERSION = "0.5.1";
 
 /** Commands that manage the ledger themselves — the automatic pre-scan skips them. */
-const AUTO_SCAN_SKIP = new Set(["scan", "watch", "setup", "doctor", "capabilities", "ghosts", "tags", "privacy", "feedback", "telemetry", "completion", "config", "login", "whoami", "logout", "devices", "update"]);
+const AUTO_SCAN_SKIP = new Set(["scan", "watch", "setup", "doctor", "capabilities", "ghosts", "ledger", "tags", "privacy", "feedback", "telemetry", "completion", "config", "login", "whoami", "logout", "devices", "update"]);
 
 function skipsAutoScan(command: string, argv: string[]): boolean {
   if (AUTO_SCAN_SKIP.has(command)) return true;
@@ -125,6 +126,7 @@ const COMMANDS: Record<string, (argv: string[], ctx: Ctx) => Promise<number>> = 
   tags: cmdTags,
   note: cmdNote,
   ghosts: cmdGhosts,
+  ledger: cmdLedger,
   view: cmdView,
   thread: cmdThread,
   last: cmdLast,
@@ -206,6 +208,7 @@ setup and maintenance
   doctor [--json|--report [-o file]]     detect stores or create a privacy-safe report
   capabilities [--harness x] [--json]   show adapter read, write, and resume support
   ghosts [preview|prune] [...]          preview or prune disposable ghost rows
+  ledger <backup|verify|repair> [...]   back up or repair the local ledger
   relink [--harness x] [--limit n]       rebuild thread lineage from target stores
 
 cloud account (optional)
@@ -303,6 +306,7 @@ const COMMAND_HELP: Record<string, string> = {
   tags: "usage: sinter tags [--json]\n\nLists local tags and the number of sessions carrying each tag.",
   note: "usage: sinter note <id-prefix> <text>|--clear\n\nSets or clears one searchable Sinter-local note (maximum 4,000 characters).",
   ghosts: "usage: sinter ghosts [preview|prune] [--older-than 30d] [--harness x] [--json] [--yes]\n\nPreviews old ghost rows by default. Pruning requires the explicit `prune` action and --yes, removes only disposable ledger/FTS rows, and never modifies native stores, local metadata, or lineage.",
+  ledger: "usage: sinter ledger <backup [--output file]|verify|repair [--yes] [--no-backup]> [--json]\n\nbackup writes a consistent owner-only snapshot copy of the local ledger (default: next to the ledger with a timestamp) and never overwrites an existing file. verify reports SQLite integrity, schema version, table presence, and search-index consistency without writing. repair rebuilds only derived data (the FTS search index and SQLite indexes) after taking a backup; it never modifies session rows, local metadata, lineage, or native harness stores. Restore a backup by copying the file over the ledger path while Sinter is not running.",
   view: "usage: sinter view <save|list|show|run|delete> ...\n\nSaves reusable local filters for harness, cwd, recency, result limit, ghosts, and subagents. Explicit flags on `view run` override the saved definition.",
   thread: "usage: sinter thread <id-prefix> [--json]\n\nShows cached port lineage, transfer modes, missing hops, and the newest resumable session without reading transcripts.",
   projects: "usage: sinter projects [--harness x] [--since 7d] [--limit n] [--json]\n\nGroups resumable parent sessions by working directory without reading transcript bodies.",
