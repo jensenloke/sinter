@@ -41,7 +41,11 @@ describe("local GUI server", () => {
     const base = `http://127.0.0.1:${launched.server.port}`;
     const shell = await fetch(`${base}/`);
     expect(shell.status).toBe(200);
-    expect(await shell.text()).toContain("local session workspace");
+    const html = await shell.text();
+    expect(html).toContain("local session workspace");
+    expect(html).toContain("<option>auto</option>");
+    expect(html).toContain("filter(Boolean).join('\\n')");
+    expect(() => new Function(html.match(/<script>([\s\S]*?)<\/script>/)![1]!)).not.toThrow();
     expect((await fetch(`${base}/api/sessions`)).status).toBe(401);
     const response = await fetch(`${base}/api/sessions?token=test-token`);
     expect(response.status).toBe(200);

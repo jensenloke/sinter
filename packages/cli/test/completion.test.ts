@@ -59,6 +59,7 @@ describe("shell completions", () => {
     expect(script).toContain("ndjson");
     expect(script).toContain("tail");
     expect(script).toContain("codex");
+    expect(script).toContain("auto");
     expect(script).toContain("compact");
     expect(script).not.toContain("/Users/");
     expect(script).not.toContain("nativeId");

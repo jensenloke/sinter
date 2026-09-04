@@ -15,7 +15,7 @@ import { adapterCapabilities } from "../capabilities";
 import type { Ctx } from "../commands";
 import { shortenPath, termHeight, termWidth } from "../format";
 import { renderTranscript } from "../render";
-import { applyTransfer, fmtBytes, type TransferMode } from "../transfer";
+import { fmtBytes, planTransfer, type TransferMode } from "../transfer";
 import { parseKeys } from "./keys";
 import {
   COMMAND_KEYS,
@@ -320,9 +320,11 @@ async function doPort(
 
   const source = await readTipForPort(ctx, thread);
   const namedSource = tip.alias ? { ...source, title: { text: tip.alias, source: "user" as const } } : source;
-  const { session, stats } = applyTransfer(namedSource, mode);
+  const transfer = await planTransfer(namedSource, mode, adapter, { liveTools: false, instanceId: binding.instanceId });
+  const { session, stats } = transfer;
   validateSession(session);
 
+  if (mode === "auto") ctx.err(ctx.pal.dim(`  mode auto → ${transfer.mode} (${transfer.selection.replace(/-/g, " ")})`));
   if (stats.bytesAfter !== stats.bytesBefore)
     ctx.err(
       ctx.pal.dim(
@@ -331,10 +333,13 @@ async function doPort(
           (stats.thinkingDropped ? `, ${stats.thinkingDropped} thinking block(s) dropped` : ""),
       ),
     );
+  const context = transfer.targetPlan?.context;
+  if (transfer.selection === "target-bounded" && context)
+    ctx.err(ctx.pal.dim(`  target will omit ${context.omittedEntries} older entries (${context.before} → ${context.after} ${context.unit})`));
 
   // Historical tool calls stay inert: a ported transcript must never be
   // re-executable by the receiving harness.
-  const ref = await adapter.write(session, { liveTools: false, instanceId: binding.instanceId });
+  const ref = await adapter.write(session, { liveTools: false, mode: transfer.mode, instanceId: binding.instanceId });
   for (const c of ref.created ?? []) ctx.err(ctx.pal.dim(`  ${c}`));
   ctx.err(`  wrote ${ctx.pal.bold(`${ref.harness}:${ref.nativeId}`)}`);
 

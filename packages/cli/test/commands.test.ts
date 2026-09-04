@@ -10,7 +10,7 @@ import type { Ctx } from "../src/commands";
 import { run } from "../src/main";
 import { MockAdapter, session, summary } from "../../ledger/test/mock-adapter";
 import { CodexAdapter } from "@sinter/adapter-codex";
-import type { HarnessAdapter } from "@sinter/core";
+import type { HarnessAdapter, SifSession, WriteOpts, WritePlan } from "@sinter/core";
 import {
   REPOSITORY_BINDING_PREVIEW_SCHEMA,
   REPOSITORY_BINDING_SCHEMA,
@@ -174,6 +174,15 @@ describe("CLI conventions", () => {
     expect(h.out()).toContain("never scans local sessions");
   });
 
+  test("rejects auto for direct send and Cloud push", async () => {
+    await scan();
+    expect(await run(["send", "aaa11111", "--to", "sinter://transfer/test", "--mode", "auto"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("unknown --mode: auto (known: full, slim, compact)");
+    h.stderr.length = 0;
+    expect(await run(["cloud", "push", "aaa11111", "--mode", "auto"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("unknown --mode: auto (known: full, slim, compact)");
+  });
+
   test("reports Cloud identity and logout through an injected credential service", async () => {
     h.ctx.cloudAuth = {
       login: async () => ({ user: { id: "user-1", email: "jensen@example.test" }, storage: "test keychain" }),
@@ -246,6 +255,43 @@ describe("named harness instances", () => {
     output.length = 0;
     expect(await run(["resume", "claude@work:same"], ctx)).toBe(0);
     expect(output.join("\n")).toContain("claude-work --resume same-native");
+    ledger.close();
+  });
+
+  test("plans a named target port through that instance adapter", async () => {
+    const personal = new MockAdapter({
+      id: "claude",
+      summaries: [summary({ nativeId: "source-native" })],
+      sessions: { "source-native": session("source-native") },
+    });
+    const work = new MockAdapter({
+      id: "claude",
+      summaries: [summary({ nativeId: "target-native" })],
+      sessions: { "target-native": session("target-native") },
+    });
+    const planned: WriteOpts[] = [];
+    const output: string[] = [];
+    Object.assign(work, {
+      async planWrite(_session: SifSession, opts?: WriteOpts): Promise<WritePlan> {
+        planned.push(opts ?? {});
+        return { context: { unit: "bytes", limit: 100_000, before: 1_000, after: 1_000, omittedEntries: 0, strategy: "none" } };
+      },
+    });
+    const ledger = new Ledger(":memory:");
+    const ctx: Ctx = {
+      ...h.ctx,
+      ledger: () => ledger,
+      out: (line) => output.push(line),
+      registry: new StaticAdapterRegistry([
+        { instanceId: "personal", adapter: personal, command: ["claude-personal"] },
+        { instanceId: "work", adapter: work, command: ["claude-work"] },
+      ]),
+    };
+    await run(["scan"], ctx);
+    expect(await run(["port", "claude@personal:source", "--to", "claude@work", "--preview", "--json"], ctx)).toBe(0);
+    expect(planned).toHaveLength(1);
+    expect(planned[0]!.instanceId).toBe("work");
+    expect(JSON.parse(output.at(-1)!)).toMatchObject({ target: { instanceId: "work" }, requestedMode: "auto" });
     ledger.close();
   });
 
@@ -1439,6 +1485,7 @@ describe("import", () => {
     h.files["/tmp/in.json"] = JSON.stringify(session("src-1"));
     expect(await run(["import", "/tmp/in.json", "--to", "omp"], h.ctx)).toBe(0);
     expect(h.omp.written).toHaveLength(1);
+    expect(h.omp.written[0]!.opts?.mode).toBe("full");
     expect(h.out()).toContain("omp:new-omp-1");
     expect(h.out()).toContain("omp --resume new-omp-1");
     expect(h.err()).toContain("wrote omp:new-omp-1");
@@ -1539,6 +1586,50 @@ describe("port", () => {
     expect(preview.payload.bytesAfter).toBeLessThan(preview.payload.bytesBefore);
     expect(h.omp.written).toHaveLength(0);
   });
+
+  test("auto preview selects the least destructive mode that fits the target", async () => {
+    Object.assign(h.omp, {
+      async planWrite(_session: SifSession, opts?: WriteOpts): Promise<WritePlan> {
+        const before = opts?.mode === "compact" ? 90 : 150;
+        return { context: { unit: "bytes", limit: 100, before, after: before, omittedEntries: 0, strategy: "none" } };
+      },
+    });
+    await scan();
+    h.stdout.length = 0;
+    expect(await run(["port", "aaa11111", "--to", "omp", "--preview", "--json"], h.ctx)).toBe(0);
+    expect(JSON.parse(h.out())).toMatchObject({
+      requestedMode: "auto",
+      mode: "compact",
+      selection: "fits",
+      targetContext: { unit: "bytes", limit: 100, before: 90, after: 90 },
+      writes: false,
+    });
+    expect(h.omp.written).toHaveLength(0);
+  });
+
+  test("auto writes the planned compact session and records its concrete mode", async () => {
+    Object.assign(h.omp, {
+      async planWrite(_session: SifSession, opts?: WriteOpts): Promise<WritePlan> {
+        const compact = opts?.mode === "compact";
+        return {
+          context: {
+            unit: "bytes",
+            limit: 100,
+            before: compact ? 130 : 180,
+            after: compact ? 90 : 95,
+            omittedEntries: compact ? 4 : 10,
+            strategy: "opening-and-tail",
+          },
+        };
+      },
+    });
+    await scan();
+    expect(await run(["port", "aaa11111", "--to", "omp"], h.ctx)).toBe(0);
+    expect(h.omp.written[0]!.opts?.mode).toBe("compact");
+    expect(h.omp.written[0]!.session.entries[0]).toMatchObject({ noteType: "sinter_compaction" });
+    expect(h.err()).toContain("auto → compact");
+    expect(h.err()).toContain("target will omit 4");
+  });
 });
 
 describe("feedback", () => {
@@ -1567,6 +1658,19 @@ describe("resume", () => {
     expect(await run(["resume", "aaa11111", "--in", "omp"], h.ctx)).toBe(0);
     expect(h.omp.written).toHaveLength(1);
     expect(h.out()).toContain("omp --resume new-omp-1");
+  });
+
+  test("cross-harness resume uses the same automatic fitting plan", async () => {
+    Object.assign(h.omp, {
+      async planWrite(_session: SifSession, opts?: WriteOpts): Promise<WritePlan> {
+        const before = opts?.mode === "compact" ? 90 : 150;
+        return { context: { unit: "bytes", limit: 100, before, after: before, omittedEntries: 0, strategy: "none" } };
+      },
+    });
+    await scan();
+    expect(await run(["resume", "aaa11111", "--in", "omp"], h.ctx)).toBe(0);
+    expect(h.omp.written[0]!.opts?.mode).toBe("compact");
+    expect(h.err()).toContain("auto → compact");
   });
 
   test("--in the origin harness is a no-op port", async () => {
