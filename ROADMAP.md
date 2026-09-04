@@ -17,74 +17,74 @@ the next one through real usage and privacy review.
 
 ## Near term: better CLI ergonomics
 
-1. **Shell completions — ready in draft PR #4.** Generate native completion
+1. **Shell completions — shipped (v0.2.0).** Generate native completion
    scripts for zsh, bash, and fish covering commands, flags, harnesses, and
    transfer modes.
-2. **Port preview — ready in draft PR #5.** Add a side-effect-free view of
+2. **Port preview — shipped (v0.2.0).** Add a side-effect-free view of
    target readiness, payload reduction, entry changes, working directory, and
    historical tool behavior before a port runs.
-3. **Recent-session shortcuts — ready in draft PR #6.** Make `sinter recent`,
+3. **Recent-session shortcuts — shipped (v0.2.0).** Make `sinter recent`,
    `sinter last`, and project-scoped history reduce the need to copy session ID
    prefixes.
-4. **Consistent machine-readable output — first contract ready in draft PR
-   #9.** Versioned JSON is available for scan and doctor health, port previews,
+4. **Consistent machine-readable output — shipped (v0.2.0).** Versioned JSON is available for scan and doctor health, port previews,
    and error envelopes. Existing list, recent-session, search, and config JSON
    shapes remain stable for backward compatibility. Versioned NDJSON transcript
-   streaming is ready in PR #11 and integrated in PR #15.
-5. **Safe diagnostic bundles — ready in draft PR #7.** Let `sinter doctor
+   streaming shipped alongside it.
+5. **Safe diagnostic bundles — shipped (v0.2.0).** Let `sinter doctor
    --report` produce a reviewable support report containing versions and store
    health while excluding paths, prompts, titles, session IDs, transcripts,
    and raw adapter errors by default.
-6. **Configuration UX — inspection ready in draft PR #8.** Add `sinter config
+6. **Configuration UX — shipped (v0.2.0).** Add `sinter config
    show|path|validate` for local profiles. Guided writes for defaults, update
    checks, and telemetry remain a later checkpoint because they require a
    stable, migration-safe config schema.
-7. **Project overview — ready in draft PR #12, integrated in #15.** Group
+7. **Project overview — shipped (v0.2.0).** Group
    resumable parent sessions by working directory so large multi-harness
    ledgers stay navigable without parsing transcript bodies.
-8. **Transfer verification — ready in draft PR #13, integrated in #15.** Compare
+8. **Transfer verification — shipped (v0.2.0).** Compare
    source and target transcript structure after a port without printing
    conversation content or overstating count equality as semantic equivalence.
-9. **Large transcript navigation — ready in draft PR #14, integrated in #15.**
+9. **Large transcript navigation — shipped (v0.2.0).**
    Add a bounded tail view for quickly reading the latest turns without
    rendering an entire long-running session or emitting an incomplete
    machine-readable SIF document.
 
 ## Next CLI candidates
 
-Prioritized candidates after the current draft stack, not release commitments:
+These candidates shipped in v0.2.0 and remain in the published CLI:
 
-1. **Pinned sessions — ready in draft PR #16.** Keep a small, Sinter-local
+1. **Pinned sessions — shipped (v0.2.0).** Keep a small, Sinter-local
    shortlist above the churn of a large ledger with `pin`, `unpin`, and
    `pinned`; pins survive rescans.
-2. **Thread inspection — ready in draft PR #17.** Expose a ported session's
+2. **Thread inspection — shipped (v0.2.0).** Expose a ported session's
    ordered lineage, transfer modes, and resumable tip without requiring the
    interactive TUI.
-3. **Capability matrix — ready in draft PR #18.** Report
+3. **Capability matrix — shipped (v0.2.0).** Report
    adapter loading, store detection, read/write support, native resume
    readiness, and known limitations in human and versioned JSON forms. The TUI
    consumes the same resolver so its action availability cannot drift.
-4. **Saved views — ready in draft PR #20.** Name reusable local
+4. **Saved views — shipped (v0.2.0).** Name reusable local
    combinations of project, harness, recency, limit, and ghost/subagent filters;
    explicit flags on `view run` override the saved definition.
-5. **Safe ghost housekeeping — ready in draft PR #19.**
+5. **Safe ghost housekeeping — shipped (v0.2.0).**
    Preview old ghost rows by default; pruning requires an explicit action and
    confirmation, protects rows carrying local metadata, and never touches native
    harness stores or lineage.
-6. **Local tags and notes — ready in draft PR #21.** Add
+6. **Local tags and notes — shipped (v0.2.0).** Add
    searchable, rescan-safe user metadata across CLI/TUI/GUI search without
    modifying native sessions or carrying the metadata into ports.
-7. **Watch mode — ready in draft PR #22.** Refresh a project or
+7. **Watch mode — shipped (v0.2.0).** Refresh a project or
    recent-session view as local harness stores change. Interactive terminals
    redraw until Ctrl+C; pipes default to one snapshot and explicit `--count`
    plus NDJSON make automation bounded and predictable.
 
 ## Next release checkpoint
 
-Draft PR #23 integrates the CLI roadmap above into one review and merge path
-from `main`. GitHub CI now verifies the locked dependency install, full test
-suite, TypeScript, production CLI build, and built entrypoint on every pull
-request and push to `main`.
+PR #23 (merged as v0.2.0) integrated the CLI roadmap above into one review and
+merge path from `main`; the individual checkpoint PRs #4–#9 and #11–#22 were
+closed as superseded and remain readable as review history. GitHub CI now
+verifies the locked dependency install, full test suite, TypeScript, production
+CLI build, and built entrypoint on every pull request and push to `main`.
 
 Direct encrypted context transfer and named same-harness instances are now
 implemented on the feature branch for the next checkpoint. Cloud accounts,

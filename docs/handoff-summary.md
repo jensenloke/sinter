@@ -142,6 +142,6 @@ For each new task:
    release-version mistakes, and unrelated changes.
 7. Push and open a pull request only when explicitly requested.
 
-No next feature has been selected by this handoff. Ask the maintainer for the
-specific development objective rather than inferring one or reviving an old
-local branch.
+Next feature work is tracked in PRs #38 (context-budget fitting) and #39 (ledger
+backup/verify/repair); draft PRs #4–#9 and #11–#22 were closed as superseded by
+the merged v0.2.0 umbrella (#23). PR #10 remains open and security-blocked.
