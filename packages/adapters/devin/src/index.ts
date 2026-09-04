@@ -30,6 +30,7 @@ import {
   type Usage,
   type UserContentPart,
   type WriteOpts,
+  type WritePlan,
 } from "@sinter/core";
 
 type Rec = Record<string, any>;
@@ -401,8 +402,16 @@ function nativeMessages(session: SifSession, opts?: WriteOpts): NativeBuild {
   return { messages: out, nodeByEntry: activeNodes };
 }
 
-function messageBytes(message: NativeMessage): number {
+export function messageBytes(message: NativeMessage): number {
   return Buffer.byteLength(JSON.stringify(message.message));
+}
+
+function truncateUtf8(content: string, maxBytes: number): string {
+  if (maxBytes <= 0) return "";
+  const bytes = Buffer.from(content);
+  if (bytes.byteLength <= maxBytes) return content;
+  const truncated = bytes.subarray(0, maxBytes);
+  return new TextDecoder("utf-8", { fatal: false }).decode(truncated).replace(/\uFFFD$/, "");
 }
 
 function clipNativeMessage(message: NativeMessage, maxBytes = 40_000): NativeMessage {
@@ -413,8 +422,18 @@ function clipNativeMessage(message: NativeMessage, maxBytes = 40_000): NativeMes
     copy.message.tool_calls = copy.message.tool_calls.map((call: Rec) => ({ ...call, arguments: "[arguments omitted by Sinter]" }));
   }
   const content = str(copy.message.content) ?? "";
-  const suffix = `\n…[${Math.max(0, Buffer.byteLength(content) - maxBytes)} bytes omitted by Sinter]`;
-  copy.message.content = content.slice(0, Math.max(0, maxBytes - suffix.length)) + suffix;
+  const contentBytes = Buffer.byteLength(content);
+  copy.message.content = "";
+  const fixedBytes = messageBytes(copy);
+  const suffixFor = (omitted: number): string => `\n…[${omitted} bytes omitted by Sinter]`;
+  const initialSuffix = suffixFor(contentBytes);
+  let prefix = truncateUtf8(content, Math.max(0, maxBytes - fixedBytes - Buffer.byteLength(initialSuffix)));
+  let omitted = Math.max(0, contentBytes - Buffer.byteLength(prefix));
+  let suffix = suffixFor(omitted);
+  prefix = truncateUtf8(content, Math.max(0, maxBytes - fixedBytes - Buffer.byteLength(suffix)));
+  omitted = Math.max(0, contentBytes - Buffer.byteLength(prefix));
+  suffix = suffixFor(omitted);
+  copy.message.content = prefix + suffix;
   return copy;
 }
 
@@ -422,7 +441,7 @@ export function capNativeHistory(
   messages: NativeMessage[],
   mainChainId: number | null,
   maxBytes = DEVIN_HISTORY_MAX_BYTES,
-): { messages: NativeMessage[]; mainChainId: number | null; omitted: number; bytesBefore: number } {
+): { messages: NativeMessage[]; mainChainId: number | null; omitted: number; bytesBefore: number; bytesAfter: number } {
   const byNode = new Map(messages.map((message) => [message.nodeId, message]));
   const active: NativeMessage[] = [];
   const seen = new Set<number>();
@@ -433,26 +452,15 @@ export function capNativeHistory(
     node = node.parentNodeId === null ? undefined : byNode.get(node.parentNodeId);
   }
   const bytesBefore = active.reduce((sum, message) => sum + messageBytes(message), 0);
-  if (bytesBefore <= maxBytes) return { messages, mainChainId, omitted: 0, bytesBefore };
+  if (bytesBefore <= maxBytes) return { messages, mainChainId, omitted: 0, bytesBefore, bytesAfter: bytesBefore };
 
   const firstUser = active.find((message) => message.message.role === "user");
   const retainedFirst = firstUser ? clipNativeMessage(firstUser) : undefined;
-  const reserve = (retainedFirst ? messageBytes(retainedFirst) : 0) + 1_000;
-  let remaining = Math.max(40_000, maxBytes - reserve);
-  const tail: NativeMessage[] = [];
-  for (let i = active.length - 1; i >= 0; i--) {
-    const candidate = active[i]!;
-    if (candidate === firstUser) continue;
-    const clipped = clipNativeMessage(candidate);
-    const size = messageBytes(clipped);
-    if (size > remaining && tail.length) break;
-    tail.unshift(clipped);
-    remaining -= Math.min(size, remaining);
-    if (remaining <= 0) break;
-  }
-
-  const omitted = Math.max(0, active.length - tail.length - (retainedFirst ? 1 : 0));
-  const createdAt = retainedFirst?.createdAt ?? tail[0]?.createdAt ?? Math.floor(Date.now() / 1000);
+  const reserve = retainedFirst ? messageBytes(retainedFirst) : 0;
+  const omittedPlaceholder = active.length;
+  const createdAt = retainedFirst?.createdAt ?? active[0]?.createdAt ?? Math.floor(Date.now() / 1000);
+  const noteContent = (omitted: number): string =>
+    `[Sinter retained the opening request and recent history; ${omitted} older messages (${bytesBefore} bytes total before trimming) were omitted to fit Devin's inference context. The source session remains unchanged; the transferred SIF is retained through Sinter carry data when it is within the carry limit.]`;
   const note: NativeMessage = {
     nodeId: -1,
     parentNodeId: null,
@@ -460,13 +468,68 @@ export function capNativeHistory(
     message: {
       message_id: crypto.randomUUID(),
       role: "system",
-      content: `[Sinter retained the opening request and recent history; ${omitted} older messages (${bytesBefore} bytes total before trimming) were omitted to fit Devin's inference context. The full source remains available through Sinter carry data.]`,
+      content: noteContent(omittedPlaceholder),
       metadata: { created_at: new Date(createdAt * 1000).toISOString() },
     },
   };
+  let remaining = maxBytes - reserve - messageBytes(note);
+  const tail: NativeMessage[] = [];
+  for (let i = active.length - 1; i >= 0; i--) {
+    const candidate = active[i]!;
+    if (candidate === firstUser) continue;
+    const clipped = clipNativeMessage(candidate);
+    const size = messageBytes(clipped);
+    if (size > remaining) {
+      if (tail.length || remaining <= 0) break;
+      const newest = clipNativeMessage(candidate, remaining);
+      if (messageBytes(newest) > remaining) break;
+      tail.unshift(newest);
+      remaining -= messageBytes(newest);
+    } else {
+      tail.unshift(clipped);
+      remaining -= size;
+    }
+    if (remaining <= 0) break;
+  }
+
+  const omitted = Math.max(0, active.length - tail.length - (retainedFirst ? 1 : 0));
+  note.message.content = noteContent(omitted);
   const selected = [...(retainedFirst ? [retainedFirst] : []), note, ...tail];
   const capped = selected.map((message, index) => ({ ...message, nodeId: index, parentNodeId: index ? index - 1 : null }));
-  return { messages: capped, mainChainId: capped[capped.length - 1]?.nodeId ?? null, omitted, bytesBefore };
+  const bytesAfter = capped.reduce((sum, message) => sum + messageBytes(message), 0);
+  return { messages: capped, mainChainId: capped[capped.length - 1]?.nodeId ?? null, omitted, bytesBefore, bytesAfter };
+}
+
+interface NativeWritePlan {
+  messages: NativeMessage[];
+  mainChainId: number | null;
+  context?: WritePlan["context"];
+}
+
+function planNativeWrite(session: SifSession, opts?: WriteOpts): NativeWritePlan {
+  const native = nativeMessages(session, opts);
+  let messages = native.messages;
+  const devinState = session.origin.harness === "devin" ? json(session.preserve?.devin) : undefined;
+  const priorMain = num(devinState?.mainChainId);
+  let mainChainId: number | null = priorMain === undefined
+    ? messages[messages.length - 1]?.nodeId ?? null
+    : native.nodeByEntry.get(`d${priorMain}`) ?? messages[messages.length - 1]?.nodeId ?? null;
+  if (session.origin.harness === "devin") return { messages, mainChainId };
+  const capped = capNativeHistory(messages, mainChainId);
+  messages = capped.messages;
+  mainChainId = capped.mainChainId;
+  return {
+    messages,
+    mainChainId,
+    context: {
+      unit: "bytes",
+      limit: DEVIN_HISTORY_MAX_BYTES,
+      before: capped.bytesBefore,
+      after: capped.bytesAfter,
+      omittedEntries: capped.omitted,
+      strategy: capped.bytesBefore > DEVIN_HISTORY_MAX_BYTES ? "opening-and-tail" : "none",
+    },
+  };
 }
 
 function columns(db: Database, table: string): Set<string> {
@@ -555,24 +618,23 @@ export class DevinAdapter implements HarnessAdapter {
     return carried ?? native;
   }
 
+  async planWrite(session: SifSession, opts?: WriteOpts): Promise<WritePlan> {
+    validateSession(session);
+    return { context: planNativeWrite(session, opts).context };
+  }
+
   async write(session: SifSession, opts?: WriteOpts): Promise<NativeRef> {
     validateSession(session);
     const nativeId = `sinter-${mintSifId().replace(/-/g, "").slice(-12)}`;
     const provenance = await buildWriteProvenance(session, nativeId, opts);
     if (opts?.dryRun) return { harness: "devin", nativeId, nativePath: this.dbPath, created: [], provenance };
     if (!existsSync(this.dbPath)) throw new Error(`devin: session store not found: ${this.dbPath}`);
-    const native = nativeMessages(session, opts);
-    let messages = native.messages;
+    const native = planNativeWrite(session, opts);
+    if (native.context && native.context.after > native.context.limit)
+      throw new Error(`devin: capped history still exceeds ${native.context.limit} bytes (${native.context.after}); refusing to write`);
+    const messages = native.messages;
+    const mainChainId = native.mainChainId;
     const devinState = session.origin.harness === "devin" ? json(session.preserve?.devin) : undefined;
-    const priorMain = num(devinState?.mainChainId);
-    let mainChainId: number | null = priorMain === undefined
-      ? messages[messages.length - 1]?.nodeId ?? null
-      : native.nodeByEntry.get(`d${priorMain}`) ?? messages[messages.length - 1]?.nodeId ?? null;
-    if (session.origin.harness !== "devin") {
-      const capped = capNativeHistory(messages, mainChainId);
-      messages = capped.messages;
-      mainChainId = capped.mainChainId;
-    }
     const sourceCreated = session.createdAt ? Date.parse(session.createdAt) : Number.NaN;
     const created = Math.floor((Number.isFinite(sourceCreated) ? sourceCreated : Date.now()) / 1000);
     const updated = Math.max(created, ...messages.map((message) => message.createdAt));

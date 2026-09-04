@@ -205,6 +205,15 @@ function instanceAdapter(raw: HarnessAdapter, harness: HarnessId, instanceId: In
       return { ...ref, harness, instanceId };
     };
   }
+  Object.defineProperty(bound, "planWrite", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      if (!raw.planWrite) return undefined;
+      return (session: SifSession, opts?: Parameters<NonNullable<HarnessAdapter["planWrite"]>>[1]) =>
+        raw.planWrite!(session, { ...opts, instanceId });
+    },
+  });
   const carry = (raw as HarnessAdapter & { readWithCarry?: (ref: SessionRef) => Promise<SifSession> }).readWithCarry;
   if (carry) {
     (bound as HarnessAdapter & { readWithCarry: (ref: SessionRef) => Promise<SifSession> }).readWithCarry = async (ref) =>

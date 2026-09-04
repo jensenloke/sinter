@@ -160,7 +160,7 @@ usage: sinter [command] [args]
 interactive
   (no command)                           interactive menu: pick a session, pick
                                          a harness, launch it right here
-  menu [--all] [--mode full|slim|compact]
+  menu [--all] [--mode auto|full|slim|compact]
                                          the same menu, explicitly
 
 find and inspect
@@ -193,7 +193,7 @@ move and continue
   export <id-prefix> [-o file] [--slim]  write the session as SIF JSON
   import <file> --to <harness> [...]     synthesize a new native session from SIF
   port <id-prefix> --to <harness> [...]  create a new target-native session
-  resume <id-prefix> [--in <harness>] [--exec]
+  resume <id-prefix> [--in <harness>] [--mode auto|full|slim|compact] [--exec]
                                          print (or run) the native resume command
   receive --to <harness@instance> --cwd <repository-root>
                                          accept one repository-bound encrypted transfer
@@ -317,9 +317,9 @@ const COMMAND_HELP: Record<string, string> = {
   show: "usage: sinter show <id-prefix> [--tail n|--json|--ndjson] [--tool-chars n] [--no-sub]\n\n--tail renders only the latest n entries from each session. It cannot be combined with machine output because the result would not be a complete SIF document.\n--ndjson emits a versioned session record followed by one record per entry, then nested sessions.",
   compare: "usage: sinter compare <left-id> <right-id> [--json]\n\nCompares structural counts without printing transcript content. Matching counts do not prove semantic equivalence.",
   export: "usage: sinter export <id-prefix> [-o file] [--slim]\n\nWithout -o, writes SIF JSON to stdout.",
-  import: "usage: sinter import <file.sif.json> --to <harness> [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source.",
-  port: "usage: sinter port <harness[@instance]:id> --to <harness[@instance]> [--mode full|slim|compact] [--preview [--json]] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source. Use qualified IDs when a harness has multiple instances.\n--preview reports target readiness and transfer impact without invoking the target writer.\n--dry-run asks the target writer to validate and describe its planned native output.\nHistorical tool calls are inert unless --live-tools is explicit.",
-  resume: "usage: sinter resume <harness[@instance]:id> [--in <harness[@instance]>] [--exec]\n\nPrints the native resume command to stdout. --exec hands this terminal to the exact target harness instance.",
+  import: "usage: sinter import <file.sif.json> --to <harness> [--mode auto|full|slim|compact] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source. Auto preserves the least destructive representation that fits a target-reported context budget.",
+  port: "usage: sinter port <harness[@instance]:id> --to <harness[@instance]> [--mode auto|full|slim|compact] [--preview [--json]] [--cwd dir] [--dry-run] [--live-tools]\n\nCreates a new target session; never modifies the source. Use qualified IDs when a harness has multiple instances. Auto preserves the least destructive representation that fits a target-reported context budget.\n--preview reports target readiness, automatic mode selection, and transfer impact without invoking the target writer.\n--dry-run asks the target writer to validate and describe its planned native output.\nHistorical tool calls are inert unless --live-tools is explicit.",
+  resume: "usage: sinter resume <harness[@instance]:id> [--in <harness[@instance]>] [--mode auto|full|slim|compact] [--exec]\n\nCross-harness resumes use automatic target-aware fitting by default. Prints the native resume command to stdout. --exec hands this terminal to the exact target harness instance.",
   send: "usage: sinter send <id-prefix> --to <sinter://transfer/...> [--mode compact|slim|full] [--repo-remote <name>] [--preview] [--json]\n\nSends a one-use encrypted, context-only v2 payload. Source repository identity is sanitized inside the encrypted payload; the source absolute working directory and raw Git URL are not transferred. If several hosted remotes remain possible and the session does not identify one, --repo-remote must select the intended Git remote by name. The sender reports success only after the receiver validates, accepts, and imports it.",
   receive: "usage: sinter receive --to <harness@instance> --cwd <repository-root> [--bind 0.0.0.0] [--advertise <LAN-or-Tailscale-IP>] [--port n] [--ttl 5m] [--allow-repo-mismatch] [--allow-missing-commit] [--yes] [--json]\n\nAccepts only repository-bound direct-transfer v2 payloads and rejects legacy v1 session payloads. --cwd must explicitly select the target Git repository root. After decryption, Sinter compares sanitized remotes, verifies the source commit is present, validates the repository-relative subdirectory, reports dirty state, and shows a no-write preview before confirmation or import. It never fetches, checks out, resets, patches, or modifies repository files. A mismatch or missing commit requires its dedicated explicit override; --yes only skips the final receipt prompt and cannot bypass repository checks. --json emits one versioned listener record followed by one versioned completion record, with human preview details on stderr. Use --advertise with a Tailscale IP for tailnet transfer.",
   doctor: "usage: sinter doctor [--json|--report [-o file]]\n\nNormal output shows resolved local store paths. --json emits safe structured health. --report emits a reviewable support report that excludes paths, prompts, titles, session IDs, transcripts, and raw errors.",
@@ -341,7 +341,7 @@ const COMMAND_HELP: Record<string, string> = {
   gui: "usage: sinter gui [--port n] [--no-open]\n\nRuns a token-protected workspace on 127.0.0.1; transcripts never leave this machine.",
   completion: "usage: sinter completion <zsh|bash|fish>\n\nPrints a native completion script to stdout; does not modify shell configuration.",
   relink: "usage: sinter relink [--harness x] [--limit n] [--quiet]\n\nRebuilds the disposable lineage cache from target stores.",
-  menu: "usage: sinter menu [--all] [--mode full|slim|compact]\n\nRequires an interactive terminal.",
+  menu: "usage: sinter menu [--all] [--mode auto|full|slim|compact]\n\nRequires an interactive terminal. Auto preserves the least destructive representation that fits a target-reported context budget.",
 };
 
 function helpFor(command: string, subcommand?: string): string {
