@@ -1,9 +1,10 @@
 import { Database } from "bun:sqlite";
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { homedir, hostname } from "node:os";
 import { DEFAULT_INSTANCE_ID, type HarnessAdapter, type HarnessId, type InstanceId, type SessionSummary, type SinterProvenance } from "@sinter/core";
-import { migrateLedgerV7, SCHEMA_SQL, SCHEMA_VERSION } from "./schema";
+import { FTS_REBUILD_SQL, LEDGER_TABLES, migrateLedgerV7, SCHEMA_SQL, SCHEMA_VERSION } from "./schema";
 
 export interface LedgerRow {
   harness: HarnessId;
@@ -109,6 +110,46 @@ export interface ScanResult {
 export interface ResolveResult {
   row?: LedgerRow;
   candidates: LedgerRow[];
+}
+
+export interface LedgerBackupResult {
+  path: string;
+  bytes: number;
+  sha256: string;
+  createdAt: string;
+}
+
+export interface LedgerVerifyReport {
+  path: string;
+  schemaVersion: number | null;
+  expectedSchemaVersion: number;
+  integrity: "ok" | "failed";
+  integrityMessages: string[];
+  missingTables: string[];
+  fts: {
+    sessions: number;
+    indexed: number;
+    missing: number;
+    orphaned: number;
+    integrity: "ok" | "failed";
+  };
+  orphanMetadata: {
+    aliases: number;
+    pins: number;
+    notes: number;
+    tags: number;
+    lineage: number;
+  };
+  healthy: boolean;
+}
+
+export interface LedgerRepairResult {
+  backup?: LedgerBackupResult;
+  ftsRowsBefore: number;
+  ftsRowsAfter: number;
+  reindexed: boolean;
+  before: LedgerVerifyReport;
+  after: LedgerVerifyReport;
 }
 
 const SESSION_SELECT = `SELECT s.*, a.alias AS alias, p.pinned_at AS pinned_at, n.note AS note,
@@ -329,6 +370,167 @@ export class Ledger {
 
   close(): void {
     this.db.close();
+  }
+
+  backup(destination?: string): LedgerBackupResult {
+    if (this.path === ":memory:") throw new Error("cannot back up an in-memory ledger");
+    const target = destination ?? `${this.path}.backup-${new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")}.sqlite`;
+    try {
+      lstatSync(target);
+      throw new Error(`ledger backup destination already exists: ${target}`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    this.db.run("VACUUM INTO ?", [target]);
+    try {
+      chmodSync(target, 0o600);
+    } catch (error) {
+      if (process.platform !== "win32") throw error;
+    }
+    const bytes = statSync(target).size;
+    const sha256 = createHash("sha256").update(readFileSync(target)).digest("hex");
+    return { path: target, bytes, sha256, createdAt: new Date().toISOString() };
+  }
+
+  verify(): LedgerVerifyReport {
+    const tableRows = this.db
+      .query("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') UNION ALL SELECT name FROM sqlite_temp_master WHERE type IN ('table', 'view')")
+      .all() as { name: string }[];
+    const present = new Set(tableRows.map((row) => row.name));
+    const missingTables = LEDGER_TABLES.filter((name) => !present.has(name));
+    let schemaVersion: number | null = null;
+    if (present.has("meta")) {
+      const row = this.db.query("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value?: string } | null;
+      const parsed = row?.value === undefined ? Number.NaN : Number(row.value);
+      schemaVersion = Number.isFinite(parsed) ? parsed : null;
+    }
+
+    let integrity: "ok" | "failed" = "ok";
+    let integrityMessages: string[] = [];
+    try {
+      const rows = this.db.query("PRAGMA integrity_check").all() as Record<string, unknown>[];
+      integrityMessages = rows
+        .map((row) => String(Object.values(row)[0] ?? ""))
+        .filter((message) => message !== "ok")
+        .slice(0, 20);
+      if (integrityMessages.length) integrity = "failed";
+    } catch (error) {
+      integrity = "failed";
+      integrityMessages = [error instanceof Error ? error.message : String(error)].slice(0, 20);
+    }
+
+    let sessions = 0;
+    let indexed = 0;
+    let missing = 0;
+    let orphaned = 0;
+    let ftsIntegrity: "ok" | "failed" = "ok";
+    if (present.has("sessions")) {
+      sessions = Number((this.db.query("SELECT count(*) AS n FROM sessions").get() as { n: number }).n ?? 0);
+    }
+    if (present.has("sessions_fts")) {
+      try {
+        this.db.run("INSERT INTO sessions_fts(sessions_fts) VALUES('integrity-check')");
+      } catch {
+        ftsIntegrity = "failed";
+      }
+      indexed = Number((this.db.query("SELECT count(*) AS n FROM sessions_fts").get() as { n: number }).n ?? 0);
+      const matched = present.has("sessions")
+        ? Number(
+            (
+              this.db
+                .query(
+                  "SELECT count(*) AS n FROM sessions s WHERE EXISTS (SELECT 1 FROM sessions_fts f WHERE f.harness=s.harness AND f.instance_id=s.instance_id AND f.native_id=s.native_id)",
+                )
+                .get() as { n: number }
+            ).n ?? 0,
+          )
+        : 0;
+      missing = Math.max(0, sessions - matched);
+      orphaned = present.has("sessions")
+        ? Number(
+            (
+              this.db
+                .query(
+                  "SELECT count(*) AS n FROM sessions_fts f WHERE NOT EXISTS (SELECT 1 FROM sessions s WHERE s.harness=f.harness AND s.instance_id=f.instance_id AND s.native_id=f.native_id)",
+                )
+                .get() as { n: number }
+            ).n ?? 0,
+          )
+        : Number((this.db.query("SELECT count(*) AS n FROM sessions_fts").get() as { n: number }).n ?? 0);
+    } else {
+      ftsIntegrity = "failed";
+      missing = sessions;
+    }
+
+    const orphanMetadata = {
+      aliases: this.orphanMetadataCount(present, "session_aliases"),
+      pins: this.orphanMetadataCount(present, "session_pins"),
+      notes: this.orphanMetadataCount(present, "session_notes"),
+      tags: this.orphanMetadataCount(present, "session_tags"),
+      lineage: this.orphanMetadataCount(present, "lineage"),
+    };
+    const healthy =
+      integrity === "ok" &&
+      missingTables.length === 0 &&
+      schemaVersion === SCHEMA_VERSION &&
+      missing === 0 &&
+      orphaned === 0 &&
+      ftsIntegrity === "ok";
+    return {
+      path: this.path,
+      schemaVersion,
+      expectedSchemaVersion: SCHEMA_VERSION,
+      integrity,
+      integrityMessages,
+      missingTables,
+      fts: { sessions, indexed, missing, orphaned, integrity: ftsIntegrity },
+      orphanMetadata,
+      healthy,
+    };
+  }
+
+  repair(opts: { backup?: boolean } = { backup: true }): LedgerRepairResult {
+    const before = this.verify();
+    if (before.integrity === "failed")
+      throw new Error("ledger integrity check failed; repair cannot rebuild a corrupt file — restore from a backup instead");
+    const backup = opts.backup !== false && this.path !== ":memory:" ? this.backup() : undefined;
+    const ftsRowsBefore = this.db
+      .query("SELECT count(*) AS n FROM sessions_fts")
+      .get() as { n: number };
+    const repair = this.db.transaction(() => {
+      this.db.exec(SCHEMA_SQL);
+      this.db.run("DELETE FROM sessions_fts");
+      this.db.exec(FTS_REBUILD_SQL);
+      this.db.exec("REINDEX");
+      this.db.exec(SCHEMA_SQL);
+      this.db.run("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)", [String(SCHEMA_VERSION)]);
+    });
+    repair.immediate();
+    const ftsRowsAfter = this.db
+      .query("SELECT count(*) AS n FROM sessions_fts")
+      .get() as { n: number };
+    const after = this.verify();
+    return {
+      ...(backup ? { backup } : {}),
+      ftsRowsBefore: Number(ftsRowsBefore.n ?? 0),
+      ftsRowsAfter: Number(ftsRowsAfter.n ?? 0),
+      reindexed: true,
+      before,
+      after,
+    };
+  }
+
+  private orphanMetadataCount(present: Set<string>, table: string): number {
+    if (!present.has(table) || !present.has("sessions")) return present.has(table) ? Number((this.db.query(`SELECT count(*) AS n FROM ${table}`).get() as { n: number }).n ?? 0) : 0;
+    const row = this.db
+      .query(
+        `SELECT count(*) AS n FROM ${table} m WHERE NOT EXISTS (
+          SELECT 1 FROM sessions s
+          WHERE s.harness=m.harness AND s.instance_id=m.instance_id AND s.native_id=m.native_id
+        )`,
+      )
+      .get() as { n: number };
+    return Number(row.n ?? 0);
   }
 
   // ------------------------------------------------------------ write path

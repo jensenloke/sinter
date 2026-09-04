@@ -474,8 +474,9 @@ bunx @jensenloke/sinter@0.4.1 --version
 - Automatic profile bootstrap recognizes Claude Code's standard `.claude` /
   `.claude-*` convention. Custom alias-backed stores use explicit opt-in
   `sinter config discover-shell`; existing config is never overwritten.
-- The ledger migration is transactional and rollback-safe but does not create a
-  separate user-visible backup file. Backup/repair UX remains roadmap work.
+- The ledger migration is transactional and rollback-safe. `sinter ledger
+  backup|verify|repair` provides explicit local backup, verification, and
+  derived-index repair; backups are not created automatically before migration.
 - Sinter Cloud will expose a public/open-source client while the hosted alpha is
   owner-only. The terminal CLI remains fully useful without an account.
 
