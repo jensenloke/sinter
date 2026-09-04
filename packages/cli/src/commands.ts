@@ -11,6 +11,7 @@ import type {
   SessionSummary,
   SifEntry,
   SifSession,
+  WriteOpts,
 } from "@sinter/core";
 import { DEFAULT_INSTANCE_ID, provenanceOf, validateSession } from "@sinter/core";
 import type { Ledger, LedgerRow, LineageRow, ListOpts } from "@sinter/ledger";
@@ -51,7 +52,15 @@ import { renderTranscript, slimSession } from "./render";
 import { transcriptRecords } from "./ndjson";
 import { PROJECTS_SCHEMA, projectSummaries } from "./projects";
 import { renderSupportReport, supportPlatform, type SupportHarnessStatus } from "./support-report";
-import { applyTransfer, fmtBytes, TRANSFER_MODES, type TransferMode } from "./transfer";
+import {
+  applyTransfer,
+  fmtBytes,
+  planTransfer,
+  TRANSFER_MODES,
+  APPLIED_TRANSFER_MODES,
+  type PlannedTransfer,
+  type TransferMode,
+} from "./transfer";
 import { sendTransfer, startTransferReceiver, type ReceivedTransfer } from "./network";
 import { createCloudAuthService, type CloudAuthService } from "./cloud-auth";
 import {
@@ -91,7 +100,6 @@ export const CLOUD_INSPECT_RESULT_SCHEMA = "sinter.cloud.inspect-result.v1" as c
 export const CLOUD_PULL_PREVIEW_SCHEMA = "sinter.cloud.pull-preview.v1" as const;
 export const CLOUD_PULL_RESULT_SCHEMA = "sinter.cloud.pull-result.v1" as const;
 export const CLOUD_DELETE_RESULT_SCHEMA = "sinter.cloud.delete-result.v1" as const;
-
 export interface Ctx {
   registry: AdapterRegistry;
   /** Lazy: doctor/import must work without touching the ledger file. */
@@ -1441,6 +1449,33 @@ export async function cmdExport(argv: string[], ctx: Ctx): Promise<number> {
   return EXIT.OK;
 }
 
+function writeOpts(args: ParsedArgs, mode?: string): WriteOpts {
+  const cwd = flagString(args, "cwd");
+  return {
+    cwd: cwd === "." ? process.cwd() : cwd,
+    mode,
+    liveTools: flagBool(args, "live-tools"),
+    dryRun: flagBool(args, "dry-run"),
+  };
+}
+
+function contextSize(value: number, unit: "bytes" | "tokens"): string {
+  return unit === "bytes" ? fmtBytes(value) : `${value.toLocaleString()} tokens`;
+}
+
+function reportTransferPlan(ctx: Ctx, transfer: PlannedTransfer): void {
+  if (transfer.requestedMode === "auto")
+    ctx.err(ctx.pal.dim(`  mode auto → ${transfer.mode} (${transfer.selection.replace(/-/g, " ")})`));
+  const context = transfer.targetPlan?.context;
+  if (transfer.selection === "target-bounded" && context)
+    ctx.err(
+      ctx.pal.dim(
+        `  target will omit ${context.omittedEntries} older entr${context.omittedEntries === 1 ? "y" : "ies"} ` +
+          `(${contextSize(context.before, context.unit)} → ${contextSize(context.after, context.unit)}; ${contextSize(context.limit, context.unit)} limit)`,
+      ),
+    );
+}
+
 async function writeInto(
   ctx: Ctx,
   binding: AdapterBinding,
@@ -1455,16 +1490,14 @@ async function writeInto(
   const target = instanceLabel(binding.harness, binding.instanceId);
   if (!adapter.write) throw new CliError(`${target} adapter cannot write sessions yet`);
 
-  const cwd = flagString(args, "cwd");
-  const dryRun = flagBool(args, "dry-run");
-  const resolvedCwd = cwdOverride ?? (cwd === "." ? process.cwd() : cwd);
-  const ref = await adapter.write(session, {
+  const opts = {
+    ...writeOpts(args, mode),
+    ...(cwdOverride !== undefined ? { cwd: cwdOverride } : {}),
     instanceId: binding.instanceId,
-    cwd: resolvedCwd,
-    mode,
-    liveTools: flagBool(args, "live-tools"),
-    dryRun,
-  });
+  };
+  const dryRun = Boolean(opts.dryRun);
+  const resolvedCwd = opts.cwd;
+  const ref = await adapter.write(session, opts);
   const instanceRef: NativeRef = { ...ref, instanceId: binding.instanceId };
   onWritten?.(instanceRef);
 
@@ -1514,7 +1547,7 @@ async function writeInto(
 
 export async function cmdImport(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv, {
-    strings: ["to", "cwd"],
+    strings: ["to", "cwd", "mode"],
     booleans: ["live-tools", "dry-run"],
   });
   const file = args._[0];
@@ -1530,7 +1563,14 @@ export async function cmdImport(argv: string[], ctx: Ctx): Promise<number> {
     throw new CliError(`cannot read SIF file ${file}: ${err instanceof Error ? err.message : String(err)}`);
   }
   validateSession(session);
-  return writeInto(ctx, target, session, args);
+  const requestedMode = (flagString(args, "mode") ?? "auto") as TransferMode;
+  if (!TRANSFER_MODES.includes(requestedMode))
+    throw new CliError(`unknown --mode: ${requestedMode} (known: ${TRANSFER_MODES.join(", ")})`);
+  const adapter = target.adapter;
+  if (!adapter.write) throw new CliError(`${target} adapter cannot write sessions yet`);
+  const transfer = await planTransfer(session, requestedMode, adapter, { ...writeOpts(args), instanceId: target.instanceId });
+  reportTransferPlan(ctx, transfer);
+  return writeInto(ctx, target, transfer.session, args, transfer.mode);
 }
 
 export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
@@ -1548,16 +1588,17 @@ export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
 
   const row = resolveRow(ctx, prefix);
   const source = await readSessionForPort(ctx, row);
-  const mode = (flagString(args, "mode") ?? "full") as TransferMode;
-  if (!TRANSFER_MODES.includes(mode))
-    throw new CliError(`unknown --mode: ${mode} (known: ${TRANSFER_MODES.join(", ")})`);
-  const transfer = applyTransfer(source, mode);
+  const requestedMode = (flagString(args, "mode") ?? "auto") as TransferMode;
+  if (!TRANSFER_MODES.includes(requestedMode))
+    throw new CliError(`unknown --mode: ${requestedMode} (known: ${TRANSFER_MODES.join(", ")})`);
+  const adapter = target.adapter;
+  if (!adapter.write) throw new CliError(`${target} adapter cannot write sessions yet`);
+  const transfer = await planTransfer(source, requestedMode, adapter, { ...writeOpts(args), instanceId: target.instanceId });
   const session = transfer.session;
+  const mode = transfer.mode;
   validateSession(session);
   if (flagBool(args, "preview")) {
     if (flagBool(args, "dry-run")) throw new CliError("--preview and --dry-run are separate modes; choose one");
-    const adapter = target.adapter;
-    if (!adapter.write) throw new CliError(`${target} adapter cannot write sessions yet`);
     let store: "detected" | "absent" | "check failed" = "absent";
     try {
       store = (await adapter.detect()) ? "detected" : "absent";
@@ -1572,7 +1613,11 @@ export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
     const preview = {
       source: { harness: row.harness, instanceId: row.instanceId ?? DEFAULT_INSTANCE_ID, nativeId: row.nativeId },
       target: { harness: target.harness, instanceId: target.instanceId, adapter: "write-capable", store },
+      requestedMode,
       mode,
+      selection: transfer.selection,
+      evaluatedModes: transfer.evaluatedModes,
+      targetContext: transfer.targetPlan?.context,
       cwd,
       entries: { before: source.entries.length, after: session.entries.length },
       payload: {
@@ -1594,7 +1639,14 @@ export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
     const rows = [
       ["source", `${instanceLabel(row.harness, row.instanceId)}:${row.nativeId}`],
       ["target", `${instanceLabel(target.harness, target.instanceId)} (${store}, write-capable)`],
-      ["mode", mode],
+      ["mode", requestedMode === mode ? mode : `${requestedMode} → ${mode}`],
+      ["selection", transfer.selection.replace(/-/g, " ")],
+      ...(preview.targetContext
+        ? [[
+            "target context",
+            `${contextSize(preview.targetContext.before, preview.targetContext.unit)} → ${contextSize(preview.targetContext.after, preview.targetContext.unit)} / ${contextSize(preview.targetContext.limit, preview.targetContext.unit)}`,
+          ]]
+        : []),
       ["working directory", cwd],
       ["entries", `${preview.entries.before} → ${preview.entries.after}`],
       ["payload", `${fmtBytes(transfer.stats.bytesBefore)} → ${fmtBytes(transfer.stats.bytesAfter)} (${reduction}% smaller)`],
@@ -1608,6 +1660,7 @@ export async function cmdPort(argv: string[], ctx: Ctx): Promise<number> {
     return EXIT.OK;
   }
   ctx.err(`porting ${instanceLabel(row.harness, row.instanceId)}:${shortId(row.nativeId, 12)} → ${instanceLabel(target.harness, target.instanceId)}`);
+  reportTransferPlan(ctx, transfer);
   return writeInto(ctx, target, session, args, mode);
 }
 
@@ -1705,8 +1758,8 @@ export async function cmdSend(argv: string[], ctx: Ctx): Promise<number> {
   const row = resolveRow(ctx, prefix);
   const source = await readSessionForPort(ctx, row);
   const mode = (flagString(args, "mode") ?? "compact") as TransferMode;
-  if (!TRANSFER_MODES.includes(mode))
-    throw new CliError(`unknown --mode: ${mode} (known: ${TRANSFER_MODES.join(", ")})`);
+  if (mode === "auto" || !APPLIED_TRANSFER_MODES.includes(mode))
+    throw new CliError(`unknown --mode: ${mode} (known: ${APPLIED_TRANSFER_MODES.join(", ")})`);
   const repository = await repositoryBindings(ctx).source(source, { remoteName: flagString(args, "repo-remote") });
   const transferred = applyTransfer(source, mode);
   const session = networkSafeSession(transferred.session);
@@ -1778,7 +1831,7 @@ export async function cmdReceive(argv: string[], ctx: Ctx): Promise<number> {
           throw new RepositoryBindingError("Received unsupported session transfer payload; both devices must use Sinter direct transfer v2");
         }
         const mode = transfer.metadata.mode as TransferMode | undefined;
-        if (!mode || !TRANSFER_MODES.includes(mode)) throw new RepositoryBindingError("Received session transfer mode is invalid");
+        if (!mode || mode === "auto" || !APPLIED_TRANSFER_MODES.includes(mode)) throw new RepositoryBindingError("Received session transfer mode is invalid");
         let serialized: string;
         try {
           serialized = new TextDecoder("utf-8", { fatal: true }).decode(transfer.bytes);
@@ -1978,7 +2031,7 @@ export async function cmdCloud(argv: string[], ctx: Ctx): Promise<number> {
     const row = resolveRow(ctx, prefix);
     const source = await readSessionForPort(ctx, row);
     const mode = (flagString(args, "mode") ?? "compact") as TransferMode;
-    if (!TRANSFER_MODES.includes(mode)) throw new CliError(`unknown --mode: ${mode} (known: ${TRANSFER_MODES.join(", ")})`);
+    if (mode === "auto" || !APPLIED_TRANSFER_MODES.includes(mode)) throw new CliError(`unknown --mode: ${mode} (known: ${APPLIED_TRANSFER_MODES.join(", ")})`);
     const repository = await repositoryBindings(ctx).source(source, { remoteName: flagString(args, "repo-remote") });
     const transferred = applyTransfer(source, mode);
     const session = networkSafeSession(transferred.session);
@@ -2156,11 +2209,14 @@ export async function cmdCloud(argv: string[], ctx: Ctx): Promise<number> {
 
 export async function cmdResume(argv: string[], ctx: Ctx): Promise<number> {
   const args = parseArgs(argv, {
-    strings: ["in", "cwd"],
+    strings: ["in", "cwd", "mode"],
     booleans: ["exec", "live-tools", "dry-run"],
   });
   const prefix = args._[0];
   if (!prefix) throw new CliError("usage: sinter resume <id-prefix> [--in <harness>]");
+  const requestedMode = (flagString(args, "mode") ?? "auto") as TransferMode;
+  if (!TRANSFER_MODES.includes(requestedMode))
+    throw new CliError(`unknown --mode: ${requestedMode} (known: ${TRANSFER_MODES.join(", ")})`);
   const row = resolveRow(ctx, prefix);
   const inFlag = flagString(args, "in");
   const sourceBinding = await bindingForRow(ctx, row);
@@ -2186,19 +2242,17 @@ export async function cmdResume(argv: string[], ctx: Ctx): Promise<number> {
       nativePath: row.nativePath,
     };
   } else {
-    const session = await readSessionForPort(ctx, row);
-    validateSession(session);
+    const source = await readSessionForPort(ctx, row);
+    validateSession(source);
     const targetAdapter = targetBinding.adapter;
     const target = instanceLabel(targetBinding.harness, targetBinding.instanceId);
     if (!targetAdapter.write) throw new CliError(`${target} adapter cannot write sessions yet`);
+    const transfer = await planTransfer(source, requestedMode, targetAdapter, { ...writeOpts(args), instanceId: targetBinding.instanceId });
+    validateSession(transfer.session);
     ctx.err(`porting ${instanceLabel(row.harness, row.instanceId)}:${shortId(row.nativeId, 12)} → ${target}`);
-    const native = await targetAdapter.write(session, {
-      instanceId: targetBinding.instanceId,
-      cwd: flagString(args, "cwd") === "." ? process.cwd() : flagString(args, "cwd"),
-      mode: "full",
-      liveTools: flagBool(args, "live-tools"),
-      dryRun: flagBool(args, "dry-run"),
-    });
+    reportTransferPlan(ctx, transfer);
+    const opts = { ...writeOpts(args, transfer.mode), instanceId: targetBinding.instanceId };
+    const native = await targetAdapter.write(transfer.session, opts);
     const instanceNative: NativeRef = { ...native, instanceId: targetBinding.instanceId };
     for (const c of native.created ?? []) ctx.err(ctx.pal.dim(`  ${c}`));
     binding = targetBinding;
@@ -2207,8 +2261,7 @@ export async function cmdResume(argv: string[], ctx: Ctx): Promise<number> {
     // subsequent `sinter resume <id>` resolves it without a separate scan.
     if (!flagBool(args, "dry-run")) {
       try {
-        const crossCwd = flagString(args, "cwd") === "." ? process.cwd() : flagString(args, "cwd");
-        ctx.ledger().upsert(summarize(instanceNative, session, crossCwd));
+        ctx.ledger().upsert(summarize(native, transfer.session, opts.cwd));
       } catch (err) {
         ctx.err(ctx.pal.dim(`  (ledger not updated: ${err instanceof Error ? err.message : String(err)})`));
       }
@@ -2413,6 +2466,7 @@ export async function cmdCapabilities(argv: string[], ctx: Ctx): Promise<number>
         { header: "STORE" },
         { header: "READ" },
         { header: "WRITE" },
+        { header: "FIT" },
         { header: "RESUME" },
         { header: "LIMITATIONS", flex: true },
       ],
@@ -2422,6 +2476,7 @@ export async function cmdCapabilities(argv: string[], ctx: Ctx): Promise<number>
         capability.store,
         yesNo(capability.read),
         yesNo(capability.write),
+        yesNo(capability.contextPlanning),
         capability.resume,
         capability.limitations.join("; ") || "-",
       ]),
@@ -2881,7 +2936,7 @@ export async function cmdGui(argv: string[], ctx: Ctx): Promise<number> {
       try {
         const code =
           action.action === "port"
-            ? await cmdPort([id, "--to", String(action.target), "--mode", action.mode ?? "full"], actionCtx)
+            ? await cmdPort([id, "--to", String(action.target), "--mode", action.mode ?? "auto"], actionCtx)
             : await cmdResume([id], actionCtx);
         return { code, out: out.join("\n"), err: err.join("\n") };
       } catch (error) {

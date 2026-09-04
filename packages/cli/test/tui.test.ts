@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { HarnessId, SifSession } from "@sinter/core";
+import type { HarnessAdapter, HarnessId, SifSession, WriteOpts, WritePlan } from "@sinter/core";
 import { SIF_VERSION, validateSession } from "@sinter/core";
 import type { LedgerRow } from "@sinter/ledger";
 import { palette, visibleWidth } from "../src/format";
-import { applyTransfer, callTarget, compactSession } from "../src/transfer";
+import { applyTransfer, callTarget, compactSession, planTransfer } from "../src/transfer";
 import { parseKeys } from "../src/tui/keys";
 import {
   buildActions,
@@ -303,9 +303,9 @@ describe("reduce", () => {
 
   test("tab cycles the transfer mode on the action screen", () => {
     const opened = reduce(state(ROWS), key("enter")).state;
-    expect(opened.mode).toBe("full");
-    expect(reduce(opened, key("tab")).state.mode).toBe("slim");
-    expect(reduce(reduce(opened, key("tab")).state, key("tab")).state.mode).toBe("compact");
+    expect(opened.mode).toBe("auto");
+    expect(reduce(opened, key("tab")).state.mode).toBe("full");
+    expect(reduce(reduce(opened, key("tab")).state, key("tab")).state.mode).toBe("slim");
     expect(reduce(opened, key("shift-tab")).state.mode).toBe("compact");
   });
 
@@ -657,5 +657,66 @@ describe("transfer modes", () => {
   test("compact is a large win on a tool-heavy session", () => {
     const { stats } = compactSession(bigSession());
     expect(stats.bytesAfter).toBeLessThan(stats.bytesBefore / 4);
+  });
+
+  test("auto preserves full mode when the target cannot report a budget", async () => {
+    const adapter = {} as HarnessAdapter;
+    const plan = await planTransfer(bigSession(), "auto", adapter);
+    expect(plan.requestedMode).toBe("auto");
+    expect(plan.mode).toBe("full");
+    expect(plan.selection).toBe("target-unknown");
+  });
+
+  test("auto selects the least destructive mode that naturally fits", async () => {
+    const adapter = {
+      async planWrite(_session: SifSession, opts?: WriteOpts): Promise<WritePlan> {
+        const before = opts?.mode === "compact" ? 80 : 140;
+        return { context: { unit: "bytes", limit: 100, before, after: before, omittedEntries: 0, strategy: "none" } };
+      },
+    } as HarnessAdapter;
+    const plan = await planTransfer(bigSession(), "auto", adapter);
+    expect(plan.mode).toBe("compact");
+    expect(plan.selection).toBe("fits");
+    expect(plan.evaluatedModes).toEqual(["full", "slim", "compact"]);
+  });
+
+  test("auto uses the target's bounded fallback only after compact cannot naturally fit", async () => {
+    const adapter = {
+      async planWrite(_session: SifSession, opts?: WriteOpts): Promise<WritePlan> {
+        const compact = opts?.mode === "compact";
+        return {
+          context: {
+            unit: "bytes",
+            limit: 100,
+            before: compact ? 130 : 180,
+            after: compact ? 90 : 95,
+            omittedEntries: compact ? 4 : 10,
+            strategy: "opening-and-tail",
+          },
+        };
+      },
+    } as HarnessAdapter;
+    const plan = await planTransfer(bigSession(), "auto", adapter);
+    expect(plan.mode).toBe("compact");
+    expect(plan.selection).toBe("target-bounded");
+    expect(plan.targetPlan?.context?.omittedEntries).toBe(4);
+  });
+
+  test("auto rejects inconsistent target context reports", async () => {
+    const adapter = {
+      async planWrite(): Promise<WritePlan> {
+        return { context: { unit: "bytes", limit: 100, before: 80, after: 120, omittedEntries: -1, strategy: "none" } };
+      },
+    } as unknown as HarnessAdapter;
+    await expect(planTransfer(bigSession(), "auto", adapter)).rejects.toThrow("invalid target context plan");
+  });
+
+  test("auto refuses when neither a transfer mode nor the target safeguard can fit", async () => {
+    const adapter = {
+      async planWrite(): Promise<WritePlan> {
+        return { context: { unit: "bytes", limit: 100, before: 180, after: 180, omittedEntries: 0, strategy: "none" } };
+      },
+    } as unknown as HarnessAdapter;
+    await expect(planTransfer(bigSession(), "auto", adapter)).rejects.toThrow("cannot fit");
   });
 });
