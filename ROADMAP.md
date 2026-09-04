@@ -123,8 +123,9 @@ usage and support evidence before selecting another implementation batch:
    user's sessions.
 4. **Typo-aware command help.** Suggest the closest command and flag while
    retaining stable exit codes and machine-readable errors.
-5. **Ledger backup and repair.** Preview migrations, create a local backup, and
-   verify/rebuild derived indexes without changing native harness stores.
+5. **Ledger backup and repair.** Implemented as `sinter ledger backup|verify|repair`;
+   it creates local snapshots and verifies/rebuilds derived indexes without
+   changing native harness stores.
 6. **Continuation brief.** Produce a deterministic, inspectable handoff summary
    from selected turns as a separate artifact; never silently substitute it for
    the full transcript.

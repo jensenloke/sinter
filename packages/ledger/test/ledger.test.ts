@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { chmodSync, statSync } from "node:fs";
+import { Database } from "bun:sqlite";
+import { chmodSync, existsSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { capsuleReplayKey } from "@sinter/core";
-import { Ledger } from "../src/index";
+import { Ledger, SCHEMA_VERSION } from "../src/index";
 import { MockAdapter, summary } from "./mock-adapter";
 
 function ledger(): Ledger {
@@ -15,6 +17,93 @@ function replayKey(suffix = "0"): string {
     payload: { ciphertextSha256: "c".repeat(64) },
   } as never, "a".repeat(64));
 }
+
+describe("ledger maintenance", () => {
+  test("backs up an on-disk ledger without overwriting files or following symlinks", () => {
+    const dir = `/tmp/sinter-ledger-backup-${Bun.randomUUIDv7()}`;
+    const path = `${dir}/ledger.db`;
+    const destination = `${dir}/snapshot.sqlite`;
+    const existing = `${dir}/existing.sqlite`;
+    const link = `${dir}/link.sqlite`;
+    const l = new Ledger(path);
+    l.upsert(summary({ nativeId: "backup-row", title: "backup title" }));
+    l.setAlias("claude", "backup-row", "backup alias");
+    const result = l.backup(destination);
+    expect(existsSync(result.path)).toBe(true);
+    expect(result.bytes).toBe(readFileSync(result.path).byteLength);
+    expect(result.sha256).toBe(createHash("sha256").update(readFileSync(result.path)).digest("hex"));
+    if (process.platform !== "win32") expect(statSync(result.path).mode & 0o777).toBe(0o600);
+    const readonly = new Database(result.path, { readonly: true });
+    expect((readonly.query("SELECT count(*) AS n FROM sessions").get() as { n: number }).n).toBe(1);
+    readonly.close();
+
+    writeFileSync(existing, "existing");
+    expect(() => l.backup(existing)).toThrow(`ledger backup destination already exists: ${existing}`);
+    symlinkSync(result.path, link);
+    expect(() => l.backup(link)).toThrow(`ledger backup destination already exists: ${link}`);
+    l.close();
+    const memory = new Ledger(":memory:");
+    expect(() => memory.backup()).toThrow("cannot back up an in-memory ledger");
+    memory.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("verifies healthy rows and repairs a missing FTS row without changing metadata", () => {
+    const l = ledger();
+    l.upsert(summary({ nativeId: "repair-row", title: "repairable title" }));
+    l.setAlias("claude", "repair-row", "repair alias");
+    l.setPinned("claude", "repair-row", true);
+    const beforeCounts = {
+      sessions: (l.db.query("SELECT count(*) AS n FROM sessions").get() as { n: number }).n,
+      aliases: (l.db.query("SELECT count(*) AS n FROM session_aliases").get() as { n: number }).n,
+      pins: (l.db.query("SELECT count(*) AS n FROM session_pins").get() as { n: number }).n,
+    };
+    expect(l.verify()).toMatchObject({
+      healthy: true,
+      schemaVersion: SCHEMA_VERSION,
+      fts: { missing: 0, orphaned: 0 },
+    });
+    l.db.run("DELETE FROM sessions_fts WHERE native_id = ?", ["repair-row"]);
+    const broken = l.verify();
+    expect(broken.healthy).toBe(false);
+    expect(broken.fts.missing).toBe(1);
+    const repaired = l.repair({ backup: false });
+    expect(repaired.after.healthy).toBe(true);
+    expect(repaired.ftsRowsAfter).toBe(1);
+    expect(l.search("repairable title")).toHaveLength(1);
+    expect((l.db.query("SELECT count(*) AS n FROM sessions").get() as { n: number }).n).toBe(beforeCounts.sessions);
+    expect((l.db.query("SELECT count(*) AS n FROM session_aliases").get() as { n: number }).n).toBe(beforeCounts.aliases);
+    expect((l.db.query("SELECT count(*) AS n FROM session_pins").get() as { n: number }).n).toBe(beforeCounts.pins);
+    l.close();
+  });
+
+  test("repairs orphan FTS rows and creates a default backup", () => {
+    const dir = `/tmp/sinter-ledger-repair-${Bun.randomUUIDv7()}`;
+    const path = `${dir}/ledger.db`;
+    const l = new Ledger(path);
+    l.upsert(summary({ nativeId: "orphan-source", title: "orphan source" }));
+    l.db.run(
+      "INSERT INTO sessions_fts (harness, instance_id, native_id, title, first_prompt) VALUES (?, ?, ?, ?, ?)",
+      ["claude", "default", "orphan-row", "orphan", ""],
+    );
+    expect(l.verify().fts.orphaned).toBe(1);
+    const result = l.repair();
+    expect(result.backup?.path).toBeTruthy();
+    expect(existsSync(result.backup!.path)).toBe(true);
+    expect(result.after.healthy).toBe(true);
+    expect(result.after.fts.orphaned).toBe(0);
+    l.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("refuses repair after an integrity failure", () => {
+    const l = ledger();
+    const report = l.verify();
+    l.verify = () => ({ ...report, integrity: "failed", integrityMessages: ["corrupt"], healthy: false });
+    expect(() => l.repair()).toThrow("ledger integrity check failed; repair cannot rebuild a corrupt file — restore from a backup instead");
+    l.close();
+  });
+});
 
 describe("capsule replay", () => {
   test("atomically rejects duplicates and persists acceptance across reopen", async () => {

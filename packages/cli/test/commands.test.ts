@@ -120,6 +120,44 @@ function repositoryFixture() {
 }
 
 describe("CLI conventions", () => {
+  test("verifies and repairs the local ledger", async () => {
+    expect(await run(["ledger", "verify", "--json"], h.ctx)).toBe(0);
+    expect(JSON.parse(h.out())).toMatchObject({
+      schema: "sinter.ledger-verify.v1",
+      healthy: true,
+      fts: { missing: 0, orphaned: 0 },
+    });
+    h.stdout.length = 0;
+    expect(await run(["ledger", "repair"], h.ctx)).toBe(1);
+    expect(h.err()).toContain("refusing to repair without --yes");
+    h.stdout.length = 0;
+    expect(await run(["ledger", "repair", "--yes", "--no-backup", "--json"], h.ctx)).toBe(0);
+    expect(JSON.parse(h.out())).toMatchObject({
+      schema: "sinter.ledger-repair.v1",
+      after: { healthy: true },
+    });
+  });
+
+  test("backs up a file ledger and rejects unknown ledger actions", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sinter-ledger-cli-"));
+    const path = join(dir, "ledger.db");
+    const destination = join(dir, "backup.sqlite");
+    const fileLedger = new Ledger(path);
+    const ctx = { ...h.ctx, ledger: () => fileLedger };
+    try {
+      expect(await run(["ledger", "backup", "--output", destination, "--json"], ctx)).toBe(0);
+      expect(JSON.parse(h.out())).toMatchObject({
+        schema: "sinter.ledger-backup.v1",
+        path: destination,
+        ledger: path,
+      });
+    } finally {
+      fileLedger.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+    expect(await run(["ledger", "nuke"], h.ctx)).toBe(1);
+  });
+
   test("renders command-specific help without touching the ledger", async () => {
     expect(await run(["port", "--help"], h.ctx)).toBe(0);
     expect(h.out()).toContain("usage: sinter port");

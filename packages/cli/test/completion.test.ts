@@ -44,6 +44,7 @@ describe("shell completions", () => {
     expect(script).toContain("thread");
     expect(script).toContain("capabilities");
     expect(script).toContain("ghosts");
+    expect(script).toContain("ledger");
     expect(script).toContain("view");
     expect(script).toContain("untag");
     expect(script).toContain("tags");
