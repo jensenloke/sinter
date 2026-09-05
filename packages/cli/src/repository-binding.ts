@@ -372,7 +372,7 @@ export function createRepositoryBindingService(dependencies: RepositoryBindingDe
     const byName = new Map<string, RepositoryRemote[]>();
     const urls = new Map<string, string>();
     for (const name of names) {
-      const result = await runGit(root, ["remote", "get-url", "--all", "--", name]);
+      const result = await runGit(root, ["config", "--get-all", "--", `remote.${name}.url`]);
       const named = new Map<string, RepositoryRemote>();
       if (result.code !== 0) {
         byName.set(name, []);

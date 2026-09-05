@@ -338,6 +338,25 @@ describe("repository target resolution", () => {
     await expect(service.resolve(binding, unboundRoot, { allowRepositoryMismatch: true })).rejects.toThrow("has no supported remote identity");
     await expect(service.resolve(binding, targetRoot, {})).rejects.toThrow("escapes the target repository");
   });
+
+  test("derives identity from the configured remote URL, ignoring insteadOf rewrites", async () => {
+    const root = temporaryDirectory();
+    const sourceRoot = join(root, "source");
+    const targetRoot = join(root, "target");
+    const remote = "https://git.example.test/Example/Project.git";
+    const commit = await createRepository(sourceRoot, remote);
+    await git(sourceRoot, "config", "url.https://proxy.invalid/gh/.insteadOf", "https://git.example.test/");
+    expect(await git(sourceRoot, "remote", "get-url", "origin")).toBe("https://proxy.invalid/gh/Example/Project.git");
+    await cloneRepository(sourceRoot, targetRoot, remote);
+
+    const service = createRepositoryBindingService();
+    const binding = await service.source(sourceSession(sourceRoot, commit, remote));
+    expect(binding.selectedRemote).toEqual({ host: "git.example.test", path: "Example/Project" });
+    expect(JSON.stringify(binding)).not.toContain("proxy.invalid");
+
+    const resolution = await service.resolve(binding, targetRoot, {});
+    expect(resolution.preview).toMatchObject({ match: "exact" });
+  });
 });
 
 describe("repository-bound direct transfer integration", () => {
