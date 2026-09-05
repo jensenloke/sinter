@@ -142,6 +142,7 @@ For each new task:
    release-version mistakes, and unrelated changes.
 7. Push and open a pull request only when explicitly requested.
 
-Next feature work is tracked in PRs #38 (context-budget fitting) and #39 (ledger
-backup/verify/repair); draft PRs #4–#9 and #11–#22 were closed as superseded by
-the merged v0.2.0 umbrella (#23). PR #10 remains open and security-blocked.
+PRs #38 (context-budget fitting) and #39 (ledger backup/verify/repair) are
+merged to `main` but not yet released to npm; draft PRs #4–#9 and #11–#22 were closed as superseded by
+the merged v0.2.0 umbrella (#23), and #10 was closed as superseded by
+device-transfer capsules.

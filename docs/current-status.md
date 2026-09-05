@@ -31,12 +31,15 @@ operations.
   exact v0.5.0 and v0.5.1 release commits remain tagged and published.
 - The CLI/source are public; the hosted service remains restricted to exactly
   the owner's entitlement during testing and public signup remains closed.
-- PR #25 is superseded by PR #38, which re-lands the context-budget fitting
-  feature on current `main` with named-instance routing preserved, concrete
-  send/Cloud modes, and UTF-8 byte-accurate Devin clipping; close #25 once #38
-  merges. Draft PRs #4–#9 and #11–#22 were closed as superseded by the merged
-  v0.2.0 umbrella (#23). PR #10 (local-file encrypted capsules) remains open
-  and security-blocked; it is not in `main`.
+- PR #38 (merged) re-landed the context-budget fitting feature on `main` with
+  named-instance routing preserved, concrete send/Cloud modes, and UTF-8
+  byte-accurate Devin clipping; PR #25 was closed as superseded. PR #39 (merged)
+  added `sinter ledger backup|verify|repair`. Neither is published to npm yet;
+  `0.5.1` remains the latest package. Draft PRs #4–#22 were closed as
+  superseded by the merged v0.2.0 umbrella (#23); #10 (local-file encrypted
+  capsules) was closed as superseded by device-transfer capsules and is not in
+  `main`. Issue #1 was closed as fixed in v0.1.8. No issues or feature PRs are
+  open.
 - The `sinter-public` checkout is the sole active maintainer checkout. Previous
   local checkouts and linked worktrees were retired; do not recover, copy from,
   or push their legacy local-only history. The public GitHub repository is the
@@ -490,7 +493,5 @@ bunx @jensenloke/sinter@0.4.1 --version
    changes client-side adapter/transfer behavior only.
 3. Monitor owner-only Storage/egress, cleanup, auth refresh, deletion, and
    compacted Codex-to-Claude resumes before admitting any tester.
-4. Review and merge PR #38 (context-budget fitting) and PR #39 (ledger
-   backup/verify/repair); then close PR #25 as superseded and decide whether PR
-   #10 should be closed or redesigned against the shipped device-transfer
-   capsules.
+4. Plan the next package release (a new minor version) to publish the merged
+   context-budget fitting (#38) and ledger maintenance (#39) features.
