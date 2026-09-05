@@ -35,9 +35,11 @@ operations.
   named-instance routing preserved, concrete send/Cloud modes, and UTF-8
   byte-accurate Devin clipping; PR #25 was closed as superseded. PR #39 (merged)
   added `sinter ledger backup|verify|repair`. Neither is published to npm yet;
-  `0.5.1` remains the latest package. Draft PRs #4–#9 and #11–#22 were closed as superseded by the merged
-  v0.2.0 umbrella (#23). PR #10 (local-file encrypted capsules) remains open
-  and security-blocked; it is not in `main`.
+  `0.5.1` remains the latest package. Draft PRs #4–#22 were closed as
+  superseded by the merged v0.2.0 umbrella (#23); #10 (local-file encrypted
+  capsules) was closed as superseded by device-transfer capsules and is not in
+  `main`. Issue #1 was closed as fixed in v0.1.8. No issues or feature PRs are
+  open.
 - The `sinter-public` checkout is the sole active maintainer checkout. Previous
   local checkouts and linked worktrees were retired; do not recover, copy from,
   or push their legacy local-only history. The public GitHub repository is the
@@ -492,6 +494,4 @@ bunx @jensenloke/sinter@0.4.1 --version
 3. Monitor owner-only Storage/egress, cleanup, auth refresh, deletion, and
    compacted Codex-to-Claude resumes before admitting any tester.
 4. Plan the next package release (a new minor version) to publish the merged
-   context-budget fitting (#38) and ledger maintenance (#39) features; decide
-   whether PR #10 should be closed or redesigned against the shipped
-   device-transfer capsules.
+   context-budget fitting (#38) and ledger maintenance (#39) features.
