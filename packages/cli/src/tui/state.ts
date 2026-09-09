@@ -102,9 +102,7 @@ export function initialState(init: {
     threads: init.threads,
     caps: init.caps,
     cwd: init.cwd,
-    // Default to the directory you ran sinter in, but only when it has
-    // sessions — otherwise the menu would open empty.
-    scope: init.scope ?? (init.threads.some((t) => t.tip.cwd === init.cwd) ? "cwd" : "all"),
+    scope: init.scope ?? "all",
     filter: "",
     harnessFilter: null,
     showGhosts: false,
@@ -149,6 +147,12 @@ export function visibleThreads(state: MenuState): Thread[] {
     if (!state.showSubagents && t.tip.isSubagent) return false;
     return matches(t, state.filter);
   });
+}
+
+/** Threads hidden only by the directory filter; honours every other active filter. */
+export function elsewhereCount(state: MenuState): number {
+  if (state.scope !== "cwd") return 0;
+  return visibleThreads({ ...state, scope: "all" }).length - visibleThreads(state).length;
 }
 
 /** Harnesses that actually appear in the loaded threads, in canonical order. */

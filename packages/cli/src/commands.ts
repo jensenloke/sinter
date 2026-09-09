@@ -2473,7 +2473,7 @@ export async function cmdSetup(argv: string[], ctx: Ctx): Promise<number> {
 }
 
 export async function cmdMenu(argv: string[], ctx: Ctx): Promise<number> {
-  const args = parseArgs(argv, { strings: ["mode", "cwd"], booleans: ["all"] });
+  const args = parseArgs(argv, { strings: ["mode", "cwd"], booleans: ["all", "here"] });
   const mode = flagString(args, "mode");
   if (mode && !TRANSFER_MODES.includes(mode as TransferMode))
     throw new CliError(`unknown --mode: ${mode} (known: ${TRANSFER_MODES.join(", ")})`);
@@ -2486,7 +2486,7 @@ export async function cmdMenu(argv: string[], ctx: Ctx): Promise<number> {
   return runMenu(ctx, {
     cwd: cwdFlag === "." || cwdFlag === undefined ? process.cwd() : cwdFlag,
     mode: mode as TransferMode | undefined,
-    scope: flagBool(args, "all") ? "all" : undefined,
+    scope: flagBool(args, "here") ? "cwd" : "all",
   });
 }
 

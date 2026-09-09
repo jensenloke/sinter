@@ -50,6 +50,7 @@ sinter last --cwd . --exec      # resume it in this terminal
 sinter search "session alias or topic"
 sinter rename <id-prefix> "My important session"
 sinter show <id-prefix>
+sinter menu
 sinter show <id-prefix> --ndjson       # one versioned JSON record per line
 sinter compare <source-id> <target-id>  # structural transfer check; no content printed
 sinter show <id-prefix> --tail 20       # render only the latest entries
@@ -64,6 +65,11 @@ sinter logout                   # revoke and remove this device's login
 sinter feedback
 sinter gui
 ```
+
+The interactive menu opens on all directories by default, so indexed sessions
+from other projects remain visible. Press `^o` to toggle between all
+directories and the launch directory, or use `sinter menu --here` to start
+scoped to the current project.
 
 Ports, imports, and cross-harness resumes default to `--mode auto`. When a
 target adapter reports a context budget, Sinter tries `full`, then `slim`, then
