@@ -160,7 +160,7 @@ usage: sinter [command] [args]
 interactive
   (no command)                           interactive menu: pick a session, pick
                                          a harness, launch it right here
-  menu [--all] [--mode auto|full|slim|compact]
+  menu [--all|--here] [--cwd dir] [--mode …]
                                          the same menu, explicitly
 
 find and inspect
@@ -341,7 +341,7 @@ const COMMAND_HELP: Record<string, string> = {
   gui: "usage: sinter gui [--port n] [--no-open]\n\nRuns a token-protected workspace on 127.0.0.1; transcripts never leave this machine.",
   completion: "usage: sinter completion <zsh|bash|fish>\n\nPrints a native completion script to stdout; does not modify shell configuration.",
   relink: "usage: sinter relink [--harness x] [--limit n] [--quiet]\n\nRebuilds the disposable lineage cache from target stores.",
-  menu: "usage: sinter menu [--all] [--mode auto|full|slim|compact]\n\nRequires an interactive terminal. Auto preserves the least destructive representation that fits a target-reported context budget.",
+  menu: "usage: sinter menu [--all|--here] [--cwd dir] [--mode auto|full|slim|compact]\n\nRequires an interactive terminal. Opens on all directories; --here scopes to the launch directory, ^o toggles. Auto preserves the least destructive representation that fits a target-reported context budget.",
 };
 
 function helpFor(command: string, subcommand?: string): string {

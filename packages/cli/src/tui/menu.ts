@@ -407,7 +407,7 @@ async function promptAlias(thread: Thread): Promise<{ changed: boolean; alias?: 
 export interface MenuOpts {
   cwd?: string;
   mode?: TransferMode;
-  /** Force the initial scope instead of auto-picking cwd when it has sessions. */
+  /** Force the initial directory scope. */
   scope?: Scope;
 }
 

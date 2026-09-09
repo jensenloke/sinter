@@ -123,7 +123,7 @@ ${commands}
     telemetry) _arguments $global_args '1:action:(status enable disable)' '--endpoint=[collector URL]:url' ;;
     gui) _arguments $global_args '--port=[local port]:port' '--no-open' ;;
     relink) _arguments $global_args '--harness=[filter by harness]:harnesses' '--limit=[maximum sessions]:count' '--quiet' ;;
-    menu) _arguments $global_args '--all' '--mode=[transfer mode]:mode:($modes)' '--cwd=[initial directory]:directory:_directories' ;;
+    menu) _arguments $global_args '--all' '--here' '--mode=[transfer mode]:mode:($modes)' '--cwd=[initial directory]:directory:_directories' ;;
     completion) _arguments $global_args '1:shell:(zsh bash fish)' ;;
     *) _arguments $global_args ;;
   esac
@@ -182,6 +182,10 @@ function bash(): string {
     COMPREPLY=( $(compgen -W '--to --mode --repo-remote --preview --json' -- "$current") )
     return
   fi
+  if [[ $command == menu ]]; then
+    COMPREPLY=( $(compgen -W '--all --here --mode --cwd' -- "$current") )
+    return
+  fi
   if [[ $command == receive ]]; then
     COMPREPLY=( $(compgen -W '--to --cwd --bind --advertise --port --ttl --allow-repo-mismatch --allow-missing-commit --yes --json' -- "$current") )
     return
@@ -211,6 +215,9 @@ function fish(): string {
     "complete -c sinter -n '__fish_seen_subcommand_from receive' -l yes -d 'Accept after repository checks'",
     `complete -c sinter -n '__fish_seen_subcommand_from resume' -l in -xa '${HARNESSES.join(" ")}' -d 'Target harness'`,
     `complete -c sinter -n '__fish_seen_subcommand_from port import resume menu' -l mode -xa '${MODES.join(" ")}' -d 'Transfer mode'`,
+    "complete -c sinter -n '__fish_seen_subcommand_from menu' -l all -d 'Search all directories'",
+    "complete -c sinter -n '__fish_seen_subcommand_from menu' -l here -d 'Search the launch directory'",
+    "complete -c sinter -n '__fish_seen_subcommand_from menu' -l cwd -r -d 'Initial directory'",
     "complete -c sinter -n '__fish_seen_subcommand_from config' -a 'show path validate example discover-shell' -d 'Action'",
     "complete -c sinter -n '__fish_seen_subcommand_from config' -l shell -r -d 'Absolute zsh/bash executable'",
     "complete -c sinter -n '__fish_seen_subcommand_from config' -l write -d 'Create config only if missing'",

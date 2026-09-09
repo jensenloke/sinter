@@ -7,7 +7,9 @@ import { applyTransfer, callTarget, compactSession, planTransfer } from "../src/
 import { parseKeys } from "../src/tui/keys";
 import {
   buildActions,
+  elsewhereCount,
   initialState,
+  applyCommand,
   reduce,
   visibleThreads,
   type HarnessCaps,
@@ -157,19 +159,21 @@ describe("threads", () => {
 // -------------------------------------------------------------------- filters
 
 describe("filtering", () => {
-  test("defaults to the current directory when it holds sessions", () => {
+  test("defaults to all directories even when the cwd holds sessions", () => {
     const s = state(ROWS);
-    expect(s.scope).toBe("cwd");
-    expect(visibleThreads(s).map((t) => t.tip.nativeId)).toEqual(["aaa11111-1111", "0199abcd"]);
+    expect(s.scope).toBe("all");
+    expect(visibleThreads(s).map((t) => t.tip.nativeId)).toContain("ses_zzz");
   });
 
-  test("falls back to all directories when the cwd is empty", () => {
+  test("keeps an explicit current-directory scope", () => {
     const s = initialState({
-      threads: buildThreads([ROWS[2]!]),
+      threads: buildThreads([ROWS[0]!, ROWS[2]!]),
       caps: caps(),
-      cwd: "/nowhere",
+      cwd: CWD,
+      scope: "cwd",
     });
-    expect(s.scope).toBe("all");
+    expect(s.scope).toBe("cwd");
+    expect(visibleThreads(s).map((t) => t.tip.nativeId)).toEqual(["aaa11111-1111"]);
   });
 
   test("ghosts and subagents are hidden until toggled", () => {
@@ -203,6 +207,35 @@ describe("filtering", () => {
       harnessFilter: "codex" as HarnessId,
     };
     expect(visibleThreads(s).length).toBe(1);
+  });
+
+  test("searching a scoped directory reports matches elsewhere and toggles cleanly", () => {
+    const s = state(ROWS, { scope: "cwd", filter: "elsewhere", cursor: 3, scroll: 2 });
+    expect(visibleThreads(s)).toHaveLength(0);
+    expect(elsewhereCount(s)).toBe(1);
+
+    const all = { ...s, scope: "all" as const };
+    expect(visibleThreads(all).map((t) => t.tip.nativeId)).toEqual(["ses_zzz"]);
+
+    const toggled = applyCommand(s, "scope").state;
+    expect(toggled.scope).toBe("all");
+    expect(toggled.filter).toBe("elsewhere");
+    expect(toggled.cursor).toBe(0);
+    expect(toggled.scroll).toBe(0);
+  });
+
+  test("elsewhere counts honor ghost and harness filters", () => {
+    const ghostElsewhere = row({
+      nativeId: "ghost-elsewhere",
+      harness: "opencode",
+      title: "hidden elsewhere",
+      cwd: "/Users/test/other",
+      ghost: true,
+    });
+    const base = state([ghostElsewhere], { scope: "cwd", filter: "hidden" });
+    expect(elsewhereCount(base)).toBe(0);
+    expect(elsewhereCount({ ...base, showGhosts: true })).toBe(1);
+    expect(elsewhereCount({ ...base, showGhosts: true, harnessFilter: "claude" })).toBe(0);
   });
 });
 
@@ -402,7 +435,7 @@ describe("actions", () => {
 
 describe("dispatchChunk", () => {
   test("control chords never reach the filter box", () => {
-    const s = state(ROWS);
+    const s = state(ROWS, { scope: "cwd" });
     const after = dispatchChunk("\x0f", s).state; // ctrl-o
     expect(after.filter).toBe("");
     expect(after.scope).toBe("all");
@@ -413,7 +446,7 @@ describe("dispatchChunk", () => {
   });
 
   test("text around a chord is still processed in order", () => {
-    const step = dispatchChunk("au\x0fth", state(ROWS));
+    const step = dispatchChunk("au\x0fth", state(ROWS, { scope: "cwd" }));
     expect(step.state.filter).toBe("auth");
     expect(step.state.scope).toBe("all");
   });
@@ -473,8 +506,8 @@ describe("view", () => {
   });
 
   test("a narrow terminal drops the cwd column instead of overflowing", () => {
-    const lines = renderFrame(state(ROWS, { scope: "all" }), { ...opts, width: 70 });
-    expect(lines.every((l) => l.length === 70)).toBe(true);
+    const lines = renderFrame(state(ROWS, { scope: "all" }), { ...opts, width: 60 });
+    expect(lines.every((l) => l.length === 60)).toBe(true);
     expect(lines.join("\n")).not.toContain("CWD");
   });
 
@@ -494,8 +527,38 @@ describe("view", () => {
   });
 
   test("an empty result set explains itself", () => {
-    const text = renderFrame(state(ROWS, { filter: "zzzznope" }), opts).join("\n");
+    const text = renderFrame(state(ROWS, { scope: "all", filter: "zzzznope" }), opts).join("\n");
     expect(text).toContain("no session matches the search");
+  });
+
+  test("explains scoped searches with matches in other directories", () => {
+    const text = renderFrame(state(ROWS, { scope: "cwd", filter: "elsewhere" }), opts).join("\n");
+    expect(text).toContain("no matches in this directory · 1 matching session elsewhere");
+  });
+
+  test("shows directory scope in the title and key hints", () => {
+    const all = renderFrame(state(ROWS, { scope: "all" }), opts).join("\n");
+    expect(all).toContain("directory: all");
+    expect(all).toContain("^o this dir");
+
+    const cwd = renderFrame(state(ROWS, { scope: "cwd" }), opts).join("\n");
+    expect(cwd).toContain(`directory: ${CWD}`);
+    expect(cwd).toContain("^o all dirs");
+  });
+
+  test("shows a scoped elsewhere hint when filtered matches remain visible", () => {
+    const local = row({ nativeId: "local-match", harness: "claude", title: "shared match" });
+    const elsewhere = row({
+      nativeId: "elsewhere-match",
+      harness: "opencode",
+      cwd: "/Users/test/other",
+      title: "shared match",
+    });
+    const text = renderFrame(
+      state([local, elsewhere], { scope: "cwd", filter: "shared" }),
+      opts,
+    ).join("\n");
+    expect(text).toContain("1 more match in other directories · ^o");
   });
 
   test("the action screen shows the transfer mode and disabled reasons", () => {

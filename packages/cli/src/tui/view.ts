@@ -7,7 +7,7 @@
 
 import { displayId, humanAge, shortenPath, stripAnsi, truncate, visibleWidth, type Palette } from "../format";
 import { MODE_HINT, TRANSFER_MODES, estimateTokens, type TransferMode } from "../transfer";
-import { buildActions, presentHarnesses, visibleThreads, type MenuState } from "./state";
+import { buildActions, elsewhereCount, presentHarnesses, visibleThreads, type MenuState } from "./state";
 import { chainLabel, type Thread } from "./threads";
 
 export interface ViewOpts {
@@ -141,7 +141,7 @@ function fitRight(s: string, w: number): string {
 function titleBar(state: MenuState, o: ViewOpts, shown: number): string {
   const p = o.pal;
   const total = state.threads.length;
-  const scope = state.scope === "cwd" ? shortenPath(state.cwd, 30) : "all directories";
+  const scope = state.scope === "cwd" ? shortenPath(state.cwd, 30) : "all";
   const harness = state.harnessFilter ?? "all harnesses";
   const flags =
     (state.showGhosts ? " +ghosts" : "") + (state.showSubagents ? " +agents" : "");
@@ -152,6 +152,7 @@ function titleBar(state: MenuState, o: ViewOpts, shown: number): string {
     p.dim("sessions · ") +
     p.cyan(String(harness)) +
     p.dim(" · ") +
+    p.dim("directory: ") +
     scope +
     p.dim(flags)
   );
@@ -183,7 +184,7 @@ function keyHints(state: MenuState, o: ViewOpts): string {
       k("type", "search"),
       k("tab", "harness"),
       k("^s", "agents"),
-      k("^o", "scope"),
+      k("^o", state.scope === "cwd" ? "all dirs" : "this dir"),
       k("^r", "rescan"),
       k("esc", "quit"),
     ].join(p.dim("  ·  "))
@@ -194,12 +195,25 @@ function statusLine(state: MenuState, o: ViewOpts, shown: number): string {
   const p = o.pal;
   if (state.message) return " " + p.yellow(state.message);
   if (!shown) {
-    const why = state.filter
-      ? "no session matches the search"
-      : state.scope === "cwd"
-        ? `no sessions in ${shortenPath(state.cwd, 40)} — ^o widens to all directories`
-        : "ledger is empty — ^r scans every harness";
+    let why: string;
+    if (state.filter && state.scope === "cwd") {
+      const n = elsewhereCount(state);
+      why =
+        n > 0
+          ? `no matches in this directory · ${n} matching session${n === 1 ? "" : "s"} elsewhere — ^o searches all directories`
+          : "no session matches the search in any directory";
+    } else if (state.filter) {
+      why = "no session matches the search";
+    } else if (state.scope === "cwd") {
+      why = `no sessions in ${shortenPath(state.cwd, 40)} — ^o shows all directories`;
+    } else {
+      why = "ledger is empty — ^r scans every harness";
+    }
     return " " + p.dim(why);
+  }
+  if (state.scope === "cwd" && state.filter) {
+    const n = elsewhereCount(state);
+    if (n > 0) return " " + p.dim(`${n} more match${n === 1 ? "" : "es"} in other directories · ^o`);
   }
   if (!state.showSubagents) {
     const withAgents = visibleThreads({ ...state, showSubagents: true }).length;
