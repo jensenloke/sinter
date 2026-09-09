@@ -1,6 +1,6 @@
 # Sinter current status
 
-Last updated: 2026-09-03 (Asia/Singapore)
+Last updated: 2026-09-05 (Asia/Singapore)
 
 This is the durable continuation handoff for maintainers and coding agents.
 Read the root [AGENTS.md](../AGENTS.md) first. Mutable facts below were verified
@@ -18,6 +18,7 @@ operations.
 - Isolated Bun and npm installs both report `0.5.1` and expose Cloud help.
 - Patch notes: [releases/v0.5.1.md](releases/v0.5.1.md).
 - npm `0.4.1`, `0.5.0`, and `0.5.1` are immutable and must never be republished.
+- Release candidate `0.5.2` is prepared (package and runtime version bumped, notes in [releases/v0.5.2.md](releases/v0.5.2.md)); it is NOT tagged or published. npm `latest` remains `0.5.1`. Publishing requires the maintainer's explicit approval, an annotated `v0.5.2` tag on the exact `main` commit, a clean worktree, and `SINTER_RELEASE_APPROVED=1`.
 
 ## Git state at handoff
 
@@ -34,8 +35,10 @@ operations.
 - PR #38 (merged) re-landed the context-budget fitting feature on `main` with
   named-instance routing preserved, concrete send/Cloud modes, and UTF-8
   byte-accurate Devin clipping; PR #25 was closed as superseded. PR #39 (merged)
-  added `sinter ledger backup|verify|repair`. Neither is published to npm yet;
-  `0.5.1` remains the latest package. Draft PRs #4–#22 were closed as
+  added `sinter ledger backup|verify|repair`. PR #44 fixes issue #43: the menu
+  opens on all directories, supports `--here`, and provides elsewhere-match
+  guidance. Neither is published to npm yet; `0.5.1` remains the latest package.
+  Draft PRs #4–#22 were closed as
   superseded by the merged v0.2.0 umbrella (#23); #10 (local-file encrypted
   capsules) was closed as superseded by device-transfer capsules and is not in
   `main`. Issue #1 was closed as fixed in v0.1.8. No issues or feature PRs are
@@ -493,5 +496,6 @@ bunx @jensenloke/sinter@0.4.1 --version
    changes client-side adapter/transfer behavior only.
 3. Monitor owner-only Storage/egress, cleanup, auth refresh, deletion, and
    compacted Codex-to-Claude resumes before admitting any tester.
-4. Plan the next package release (a new minor version) to publish the merged
-   context-budget fitting (#38) and ledger maintenance (#39) features.
+4. Cut the 0.5.2 release once this release-prep PR and #44 are on `main`: tag
+   `v0.5.2`, publish, create the GitHub release, then record registry shasum and
+   install checks here.

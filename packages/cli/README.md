@@ -12,8 +12,9 @@ sinter scan
 sinter
 ```
 
-npm `latest` is `0.5.1`, the public Cloud client with the compacted
-Codex-to-Claude resume fix.
+npm `latest` is `0.5.1`; v0.5.2, including context-budget fitting, ledger
+backup/verify/repair, and the menu directory-scope fix, is prepared in the
+[release notes](../../docs/releases/v0.5.2.md) pending publication.
 
 Sinter reads local harness stores and keeps its index on your machine. Historical
 tool calls are inert during cross-harness ports unless explicitly enabled for a

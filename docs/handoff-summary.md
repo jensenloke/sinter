@@ -33,6 +33,9 @@ npm view @jensenloke/sinter version dist-tags --json
 - At this handoff, local `main` and `origin/main` are synchronized. Verify the
   exact commit at the start of every session.
 - The current public CLI, Git tag, GitHub release, and npm `latest` are v0.5.1.
+- A `0.5.2` release candidate (PR pending) bumps the package/runtime version
+  and adds release notes; it is unpublished until the maintainer tags and
+  approves publication.
 - npm versions 0.4.1, 0.5.0, and 0.5.1 are immutable and must not be
   republished.
 - Previous local checkouts and linked worktrees were retired. Do not look for,
