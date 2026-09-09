@@ -37,7 +37,8 @@ operations.
   byte-accurate Devin clipping; PR #25 was closed as superseded. PR #39 (merged)
   added `sinter ledger backup|verify|repair`. PR #44 fixes issue #43: the menu
   opens on all directories, supports `--here`, and provides elsewhere-match
-  guidance. Neither is published to npm yet; `0.5.1` remains the latest package.
+  guidance. None of these is published to npm yet; `0.5.1` remains the latest
+  package.
   Draft PRs #4–#22 were closed as
   superseded by the merged v0.2.0 umbrella (#23); #10 (local-file encrypted
   capsules) was closed as superseded by device-transfer capsules and is not in
