@@ -12,9 +12,10 @@ sinter scan
 sinter
 ```
 
-npm `latest` is `0.5.1`; v0.5.2, including context-budget fitting, ledger
-backup/verify/repair, and the menu directory-scope fix, is prepared in the
-[release notes](../../docs/releases/v0.5.2.md) pending publication.
+npm `latest` is `0.5.2`, including context-budget fitting, ledger
+backup/verify/repair, the menu directory-scope fix, and the ported Devin
+session resume fix. See the
+[release notes](../../docs/releases/v0.5.2.md).
 
 Sinter reads local harness stores and keeps its index on your machine. Historical
 tool calls are inert during cross-harness ports unless explicitly enabled for a

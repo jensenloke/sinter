@@ -1,6 +1,6 @@
 # Sinter current status
 
-Last updated: 2026-09-05 (Asia/Singapore)
+Last updated: 2026-09-18 (Asia/Singapore)
 
 This is the durable continuation handoff for maintainers and coding agents.
 Read the root [AGENTS.md](../AGENTS.md) first. Mutable facts below were verified
@@ -10,15 +10,18 @@ operations.
 ## Release state
 
 - Current public CLI, npm `latest`, annotated Git tag, and GitHub release:
-  `@jensenloke/sinter@0.5.1` / `v0.5.1`.
-- PR #32 merged the compacted Codex-to-Claude resume fix at `1b759c4`; release
-  PR #34 merged at `9190954`, the exact v0.5.1 tag target.
-- v0.5.1 registry and rehearsed 24-file tarball shasum:
-  `e5d2b3dbe35ab5c79ca8d35864cb549f0d92cf81`.
-- Isolated Bun and npm installs both report `0.5.1` and expose Cloud help.
-- Patch notes: [releases/v0.5.1.md](releases/v0.5.1.md).
-- npm `0.4.1`, `0.5.0`, and `0.5.1` are immutable and must never be republished.
-- Release candidate `0.5.2` is prepared (package and runtime version bumped, notes in [releases/v0.5.2.md](releases/v0.5.2.md)); it is NOT tagged or published. npm `latest` remains `0.5.1`. Publishing requires the maintainer's explicit approval, an annotated `v0.5.2` tag on the exact `main` commit, a clean worktree, and `SINTER_RELEASE_APPROVED=1`.
+  `@jensenloke/sinter@0.5.2` / `v0.5.2`.
+- Release-prep PR #45 merged at `efe91bf`; fix PR #48 merged at `0cf6992`, the
+  exact v0.5.2 tag target. PR #48 carried
+  the ported Devin session resume fix (PR #47 was closed as superseded by #48
+  with identical content).
+- v0.5.2 registry and rehearsed 24-file tarball shasum:
+  `f11922fd979af8d9252c17aac387f505e4b5d68b` (776.9 kB unpacked).
+- `bun run verify:package` passed for 0.5.2 before publish; the full suite is
+  970 tests.
+- Release notes: [releases/v0.5.2.md](releases/v0.5.2.md).
+- npm `0.4.1`, `0.5.0`, `0.5.1`, and `0.5.2` are immutable and must never be
+  republished.
 
 ## Git state at handoff
 
@@ -35,10 +38,11 @@ operations.
 - PR #38 (merged) re-landed the context-budget fitting feature on `main` with
   named-instance routing preserved, concrete send/Cloud modes, and UTF-8
   byte-accurate Devin clipping; PR #25 was closed as superseded. PR #39 (merged)
-  added `sinter ledger backup|verify|repair`. PR #44 fixes issue #43: the menu
+  added `sinter ledger backup|verify|repair`. PR #44 fixed issue #43: the menu
   opens on all directories, supports `--here`, and provides elsewhere-match
-  guidance. None of these is published to npm yet; `0.5.1` remains the latest
-  package.
+  guidance. PR #48 fixed ported Devin sessions resuming from a detached
+  subsession marker instead of the conversation tail. All of these are
+  published in `0.5.2`.
   Draft PRs #4–#22 were closed as
   superseded by the merged v0.2.0 umbrella (#23); #10 (local-file encrypted
   capsules) was closed as superseded by device-transfer capsules and is not in
@@ -491,12 +495,12 @@ bunx @jensenloke/sinter@0.4.1 --version
 
 ## Recommended next actions
 
-1. Treat npm `0.5.1` and tag `v0.5.1` as immutable; use a new patch version for
+1. Treat npm `0.5.2` and tag `v0.5.2` as immutable; use a new patch version for
    every future package change.
 2. Keep public signup closed and exactly one owner entitlement enabled; v0.5.1
    changes client-side adapter/transfer behavior only.
 3. Monitor owner-only Storage/egress, cleanup, auth refresh, deletion, and
    compacted Codex-to-Claude resumes before admitting any tester.
-4. Cut the 0.5.2 release once this release-prep PR and #44 are on `main`: tag
-   `v0.5.2`, publish, create the GitHub release, then record registry shasum and
-   install checks here.
+4. For the next package change, open a release-prep PR bumping the patch
+   version and notes, then tag, publish, and record registry shasum and install
+   checks here — the same flow used for v0.5.2.
