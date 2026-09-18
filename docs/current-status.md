@@ -11,7 +11,8 @@ operations.
 
 - Current public CLI, npm `latest`, annotated Git tag, and GitHub release:
   `@jensenloke/sinter@0.5.2` / `v0.5.2`.
-- Release PR #48 merged at `0cf6992`, the exact v0.5.2 tag target; it carried
+- Release-prep PR #45 merged at `efe91bf`; fix PR #48 merged at `0cf6992`, the
+  exact v0.5.2 tag target. PR #48 carried
   the ported Devin session resume fix (PR #47 was closed as superseded by #48
   with identical content).
 - v0.5.2 registry and rehearsed 24-file tarball shasum:
