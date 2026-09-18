@@ -418,6 +418,15 @@ function clipNativeMessage(message: NativeMessage, maxBytes = 40_000): NativeMes
   return copy;
 }
 
+export function isCommandEcho(content: string): boolean {
+  let text = content;
+  for (const tag of ["command-name", "command-message", "local-command-stdout", "local-command-caveat"]) {
+    text = text.replace(new RegExp(`<${tag}>[\\s\\S]*?</${tag}>`, "g"), "");
+  }
+  text = text.replace(/<command-args>([\s\S]*?)<\/command-args>/g, (match, inner: string) => (inner.trim() ? match : ""));
+  return text.trim().length === 0;
+}
+
 export function capNativeHistory(
   messages: NativeMessage[],
   mainChainId: number | null,
@@ -435,7 +444,8 @@ export function capNativeHistory(
   const bytesBefore = active.reduce((sum, message) => sum + messageBytes(message), 0);
   if (bytesBefore <= maxBytes) return { messages, mainChainId, omitted: 0, bytesBefore };
 
-  const firstUser = active.find((message) => message.message.role === "user");
+  const firstUser = active.find((message) => message.message.role === "user" && !isCommandEcho(str(message.message.content) ?? ""))
+    ?? active.find((message) => message.message.role === "user");
   const retainedFirst = firstUser ? clipNativeMessage(firstUser) : undefined;
   const reserve = (retainedFirst ? messageBytes(retainedFirst) : 0) + 1_000;
   let remaining = Math.max(40_000, maxBytes - reserve);
@@ -467,6 +477,35 @@ export function capNativeHistory(
   const selected = [...(retainedFirst ? [retainedFirst] : []), note, ...tail];
   const capped = selected.map((message, index) => ({ ...message, nodeId: index, parentNodeId: index ? index - 1 : null }));
   return { messages: capped, mainChainId: capped[capped.length - 1]?.nodeId ?? null, omitted, bytesBefore };
+}
+
+export function mainChainTail(messages: NativeMessage[]): number | null {
+  const byNode = new Map(messages.map((message) => [message.nodeId, message]));
+  const depthCache = new Map<number, number>();
+  const depth = (nodeId: number): number => {
+    const cached = depthCache.get(nodeId);
+    if (cached !== undefined) return cached;
+    let count = 0;
+    const seen = new Set<number>([nodeId]);
+    let current = byNode.get(nodeId)?.parentNodeId ?? null;
+    while (current !== null && !seen.has(current)) {
+      seen.add(current);
+      count += 1;
+      current = byNode.get(current)?.parentNodeId ?? null;
+    }
+    depthCache.set(nodeId, count);
+    return count;
+  };
+  let tail: number | null = null;
+  let deepest = -1;
+  for (const message of messages) {
+    const d = depth(message.nodeId);
+    if (d >= deepest) {
+      deepest = d;
+      tail = message.nodeId;
+    }
+  }
+  return tail;
 }
 
 function columns(db: Database, table: string): Set<string> {
@@ -566,8 +605,8 @@ export class DevinAdapter implements HarnessAdapter {
     const devinState = session.origin.harness === "devin" ? json(session.preserve?.devin) : undefined;
     const priorMain = num(devinState?.mainChainId);
     let mainChainId: number | null = priorMain === undefined
-      ? messages[messages.length - 1]?.nodeId ?? null
-      : native.nodeByEntry.get(`d${priorMain}`) ?? messages[messages.length - 1]?.nodeId ?? null;
+      ? mainChainTail(messages)
+      : native.nodeByEntry.get(`d${priorMain}`) ?? mainChainTail(messages);
     if (session.origin.harness !== "devin") {
       const capped = capNativeHistory(messages, mainChainId);
       messages = capped.messages;
