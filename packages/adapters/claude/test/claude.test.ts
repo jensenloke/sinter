@@ -437,6 +437,61 @@ describe("read — subagents", () => {
     expect(typeof link.resultText).toBe("string");
   });
 
+  test("a subsession whose Task tool_use is absent anchors to the last conversation entry", async () => {
+    const root = mkdtempSync(join(tmpdir(), "sinter-claude-orphan-sub-"));
+    const dir = join(root, "-tmp-project");
+    const id = "70000000-0000-4000-8000-000000000000";
+    mkdirSync(join(dir, id, "subagents"), { recursive: true });
+    try {
+      writeFileSync(
+        join(dir, `${id}.jsonl`),
+        [
+          JSON.stringify({
+            type: "user",
+            uuid: `${id}-u1`,
+            parentUuid: null,
+            timestamp: "2026-01-01T00:00:00.000Z",
+            cwd: "/tmp/project",
+            isSidechain: false,
+            message: { role: "user", content: "run something" },
+          }),
+          JSON.stringify({
+            type: "assistant",
+            uuid: `${id}-a1`,
+            parentUuid: `${id}-u1`,
+            timestamp: "2026-01-01T00:00:01.000Z",
+            cwd: "/tmp/project",
+            isSidechain: false,
+            message: { role: "assistant", content: [{ type: "text", text: "done" }] },
+          }),
+        ].join("\n"),
+      );
+      writeFileSync(
+        join(dir, id, "subagents", "agent-abc123.jsonl"),
+        JSON.stringify({
+          type: "user",
+          uuid: `${id}-sub-u1`,
+          parentUuid: null,
+          timestamp: "2026-01-01T00:00:02.000Z",
+          cwd: "/tmp/project",
+          isSidechain: true,
+          message: { role: "user", content: "subagent prompt" },
+        }),
+      );
+      writeFileSync(
+        join(dir, id, "subagents", "agent-abc123.meta.json"),
+        JSON.stringify({ agentType: "test-agent", description: "test", toolUseId: "missing-call" }),
+      );
+      const s = await new ClaudeAdapter({ root }).read({ harness: "claude", nativeId: id });
+      const link = s.entries.find((e) => e.kind === "subsession")!;
+      expect(link.sessionRef).toBe(`${id}/agent-abc123`);
+      expect(link.parentId).toBe(`${id}-a1`);
+      expect(link.parentId).not.toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("subagent file is readable directly by its composite id", async () => {
     const sub = await adapter.read({
       harness: "claude",
