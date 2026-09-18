@@ -121,6 +121,8 @@ record.
 
 Normalization must be deterministic and credential-safe:
 
+- read the remote URL as configured (`git config --get-all remote.<name>.url`) so
+  that `insteadOf`/`pushInsteadOf` routing on one machine does not change identity;
 - recognize HTTPS, SSH URL, and SCP-like Git remote forms;
 - strip user information, passwords, tokens, query parameters, and fragments;
 - lowercase the hostname and normalize default ports;
