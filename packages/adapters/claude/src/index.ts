@@ -1063,7 +1063,7 @@ export class ClaudeAdapter implements HarnessAdapter {
           const entry: SifEntry = {
             kind: "subsession",
             id: `subsession:${agentId}`,
-            parentId: anchorId ?? null,
+            parentId: anchorId ?? session.entries[session.entries.length - 1]?.id ?? null,
             sessionRef: subNativeId,
             ...(str(meta?.agentType) ? { agentName: str(meta!.agentType)! } : {}),
             ...(toolUseId && conv.toolResultText.get(toolUseId)

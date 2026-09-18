@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SIF_VERSION, validateSession, type SifSession } from "@sinter/core";
-import { capNativeHistory, DevinAdapter, messageBytes, type NativeMessage } from "../src/index";
+import { capNativeHistory, DevinAdapter, isCommandEcho, mainChainTail, messageBytes, type NativeMessage } from "../src/index";
 
 let root: string;
 let dbPath: string;
@@ -319,6 +319,36 @@ describe("DevinAdapter", () => {
     expect(plan.context!.after).toBeLessThanOrEqual(plan.context!.limit);
   });
 
+  test("skips slash-command echoes when retaining the opening request", async () => {
+    const adapter = new DevinAdapter({ dbPath });
+    const session = portableSession();
+    session.entries = [
+      {
+        kind: "user",
+        id: "echo",
+        parentId: null,
+        content: [{ type: "text", text: "<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args></command-args>" }],
+      },
+      { kind: "user", id: "real", parentId: "echo", content: [{ type: "text", text: "Real opening request" }] },
+    ];
+    let parentId = "real";
+    for (let i = 0; i < 240; i++) {
+      const id = `a${i}`;
+      session.entries.push({ kind: "assistant", id, parentId, content: [{ type: "text", text: `${i}:` + "x".repeat(4_000) }] });
+      parentId = id;
+    }
+    session.entries.push({ kind: "user", id: "latest", parentId, content: [{ type: "text", text: "Latest question" }] });
+    const ref = await adapter.write(session);
+    const db = new Database(dbPath, { readonly: true });
+    const contents = db.query<{ content: string }, [string]>(
+      "SELECT json_extract(chat_message, '$.content') AS content FROM message_nodes WHERE session_id = ? ORDER BY node_id",
+    ).all(ref.nativeId).map((row) => row.content);
+    db.close();
+    expect(contents[0]).toBe("Real opening request");
+    expect(contents.some((content) => content.includes("<command-name>"))).toBe(false);
+    expect(contents.at(-1)).toBe("Latest question");
+  });
+
   test("same-harness writes preserve Devin settings and the selected active branch", async () => {
     const db = new Database(dbPath);
     db.query("INSERT INTO message_nodes(session_id,node_id,parent_node_id,chat_message,created_at,metadata) VALUES (?, ?, ?, ?, ?, NULL)").run(
@@ -357,5 +387,82 @@ describe("DevinAdapter", () => {
     const count = db.query<{ count: number }, [string]>("SELECT count(*) AS count FROM sessions WHERE id = ?").get(dry.nativeId)!.count;
     db.close();
     expect(count).toBe(0);
+  });
+
+  test("anchors main_chain_id at the deepest node, not trailing orphan subsession markers", async () => {
+    const adapter = new DevinAdapter({ dbPath });
+    const session = portableSession();
+    session.entries = [
+      { kind: "user", id: "u1", parentId: null, content: [{ type: "text", text: "First" }] },
+      { kind: "assistant", id: "a1", parentId: "u1", content: [{ type: "text", text: "One" }] },
+      { kind: "user", id: "u2", parentId: "a1", content: [{ type: "text", text: "Second" }] },
+      { kind: "assistant", id: "a2", parentId: "u2", content: [{ type: "text", text: "Two" }] },
+      { kind: "subsession", id: "s1", parentId: null, sessionRef: "sub/agent-one" },
+      { kind: "subsession", id: "s2", parentId: null, sessionRef: "sub/agent-two" },
+    ];
+    const ref = await adapter.write(session);
+    const db = new Database(dbPath, { readonly: true });
+    const row = db.query<{ main_chain_id: number }, [string]>(
+      "SELECT main_chain_id FROM sessions WHERE id = ?",
+    ).get(ref.nativeId)!;
+    const nodes = db.query<{ node_id: number; parent_node_id: number | null }, [string]>(
+      "SELECT node_id, parent_node_id FROM message_nodes WHERE session_id = ? ORDER BY node_id",
+    ).all(ref.nativeId);
+    db.close();
+    expect(nodes).toHaveLength(6);
+    expect(row.main_chain_id).toBe(3); // the last assistant node, not the s2 marker
+    const parentByNode = new Map(nodes.map((node) => [node.node_id, node.parent_node_id]));
+    let count = 0;
+    let current: number | null = row.main_chain_id;
+    while (current !== null) {
+      count += 1;
+      current = parentByNode.get(current) ?? null;
+    }
+    expect(count).toBe(4);
+  });
+});
+
+describe("mainChainTail", () => {
+  const node = (nodeId: number, parentNodeId: number | null): NativeMessage => ({
+    nodeId,
+    parentNodeId,
+    createdAt: 0,
+    message: {},
+  });
+
+  test("returns null for empty input", () => {
+    expect(mainChainTail([])).toBeNull();
+  });
+
+  test("picks the node on the deepest chain, ties to the highest nodeId", () => {
+    expect(mainChainTail([node(0, null), node(1, 0), node(2, null), node(3, 2)])).toBe(3);
+    expect(mainChainTail([node(0, null), node(1, 0), node(2, null), node(3, 2), node(4, 1)])).toBe(4);
+    expect(mainChainTail([node(0, null)])).toBe(0);
+  });
+});
+
+describe("isCommandEcho", () => {
+  test("pure /model echo is an echo", () => {
+    expect(isCommandEcho(
+      "<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args></command-args>",
+    )).toBe(true);
+  });
+
+  test("local command stdout block is an echo", () => {
+    expect(isCommandEcho("<local-command-stdout>some output\nmore</local-command-stdout>")).toBe(true);
+    expect(isCommandEcho(
+      "<command-name>/init</command-name><local-command-caveat>caveat text</local-command-caveat><local-command-stdout>out</local-command-stdout>",
+    )).toBe(true);
+  });
+
+  test("/recall with non-empty command-args is not an echo", () => {
+    expect(isCommandEcho(
+      "<command-name>/recall</command-name>\n<command-message>recall</command-message>\n<command-args>about our project</command-args>",
+    )).toBe(false);
+  });
+
+  test("plain user text is not an echo", () => {
+    expect(isCommandEcho("Original objective")).toBe(false);
+    expect(isCommandEcho("")).toBe(true);
   });
 });
