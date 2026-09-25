@@ -62,7 +62,7 @@
     },
     "packages/cli": {
       "name": "@jensenloke/sinter",
-      "version": "0.5.1",
+      "version": "0.5.2",
       "bin": {
         "sinter": "dist/main.js",
       },
